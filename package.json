@@ -67,7 +67,7 @@
     "@aws-sdk/s3-request-presigner": "^3.1045.0",
     "@inertiajs/vue3": "^2.3.15",
     "@poppinss/ts-exec": "^1.4.4",
-    "@vinejs/vine": "^3.0.1",
+    "@vinejs/vine": "^4.4.0",
     "@vue/server-renderer": "^3.5.28",
     "edge.js": "^6.2.1",
     "luxon": "^3.7.2",
