@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="pt">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Activar empresa — Alaragest</title>
+    @include('emails/partials/alaragest_styles')
+  </head>
+  <body>
+    <div class="wrapper">
+      <div class="card">
+        @include('emails/partials/alaragest_header')
+
+        <div class="body">
+          <p class="eyebrow">Conta empresarial</p>
+          <h1>Activar {{ companyName }}</h1>
+          <p class="subtitle">Confirme o registo da sua empresa.</p>
+
+          <p>
+            Obrigado por registar <span class="highlight">{{ companyName }}</span> no Alaragest.
+            Clique no botão para activar a conta através da nossa aplicação web.
+          </p>
+
+          <div class="cta-wrap">
+            <a href="{{ verifyUrl }}" class="cta-btn">Activar conta</a>
+          </div>
+
+          <div class="notice">
+            <p>
+              <strong>Atenção:</strong> este link é válido por <strong>{{ expiresIn }}</strong>.
+              Depois desse período, solicite um novo link.
+            </p>
+          </div>
+
+          <div class="fallback">
+            <p class="fallback-label">Link de activação</p>
+            <p class="fallback-url">{{ verifyUrl }}</p>
+          </div>
+        </div>
+
+        <div class="footer">
+          <p>© {{ year }} Alaragest — Todos os direitos reservados.</p>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

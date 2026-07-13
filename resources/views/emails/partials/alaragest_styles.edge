@@ -1,0 +1,257 @@
+<style>
+  /* ─── Reset ─────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; }
+  body, table, td, p, a, li, blockquote {
+    -webkit-text-size-adjust: 100%;
+    -ms-text-size-adjust: 100%;
+  }
+  table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; border-collapse: collapse; }
+  img { -ms-interpolation-mode: bicubic; border: 0; display: block; outline: none; }
+
+  /* ─── Base ───────────────────────────────────────── */
+  body {
+    margin: 0;
+    padding: 0;
+    background-color: #EEF4FB;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+                 'Helvetica Neue', Arial, sans-serif;
+    font-size: 15px;
+    line-height: 1.65;
+    color: #1A2540;
+  }
+
+  /* ─── Wrapper ────────────────────────────────────── */
+  .wrapper {
+    width: 100%;
+    padding: 40px 16px 56px;
+    background-color: #EEF4FB;
+  }
+
+  /* ─── Card ───────────────────────────────────────── */
+  .card {
+    max-width: 560px;
+    margin: 0 auto;
+    background: #ffffff;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 4px 24px rgba(16, 110, 190, 0.10);
+  }
+
+  /* ─── Header ─────────────────────────────────────── */
+  .email-header {
+    background: #106EBE;
+    padding: 28px 36px 24px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .email-header::before {
+    content: '';
+    position: absolute;
+    top: -48px; right: -48px;
+    width: 160px; height: 160px;
+    border-radius: 50%;
+    border: 36px solid rgba(15, 252, 190, 0.10);
+  }
+
+  .email-header::after {
+    content: '';
+    position: absolute;
+    bottom: -30px; left: -30px;
+    width: 110px; height: 110px;
+    border-radius: 50%;
+    border: 24px solid rgba(255, 255, 255, 0.05);
+  }
+
+  .header-inner {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .logo-mark {
+    width: 36px;
+    height: 36px;
+    background: #0FFCBE;
+    border-radius: 9px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .logo-mark svg {
+    width: 18px;
+    height: 18px;
+    color: #0A4F8A;
+  }
+
+  .logo-name {
+    font-size: 17px;
+    font-weight: 700;
+    color: #ffffff;
+    letter-spacing: -0.2px;
+    text-decoration: none;
+  }
+
+  /* ─── Body ───────────────────────────────────────── */
+  .body {
+    padding: 36px 36px 28px;
+  }
+
+  .eyebrow {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: #106EBE;
+    background: #E8F3FB;
+    border-radius: 20px;
+    padding: 3px 10px;
+    margin: 0 0 16px;
+  }
+
+  h1 {
+    margin: 0 0 6px;
+    font-size: 22px;
+    font-weight: 700;
+    color: #1A2540;
+    line-height: 1.25;
+  }
+
+  .subtitle {
+    margin: 0 0 24px;
+    font-size: 14.5px;
+    color: #6B7A99;
+  }
+
+  p {
+    margin: 0 0 16px;
+    font-size: 14.5px;
+    color: #3D4F6E;
+    line-height: 1.7;
+  }
+
+  .highlight {
+    color: #106EBE;
+    font-weight: 600;
+    background: #E8F3FB;
+    padding: 1px 6px;
+    border-radius: 4px;
+  }
+
+  /* ─── CTA ────────────────────────────────────────── */
+  .cta-wrap {
+    margin: 28px 0 24px;
+    text-align: center;
+  }
+
+  .cta-btn {
+    display: inline-block;
+    background: #106EBE;
+    color: #ffffff !important;
+    font-size: 14.5px;
+    font-weight: 700;
+    text-decoration: none;
+    padding: 14px 36px;
+    border-radius: 10px;
+    letter-spacing: 0.2px;
+  }
+
+  /* ─── Divider ────────────────────────────────────── */
+  .divider {
+    border: none;
+    border-top: 1px solid #EEF2F8;
+    margin: 24px 0;
+  }
+
+  /* ─── Expiry notice ──────────────────────────────── */
+  .expiry-box {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    background: #FFF8EC;
+    border: 1px solid #FDECC8;
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin: 0 0 24px;
+  }
+
+  .expiry-icon {
+    font-size: 16px;
+    line-height: 1.4;
+    flex-shrink: 0;
+  }
+
+  .expiry-text {
+    font-size: 13px;
+    color: #7D5A00;
+    margin: 0;
+    line-height: 1.55;
+  }
+
+  /* ─── Fallback link ──────────────────────────────── */
+  .fallback {
+    font-size: 12.5px;
+    color: #8A9BB5;
+    margin: 0 0 24px;
+    line-height: 1.6;
+  }
+
+  .fallback a {
+    color: #106EBE;
+    word-break: break-all;
+  }
+
+  /* ─── Sign-off ───────────────────────────────────── */
+  .signoff {
+    margin-top: 8px;
+  }
+
+  .signoff p {
+    margin: 0;
+    font-size: 14px;
+    color: #3D4F6E;
+  }
+
+  .signoff p strong {
+    color: #1A2540;
+  }
+
+  /* ─── Footer ─────────────────────────────────────── */
+  .footer {
+    background: #F4F7FB;
+    border-top: 1px solid #E4EBF4;
+    padding: 20px 36px;
+    text-align: center;
+  }
+
+  .footer p {
+    margin: 0;
+    font-size: 12px;
+    color: #8A9BB5;
+    line-height: 1.65;
+  }
+
+  .footer a {
+    color: #106EBE;
+    text-decoration: none;
+  }
+
+  /* ─── Responsive ─────────────────────────────────── */
+  @media (max-width: 600px) {
+    .wrapper  { padding: 24px 12px 40px; }
+    .body     { padding: 28px 24px 24px; }
+    .footer   { padding: 18px 24px; }
+    .email-header { padding: 22px 24px 20px; }
+    h1        { font-size: 19px; }
+    .cta-btn  { display: block; text-align: center; }
+  }
+</style>
+
+
+
+

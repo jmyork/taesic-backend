@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="pt" xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="x-apple-disable-message-reformatting" />
+    <meta name="format-detection" content="telephone=no,address=no,email=no,date=no,url=no" />
+    <title>Activar conta — Alaragest</title>
+    @include('emails/partials/alaragest_styles')
+  </head>
+
+  <body>
+    <div class="wrapper">
+      <div class="card">
+
+        @include('emails/partials/alaragest_header')
+
+        <div class="body">
+
+          {{-- Eyebrow + Heading --}}
+          <p class="eyebrow">Verificação de conta</p>
+          <h1>Bem-vindo, {{ user.firstName }}!</h1>
+          <p class="subtitle">Falta apenas confirmar o seu email para activar a conta.</p>
+
+          {{-- Body copy --}}
+          <p>
+            A sua conta foi criada com sucesso para a empresa
+            <span class="highlight">{{ user.companyName }}</span>.
+            O endereço de email associado é
+            <span class="highlight">{{ user.email }}</span>.
+          </p>
+
+          <p>
+            Clique no botão abaixo para activar a sua conta. Será redireccionado
+            para a nossa aplicação, que concluirá a activação de forma segura.
+          </p>
+
+          {{-- CTA --}}
+          <div class="cta-wrap">
+            <a href="{{ verifyUrl }}" class="cta-btn">Activar minha conta</a>
+          </div>
+
+          {{-- Expiry warning --}}
+          <div class="expiry-box">
+            <span class="expiry-icon">⏳</span>
+            <p class="expiry-text">
+              Este link é válido por <strong>48 horas</strong>.
+              Após esse período, precisará de solicitar um novo link de activação.
+            </p>
+          </div>
+
+          {{-- Fallback link --}}
+          <p class="fallback">
+            Se o botão não funcionar, copie e cole o link abaixo no seu navegador:<br />
+            <a href="{{ verifyUrl }}">{{ verifyUrl }}</a>
+          </p>
+
+          <hr class="divider" />
+
+          {{-- Sign-off --}}
+          <div class="signoff">
+            <p>Com os melhores cumprimentos,</p>
+            <p><strong>Equipa Alaragest</strong></p>
+          </div>
+
+        </div>
+
+        {{-- Footer --}}
+        <div class="footer">
+          <p>
+            Se não criou esta conta, ignore este email.
+            Nenhuma acção será tomada sem a sua confirmação.
+          </p>
+          <p style="margin-top: 8px;">
+            © {{ new Date().getFullYear() }} Alaragest — Todos os direitos reservados.
+          </p>
+        </div>
+
+      </div>
+    </div>
+  </body>
+</html>

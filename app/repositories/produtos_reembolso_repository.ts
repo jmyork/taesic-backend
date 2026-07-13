@@ -1,0 +1,261 @@
+import produtos_reembolso from '#models/faturacao/produtos_reembolso'
+import {
+  ShowProdutosReembolsoDTO,
+  ProdutosReembolsoQueryDTO,
+  ReembolsoParcialDTO,
+  ReembolsoTotalDTO,
+} from '#dtos/produtos_reembolso_dto'
+import venda_itensRepository from './venda_itens_repository.js'
+import QuantidadeReembolsoExcedeVendidaException from '#exceptions/quantidade_reembolso_excede_vendida_exception'
+import estoqueRepository from './estoque_repository.js'
+import vendasRepository from './vendas_repository.js'
+import posRepository from './pos_repository.js'
+import caixaRepository from './caixa_repository.js'
+import { DateTime } from 'luxon'
+import db from '@adonisjs/lucid/services/db'
+
+export default class produtos_reembolsoRepository {
+
+  baseQuery() {
+    return produtos_reembolso.query()
+  }
+
+  async paginate(page = 1, limit = 20, filter?: ProdutosReembolsoQueryDTO) {
+    let query = this.baseQuery()
+
+    // deleted at filter
+    if (filter?.deleted === 'deleted') {
+      query = query.whereNotNull('produtos_reembolso.deleted_at')
+    } else if (filter?.deleted === 'all') {
+      query = query
+    } else {
+      query = query.whereNull('produtos_reembolso.deleted_at')
+    }
+
+    // created_at filter
+    if (filter?.createdDtStart && filter?.createdDtEnd) {
+      query = query.whereBetween('produtos_reembolso.created_at', [
+        new Date(filter.createdDtStart).toISOString(),
+        new Date(filter.createdDtEnd).toISOString(),
+      ])
+    } else if (filter?.createdDtStart) {
+      query = query.where(
+        'produtos_reembolso.created_at',
+        '>=',
+        new Date(filter.createdDtStart).toISOString()
+      )
+    } else if (filter?.createdDtEnd) {
+      query = query.where('produtos_reembolso.created_at', '<=', new Date(filter.createdDtEnd).toISOString())
+    }
+
+    // updated_at filter
+    if (filter?.updatedDtStart && filter?.updatedDtEnd) {
+      query = query.whereBetween('produtos_reembolso.updated_at', [
+        new Date(filter.updatedDtStart).toISOString(),
+        new Date(filter.updatedDtEnd).toISOString(),
+      ])
+    } else if (filter?.updatedDtStart) {
+      query = query.where(
+        'produtos_reembolso.updated_at',
+        '>=',
+        new Date(filter.updatedDtStart).toISOString()
+      )
+    } else if (filter?.updatedDtEnd) {
+      query = query.where('produtos_reembolso.updated_at', '<=', new Date(filter.updatedDtEnd).toISOString())
+    }
+
+    // quantidade filter (exata ou range)
+    if (filter?.quantidade !== undefined) {
+      query = query.where('produtos_reembolso.quantidade', filter.quantidade)
+    } else {
+      if (filter?.quantidade_start !== undefined && filter?.quantidade_end !== undefined) {
+        query = query.whereBetween('produtos_reembolso.quantidade', [filter.quantidade_start, filter.quantidade_end])
+      } else if (filter?.quantidade_start !== undefined) {
+        query = query.where('produtos_reembolso.quantidade', '>=', filter.quantidade_start)
+      } else if (filter?.quantidade_end !== undefined) {
+        query = query.where('produtos_reembolso.quantidade', '<=', filter.quantidade_end)
+      }
+    }
+
+
+    // filtros exatos
+    if (filter?.quantidade !== undefined) {
+      query = query.where('produtos_reembolso.quantidade', filter.quantidade)
+    }
+
+    if (filter?.user_id) {
+      query = query.where('produtos_reembolso.user_id', filter.user_id)
+    }
+
+    if (filter?.venda_item_id) {
+      query = query.where('produtos_reembolso.venda_item_id', filter.venda_item_id)
+    }
+
+
+    // empresa filters
+    if (filter?.company_alias) {
+      query = query
+        .join('venda_itens', "venda_itens.id", "produtos_reembolso.venda_item_id")
+        .join('vendas', 'vendas.id', 'venda_itens.venda_id')
+        .join('caixa', 'caixa.id', 'vendas.caixa_id')
+        .join('pos', 'pos.id', 'caixa.pos_id')
+        .join('empresa', 'empresa.id', 'pos.empresa_id')
+        .where('empresa.company_alias', filter.company_alias)
+    }
+
+    // NOTA: filtro por `produtos_reembolso.empresa_id` foi removido — essa coluna não existe
+    // nesta tabela (o isolamento de tenant é feito via `company_alias`, acima, através do
+    // join até `empresa`). Filtrar por uma coluna inexistente resultava sempre em erro 500.
+
+    return await query.select('produtos_reembolso.*').orderBy('created_at', 'desc').paginate(page, limit)
+  }
+
+  async findOrFail(data: ShowProdutosReembolsoDTO) {
+    //console.log(reaching query)
+    return await this.baseQuery()
+      .join("venda_itens", "venda_itens.id", "produtos_reembolso.venda_item_id")
+      .join("vendas", "vendas.id", "venda_itens.venda_id")
+      .join('caixa', 'caixa.id', 'vendas.caixa_id')
+      .join('pos', 'pos.id', 'caixa.pos_id')
+      .join('empresa', 'empresa.id', 'pos.empresa_id')
+      .where('empresa.company_alias', data.company_alias ?? '')
+      .where('produtos_reembolso.id', data.id)
+      .select(['produtos_reembolso.*'])
+      .firstOrFail()
+  }
+
+  async reembolsar_total(data: ReembolsoTotalDTO) {
+    // obter os itens da venda
+    const vendaItemRepo = new venda_itensRepository()
+
+    const venda_itens = await vendaItemRepo.paginate(1, 1000, { venda_id: data.venda_id, company_alias: data.company_alias })
+    // obter a venda para pegar o caixa_id para pegar o pos_id para a movimentação do estoque
+    const vendaRepo = new vendasRepository()
+    const venda = await vendaRepo.findOrFail({ id: venda_itens[0].venda_id, company_alias: data.company_alias })
+    const caixaRepo = new caixaRepository()
+    const caixa = await caixaRepo.findOrFail(venda.caixa_id!, data.company_alias)
+
+    const posRepo = new posRepository()
+    const pos = await posRepo.findOrFail(caixa.pos_id, data.company_alias)
+    // registrar movimentação do stock
+    const estoqueRepo = new estoqueRepository()
+
+    // Movimentações de stock, criação dos registos de reembolso e atualização da venda correm
+    // todas na mesma transação — um item a falhar a meio não pode deixar reembolsos parciais
+    // gravados sem a devolução de stock correspondente (ou vice-versa).
+    return db.transaction(async (trx) => {
+      for (const item of venda_itens) {
+        await estoqueRepo.create({
+          pos_id: pos.id,
+          registrado_por: data.user_id,
+          motivo: `Reajuste por reembolso total - venda_id: ${venda.id}`,
+          tipo_movimentacao: 'entrada',
+          quantidade: item.quantidade,
+          lote_produto_id: item.lote_produto_id,
+          company_alias: data.company_alias,
+        }, trx)
+      }
+
+      // criar os registros de reembolso
+      const reembolsosCriados = []
+      for (const item of venda_itens) {
+        const reembolsoCriado = await produtos_reembolso.create({
+          venda_item_id: item.id,
+          user_id: data.user_id ?? '',
+          quantidade: item.quantidade,
+        }, { client: trx })
+
+        item.deletedAt = DateTime.now()
+        item.useTransaction(trx)
+        await item.save()
+        reembolsosCriados.push(reembolsoCriado)
+      }
+
+      // um reembolso total esvazia a venda por completo — refletir isso no registo da venda,
+      // que anteriormente continuava a mostrar-se "fechada" com o total original.
+      venda.status = 'reembolsada'
+      venda.total = 0
+      venda.useTransaction(trx)
+      await venda.save()
+
+      return reembolsosCriados
+    })
+  }
+
+  async reembolsar_parcial(data: ReembolsoParcialDTO) {
+    const vendaItemRepo = new venda_itensRepository()
+    const venda_item = await vendaItemRepo.findOrFail(data.venda_item_id, data.company_alias)
+    // Lógica para reembolso parcial
+    // checar a quantidade a remover vs quantidade do item
+    if (data.quantidade && data.quantidade > venda_item.quantidade) {
+      throw new QuantidadeReembolsoExcedeVendidaException()
+    }
+
+    // pegar o caixa para pegar o pos_id para a movimentação do estoque
+    const vendaRepo = new vendasRepository()
+    const venda = await vendaRepo.findOrFail({ id: venda_item.venda_id, company_alias: data.company_alias })
+    const caixaRepo = new caixaRepository()
+    const caixa = await caixaRepo.findOrFail(venda.caixa_id!, data.company_alias)
+
+    const posRepo = new posRepository()
+    const pos = await posRepo.findOrFail(caixa.pos_id, data.company_alias)
+
+    const estoqueRepo = new estoqueRepository()
+
+    // A atualização do item, a devolução de stock, o registo do reembolso e o recálculo do
+    // total da venda correm todos na mesma transação — caso contrário um erro a meio (ex.:
+    // stock insuficiente ao registar a entrada) deixaria o item já reduzido sem o reembolso
+    // correspondente ter sido criado.
+    return db.transaction(async (trx) => {
+      // checar se a diferença entre quantidade vendidas vs a reembolsada é zero. Se for, deletar.
+      const quantidadeSobrando = venda_item.quantidade - (data.quantidade ?? 0)
+      if (quantidadeSobrando === 0) {
+        venda_item.deletedAt = DateTime.now()
+      } else {
+        venda_item.merge({ quantidade: quantidadeSobrando })
+      }
+      venda_item.useTransaction(trx)
+      await venda_item.save()
+
+      // registrar movimentação do stock
+      await estoqueRepo.create({
+        pos_id: pos.id,
+        registrado_por: data.user_id,
+        motivo: `Reajuste por reembolso parcial - venda_item_id: ${venda_item.id}`,
+        tipo_movimentacao: 'entrada',
+        quantidade: data.quantidade ?? 0,
+        lote_produto_id: venda_item.lote_produto_id,
+        company_alias: data.company_alias,
+      }, trx)
+
+      // criar o registro de reembolso
+      const reembolsoCriado = await produtos_reembolso.create({
+        venda_item_id: data.venda_item_id,
+        user_id: data.user_id ?? '',
+        quantidade: data.quantidade ?? 0,
+      }, { client: trx })
+
+      // recalcular o total da venda a partir dos itens que restam — anteriormente a venda
+      // continuava a mostrar o total original mesmo depois de um reembolso parcial reduzir
+      // efetivamente o que foi cobrado. A leitura usa a mesma transação para ver a
+      // atualização de venda_item feita acima antes de esta ser confirmada (commit).
+      const itensRestantes = await vendaItemRepo.paginate(1, 1000, {
+        venda_id: venda.id,
+        company_alias: data.company_alias,
+      }, trx)
+      const novoTotal = itensRestantes.reduce(
+        (soma, item) => soma + item.preco_unitario * item.quantidade,
+        0
+      )
+      venda.total = novoTotal
+      if (itensRestantes.length === 0) {
+        venda.status = 'reembolsada'
+      }
+      venda.useTransaction(trx)
+      await venda.save()
+
+      return reembolsoCriado
+    })
+  }
+
+}

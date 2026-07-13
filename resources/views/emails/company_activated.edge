@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="pt">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Conta activada — Alaragest</title>
+    @include('emails/partials/alaragest_styles')
+  </head>
+  <body>
+    <div class="wrapper">
+      <div class="card">
+        @include('emails/partials/alaragest_header')
+
+        <div class="body">
+          <p class="eyebrow">Conta activa</p>
+          <h1>Parabéns, {{ userName }}!</h1>
+          <p class="subtitle">A empresa {{ companyName }} foi activada com sucesso.</p>
+
+          <div class="notice">
+            <p><strong>Estado:</strong> conta activa e pronta a usar.</p>
+          </div>
+
+          <p>
+            Pode configurar o perfil da empresa, convidar utilizadores e começar a emitir facturas.
+          </p>
+
+          @if(password_definition_url)
+            <div class="cta-wrap">
+              <a href="{{ password_definition_url }}" class="cta-btn">Aceder à plataforma</a>
+            </div>
+          @endif
+
+          <div class="signoff">
+            <p>Equipa Alaragest</p>
+          </div>
+        </div>
+
+        <div class="footer">
+          <p>© {{ year }} Alaragest — Todos os direitos reservados.</p>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

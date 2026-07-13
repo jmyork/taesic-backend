@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="pt">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Activar conta empresarial — Alaragest</title>
+    @include('emails/partials/alaragest_styles')
+  </head>
+  <body>
+    <div class="wrapper">
+      <div class="card">
+        @include('emails/partials/alaragest_header')
+
+        <div class="body">
+          <p class="eyebrow">Verificação de conta</p>
+          <h1>Bem-vindo(a), {{ companyName }}</h1>
+          <p class="subtitle">A sua conta empresarial está quase pronta.</p>
+
+          <p>
+            Recebemos o registo da empresa <span class="highlight">{{ companyName }}</span> na plataforma.
+            Para garantir a segurança e activar todos os recursos, confirme este endereço de email.
+          </p>
+
+          <div class="cta-wrap">
+            <a href="{{ verifyUrl }}" class="cta-btn">Activar minha conta</a>
+          </div>
+
+          <div class="notice">
+            <p>
+              Este link expira em <strong>{{ expiresIn }}</strong>. Após esse prazo, solicite um novo link na página de verificação.
+            </p>
+          </div>
+
+          <div class="fallback">
+            <p class="fallback-label">Link de activação</p>
+            <p class="fallback-url">{{ verifyUrl }}</p>
+          </div>
+
+          <p style="font-size: 13px; color: #6b7280;">
+            Se não criou esta conta, ignore este email. Nenhuma acção será tomada sem a sua confirmação.
+          </p>
+        </div>
+
+        <div class="footer">
+          <p>Este é um email automático — por favor, não responda directamente.</p>
+          <p style="margin-top: 8px;">
+            © {{ new Date().getFullYear() }} Alaragest — Todos os direitos reservados.
+          </p>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
