@@ -45,34 +45,18 @@ export default class produto_mediasController {
     }
   }
   // ==================== STORE ====================
+  // Sem try/catch: erros de validação (VineJS) e exceções de domínio (ex.:
+  // ProdutoMediaLimiteAtingidoException/ProdutoMediaLimiteExcedidoException) já são
+  // tratados de forma consistente pelo handler global — ver app/exceptions/handler.ts.
   async store({ request, response, params }: HttpContext) {
-    try {
-      const payload = await request.validateUsing(createproduto_mediaValidator)
-      const data = await this.service.create({ ...payload, company_alias: params.company_alias })
+    const payload = await request.validateUsing(createproduto_mediaValidator)
+    const data = await this.service.create({ ...payload, company_alias: params.company_alias })
 
-      return response.created({
-        data,
-        message: 'Registro criado com sucesso',
-        status: 201,
-      })
-    } catch (error: any) {
-      // Erro de validação do Vine
-      if (error.messages) {
-        return response.badRequest({
-          data: null,
-          message: 'Dados inválidos',
-          errors: error.messages,
-          status: 400,
-        })
-      }
-
-      console.error('Erro ao criar marca:', error)
-      return response.internalServerError({
-        data: null,
-        message: 'Erro interno do servidor',
-        status: 500,
-      })
-    }
+    return response.created({
+      data,
+      message: 'Registro criado com sucesso',
+      status: 201,
+    })
   }
   // ==================== SHOW ====================
   async show({ params, response }: HttpContext) {

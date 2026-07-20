@@ -60,7 +60,6 @@ export const VendaItensQueryValidator = vine.compile(
   })
 )
 
-
 export const VendaItemCreateValidator = vine.compile(
   vine.object({
     venda_id: vine

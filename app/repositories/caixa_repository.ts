@@ -4,8 +4,18 @@ import { CaixaQueryDTO, CloseCaixaDTO, OpenCaixaDTO, ReOpenCaixaDTO } from '#dto
 import CaixaAlreadyOpenException from '#exceptions/caixa_already_open_exception'
 import UnAuthorizedCaixaException from '#exceptions/un_authorized_caixa_exception'
 import { userHasRole } from '../helpers/Utils.js'
+import { applyCommonFilters, FieldSpec } from '../helpers/query_filters.js'
 import CaixaAlreadyClosedException from '#exceptions/caixa_already_closed_exception'
 import CaixaIsAlreadyOpenException from '#exceptions/caixa_is_already_open_exception'
+
+const CAIXA_FILTER_FIELDS: FieldSpec[] = [
+  { kind: 'like', column: 'caixa.observacoes', key: 'observacoes' },
+  { kind: 'exact', column: 'caixa.status', key: 'status' },
+  { kind: 'exact', column: 'caixa.data_fecho', key: 'data_fecho' },
+  { kind: 'range', column: 'caixa.total_vendas', startKey: 'total_vendas_start', endKey: 'total_vendas_end', exactKey: 'total_vendas' },
+  { kind: 'range', column: 'caixa.valor_inicial', startKey: 'valor_inicial_start', endKey: 'valor_inicial_end', exactKey: 'valor_inicial' },
+  { kind: 'range', column: 'caixa.total_caixa', startKey: 'total_caixa_start', endKey: 'total_caixa_end', exactKey: 'total_caixa' },
+]
 
 export default class caixaRepository {
   baseQuery() {
@@ -14,106 +24,7 @@ export default class caixaRepository {
 
   /** Filtros partilhados por `paginate` e `listByUser` — antes duplicados linha a linha nos dois métodos. */
   private applyFilters(query: any, filter?: CaixaQueryDTO) {
-    // deleted at filter
-    if (filter?.deleted === 'deleted') {
-      query = query.whereNotNull('caixa.deleted_at')
-    } else if (filter?.deleted === 'all') {
-      query = query
-    } else {
-      query = query.whereNull('caixa.deleted_at')
-    }
-
-    // created_at filter
-    if (filter?.createdDtStart && filter?.createdDtEnd) {
-      query = query.whereBetween('caixa.created_at', [
-        new Date(filter.createdDtStart).toISOString(),
-        new Date(filter.createdDtEnd).toISOString(),
-      ])
-    } else if (filter?.createdDtStart) {
-      query = query.where('caixa.created_at', '>=', filter.createdDtStart)
-    } else if (filter?.createdDtEnd) {
-      query = query.where('caixa.created_at', '<=', new Date(filter.createdDtEnd).toISOString())
-    }
-
-    // updated_at filter
-    if (filter?.updatedDtStart && filter?.updatedDtEnd) {
-      query = query.whereBetween('caixa.updated_at', [
-        new Date(filter.updatedDtStart).toISOString(),
-        new Date(filter.updatedDtEnd).toISOString(),
-      ])
-    } else if (filter?.updatedDtStart) {
-      query = query.where('caixa.updated_at', '>=', new Date(filter.updatedDtStart).toISOString())
-    } else if (filter?.updatedDtEnd) {
-      query = query.where('caixa.updated_at', '<=', new Date(filter.updatedDtEnd).toISOString())
-    }
-
-    // observacoes filter
-    if (filter?.observacoes) {
-      query = query.where('caixa.observacoes', 'like', `%${filter.observacoes}%`)
-    }
-
-    // status filter
-    if (filter?.status) {
-      query = query.where('caixa.status', filter.status)
-    }
-
-    // total_vendas filter
-    if (filter?.total_vendas) {
-      query = query.where('caixa.total_vendas', filter.total_vendas)
-    }
-
-    // valor_inicial filter
-    if (filter?.valor_inicial) {
-      query = query.where('caixa.valor_inicial', filter.valor_inicial)
-    }
-
-    // data_fecho filter
-    if (filter?.data_fecho) {
-      query = query.where('caixa.data_fecho', filter.data_fecho)
-    }
-
-    // total_caixa filter
-    if (filter?.total_caixa) {
-      query = query.where('caixa.total_caixa', filter.total_caixa)
-    }
-
-    // total_vendas range filter
-    if (filter?.total_vendas_start && filter?.total_vendas_end) {
-      query = query.whereBetween('caixa.total_vendas', [
-        filter.total_vendas_start,
-        filter.total_vendas_end,
-      ])
-    } else if (filter?.total_vendas_start) {
-      query = query.where('caixa.total_vendas', '>=', filter.total_vendas_start)
-    } else if (filter?.total_vendas_end) {
-      query = query.where('caixa.total_vendas', '<=', filter.total_vendas_end)
-    }
-
-    // valor_inicial range filter
-    if (filter?.valor_inicial_start && filter?.valor_inicial_end) {
-      query = query.whereBetween('caixa.valor_inicial', [
-        filter.valor_inicial_start,
-        filter.valor_inicial_end,
-      ])
-    } else if (filter?.valor_inicial_start) {
-      query = query.where('caixa.valor_inicial', '>=', filter.valor_inicial_start)
-    } else if (filter?.valor_inicial_end) {
-      query = query.where('caixa.valor_inicial', '<=', filter.valor_inicial_end)
-    }
-
-    // total_caixa range filter
-    if (filter?.total_caixa_start && filter?.total_caixa_end) {
-      query = query.whereBetween('caixa.total_caixa', [
-        filter.total_caixa_start,
-        filter.total_caixa_end,
-      ])
-    } else if (filter?.total_caixa_start) {
-      query = query.where('caixa.total_caixa', '>=', filter.total_caixa_start)
-    } else if (filter?.total_caixa_end) {
-      query = query.where('caixa.total_caixa', '<=', filter.total_caixa_end)
-    }
-
-    return query
+    return applyCommonFilters(query, filter, { table: 'caixa', fields: CAIXA_FILTER_FIELDS })
   }
 
   paginate(page = 1, limit = 20, filter?: CaixaQueryDTO) {

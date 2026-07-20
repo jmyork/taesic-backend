@@ -15,9 +15,12 @@ export const createproduto_mediaValidator = vine.compile(
           .first()
         return !!exists
       }),
+    // .minLength(2) impedia o envio de uma única imagem — o pedido era explicitamente
+    // "uma ou mais imagens de uma vez". O limite de 30 por produto é aplicado no
+    // repository (soma o que já está registado com o que vem neste pedido).
     media: vine.array(
       vine.file({ size: '25mb', extnames: ['jpg', 'jpeg', 'png', 'gif', 'mkv', 'mp4', 'webm'] })
-    ).minLength(2).maxLength(10),
+    ).minLength(1).maxLength(10),
   })
 )
 export const updateproduto_mediaValidator = vine.compile(

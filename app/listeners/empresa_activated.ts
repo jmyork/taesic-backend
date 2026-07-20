@@ -1,7 +1,8 @@
 import User from '#models/user'
 import empresa from '#models/empresa'
 import mail from '@adonisjs/mail/services/main'
-import env from '#start/env'
+import CompanyActivatedMail from '#mails/company_activated_mail'
+import { buildPasswordDefinitionUrl } from '../helpers/Utils.js'
 import EmpresaActivated from '#events/empresa_activated'
 
 /**
@@ -19,17 +20,11 @@ export const onEmpresaActivated = async (event: EmpresaActivated) => {
       return
     }
 
-    await mail.send((message) => {
-      message
-        .to(user.email)
-        .from(env.get('MAIL_FROM', 'noreply@alaragest.com'))
-        .subject('Sua empresa foi ativada com sucesso!')
-        .htmlView('emails/company_activated', {
-          companyName: companyData.nome,
-          userName: user.username || user.email,
-          year: new Date().getFullYear(),
-        })
-    })
+    const passwordDefinitionUrl = await buildPasswordDefinitionUrl(companyData.company_alias, user.id)
+
+    await mail.send(
+      new CompanyActivatedMail(user.email, user.username || user.email, companyData.nome, passwordDefinitionUrl)
+    )
   } catch (error) {
     console.error('Erro ao processar ativação da empresa:', error)
     // Não relançar — uma falha de email não deve reverter a activação da empresa.

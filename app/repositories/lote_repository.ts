@@ -7,6 +7,17 @@ import estoque from '#models/faturacao/estoque'
 import env from '#start/env'
 import emitter from '@adonisjs/core/services/emitter'
 import LoteValidadeProxima from '#events/lote_validade_proxima'
+import { applyCommonFilters, FieldSpec } from '../helpers/query_filters.js'
+
+const LOTE_FILTER_FIELDS: FieldSpec[] = [
+  { kind: 'range', column: 'lote_produto.data_fabrico', startKey: 'data_fabrico_start', endKey: 'data_fabrico_end', exactKey: 'data_fabrico' },
+  { kind: 'range', column: 'lote_produto.data_validade', startKey: 'data_validade_start', endKey: 'data_validade_end', exactKey: 'data_validade' },
+  { kind: 'range', column: 'lote_produto.preco_compra', startKey: 'preco_compra_start', endKey: 'preco_compra_end', exactKey: 'preco_compra' },
+  { kind: 'range', column: 'lote_produto.preco_venda', startKey: 'preco_venda_start', endKey: 'preco_venda_end', exactKey: 'preco_venda' },
+  { kind: 'exact', column: 'lote_produto.quantidade_em_estoque', key: 'quantidade_em_estoque' },
+  { kind: 'exact', column: 'lote_produto.produto_id', key: 'produto_id' },
+  { kind: 'like', column: 'lote_produto.lote', key: 'lote' },
+]
 
 export default class loteRepository {
   baseQuery() {
@@ -14,75 +25,10 @@ export default class loteRepository {
   }
 
   async paginate(page = 1, limit = 20, filter?: LoteQueryDTO) {
-    let query = this.baseQuery()
-
-    // Deleted filter
-    if (filter?.deleted === 'deleted') {
-      query.whereNotNull('lote_produto.deleted_at')
-    } else if (filter?.deleted !== 'all') {
-      query.whereNull('lote_produto.deleted_at')
-    }
-
-    // Helper genérico (datas e números)
-    const applyRange = (field: string, start?: number | Date, end?: number | Date) => {
-      if (start != null && end != null) {
-        query.whereBetween(field, [start, end])
-      } else if (start != null) {
-        query.where(field, '>=', start)
-      } else if (end != null) {
-        query.where(field, '<=', end)
-      }
-    }
-
-    // Audit dates (ranges)
-    applyRange('lote_produto.created_at', filter?.createdDtStart, filter?.createdDtEnd)
-    applyRange('lote_produto.updated_at', filter?.updatedDtStart, filter?.updatedDtEnd)
-
-    // Data de fabrico (exata ou range)
-    if (filter?.data_fabrico) {
-      query.where('lote_produto.data_fabrico', filter.data_fabrico)
-    } else {
-      applyRange('lote_produto.data_fabrico', filter?.data_fabrico_start, filter?.data_fabrico_end)
-    }
-
-    // Data de validade (exata ou range)
-    if (filter?.data_validade) {
-      query.where('lote_produto.data_validade', filter.data_validade)
-    } else {
-      applyRange(
-        'lote_produto.data_validade',
-        filter?.data_validade_start,
-        filter?.data_validade_end
-      )
-    }
-
-    // Preços (exatos ou ranges)
-    if (filter?.preco_compra !== undefined) {
-      query.where('lote_produto.preco_compra', filter.preco_compra)
-    } else {
-      applyRange('lote_produto.preco_compra', filter?.preco_compra_start, filter?.preco_compra_end)
-    }
-
-    if (filter?.preco_venda !== undefined) {
-      query.where('lote_produto.preco_venda', filter.preco_venda)
-    } else {
-      applyRange('lote_produto.preco_venda', filter?.preco_venda_start, filter?.preco_venda_end)
-    }
-
-    // Quantidade (exata)
-    if (filter?.quantidade_em_estoque !== undefined) {
-      query.where('lote_produto.quantidade_em_estoque', filter.quantidade_em_estoque)
-    }
-
-    // Produto
-    if (filter?.produto_id) {
-      query.where('lote_produto.produto_id', filter.produto_id)
-    }
-
-    // Lote (busca parcial)
-    if (filter?.lote) {
-      query.where('lote_produto.lote', 'like', `%${filter.lote}%`)
-    }
+    let query = applyCommonFilters(this.baseQuery(), filter, {
+      table: 'lote_produto',
+      fields: LOTE_FILTER_FIELDS,
+    })
 
     // Empresa/Company (evita joins duplicados)
     let needsJoin = false

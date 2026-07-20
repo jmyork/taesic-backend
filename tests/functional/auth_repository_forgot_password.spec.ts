@@ -20,8 +20,11 @@ test.group('auth_repository.forgot_password', (group) => {
     const authRepo = new AuthRepository()
     await authRepo.forgot_password({ email: user.email!, company_alias: empresa.company_alias })
 
-    const enviada = fakeMailer.messages.sent().at(-1) as any
-    const resetUrl = enviada?.contentViews?.html?.data?.resetUrl as string
+    // forgot_password envia via ForgotPasswordMail (Mailable) — o fake mailer regista isso em
+    // `.mails`, não em `.messages` (só para o estilo `mail.send((message) => ...)`); o `Message`
+    // real (com `contentViews`) fica em `mail.message`, um nível abaixo.
+    const enviada = fakeMailer.mails.sent().at(-1) as any
+    const resetUrl = enviada?.message?.contentViews?.html?.data?.resetUrl as string
 
     assert.isString(resetUrl)
     assert.include(resetUrl, empresa.company_alias)

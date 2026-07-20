@@ -10,6 +10,19 @@ import emitter from '@adonisjs/core/services/emitter'
 import EstoqueCritico from '#events/estoque_critico'
 import EstoqueInsuficienteException from '#exceptions/estoque_insuficiente_exception'
 import TipoMovimentacaoInvalidoException from '#exceptions/tipo_movimentacao_invalido_exception'
+import { applyCommonFilters, FieldSpec } from '../helpers/query_filters.js'
+
+const ESTOQUE_FILTER_FIELDS: FieldSpec[] = [
+  { kind: 'exact', column: 'estoque.pos_id', key: 'pos_id' },
+  { kind: 'exact', column: 'estoque.registrado_por', key: 'registrado_por' },
+  { kind: 'exact', column: 'estoque.tipo_movimentacao', key: 'tipo_movimentacao' },
+  { kind: 'exact', column: 'estoque.lote_produto_id', key: 'lote_produto_id' },
+  { kind: 'exact', column: 'estoque.produto_id', key: 'produto_id' },
+  { kind: 'range', column: 'estoque.quantidade', startKey: 'quantidade_start', endKey: 'quantidade_end', exactKey: 'quantidade' },
+  // era 'estoque.motivo_retirada' — coluna inexistente (a real chama-se `motivo`); o filtro
+  // rebentava sempre com "Unknown column" em vez de simplesmente não combinar nada.
+  { kind: 'like', column: 'estoque.motivo', key: 'motivo' },
+]
 
 export default class estoqueRepository {
   baseQuery() {
@@ -17,62 +30,10 @@ export default class estoqueRepository {
   }
 
   async paginate(page = 1, limit = 20, filter?: EstoqueQueryDTO) {
-    let query = this.baseQuery()
-
-    // Deleted filter
-    if (filter?.deleted === 'deleted') {
-      query.whereNotNull('estoque.deleted_at')
-    } else if (filter?.deleted !== 'all') {
-      query.whereNull('estoque.deleted_at')
-    }
-
-    // Helper genérico (datas e números)
-    const applyRange = (field: string, start?: number | Date, end?: number | Date) => {
-      if (start != null && end != null) {
-        query.whereBetween(field, [start, end])
-      } else if (start != null) {
-        query.where(field, '>=', start)
-      } else if (end != null) {
-        query.where(field, '<=', end)
-      }
-    }
-
-    // Audit dates (ranges)
-    applyRange('estoque.created_at', filter?.createdDtStart, filter?.createdDtEnd)
-    applyRange('estoque.updated_at', filter?.updatedDtStart, filter?.updatedDtEnd)
-
-    // Filtros exatos
-    if (filter?.pos_id) {
-      query.where('estoque.pos_id', filter.pos_id)
-    }
-
-    if (filter?.registrado_por) {
-      query.where('estoque.registrado_por', filter.registrado_por)
-    }
-
-    if (filter?.tipo_movimentacao) {
-      query.where('estoque.tipo_movimentacao', filter.tipo_movimentacao)
-    }
-
-    if (filter?.lote_produto_id) {
-      query.where('estoque.lote_produto_id', filter.lote_produto_id)
-    }
-
-    if (filter?.produto_id) {
-      query.where('estoque.produto_id', filter.produto_id)
-    }
-
-    // Quantidade (exata ou range)
-    if (filter?.quantidade !== undefined) {
-      query.where('estoque.quantidade', filter.quantidade)
-    } else {
-      applyRange('estoque.quantidade', filter?.quantidade_start, filter?.quantidade_end)
-    }
-
-    // Motivo (busca parcial)
-    if (filter?.motivo) {
-      query.where('estoque.motivo_retirada', 'like', `%${filter.motivo}%`)
-    }
+    let query = applyCommonFilters(this.baseQuery(), filter, {
+      table: 'estoque',
+      fields: ESTOQUE_FILTER_FIELDS,
+    })
 
     // Empresa/Company (evita joins duplicados)
     let needsJoin = false

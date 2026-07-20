@@ -15,6 +15,16 @@ import db from '@adonisjs/lucid/services/db'
 import env from '#start/env'
 import emitter from '@adonisjs/core/services/emitter'
 import VendaCanceladaAltoValor from '#events/venda_cancelada_alto_valor'
+import { applyCommonFilters, FieldSpec } from '../helpers/query_filters.js'
+
+const VENDAS_FILTER_FIELDS: FieldSpec[] = [
+  { kind: 'range', column: 'vendas.total', startKey: 'total_start', endKey: 'total_end', exactKey: 'total' },
+  { kind: 'exact', column: 'vendas.venda_tipo', key: 'venda_tipo' },
+  { kind: 'exact', column: 'vendas.caixa_id', key: 'caixa_id' },
+  { kind: 'exact', column: 'vendas.user_id', key: 'user_id' },
+  { kind: 'exact', column: 'vendas.cliente_online_id', key: 'cliente_online_id' },
+  { kind: 'exact', column: 'vendas.cliente_presencial_id', key: 'cliente_presencial_id' },
+]
 
 export default class vendasRepository {
   baseQuery() {
@@ -22,69 +32,19 @@ export default class vendasRepository {
   }
 
   async paginate(page = 1, limit = 20, filter?: VendasQueryDTO) {
-    let query = this.baseQuery()
+    const query = applyCommonFilters(this.baseQuery(), filter, {
+      table: 'vendas',
+      fields: VENDAS_FILTER_FIELDS,
+    })
 
-    // Deleted filter
-    if (filter?.deleted === "deleted") {
-      query.whereNotNull("vendas.deleted_at")
-    } else if (filter?.deleted !== "all") {
-      query.whereNull("vendas.deleted_at")
-    }
-
-    // Helper genérico (datas e números)
-    const applyRange = (
-      field: string,
-      start?: number | Date,
-      end?: number | Date
-    ) => {
-      if (start != null && end != null) {
-        query.whereBetween(field, [start, end])
-      } else if (start != null) {
-        query.where(field, ">=", start)
-      } else if (end != null) {
-        query.where(field, "<=", end)
-      }
-    }
-
-    // Audit dates (ranges)
-    applyRange("vendas.created_at", filter?.createdDtStart, filter?.createdDtEnd)
-    applyRange("vendas.updated_at", filter?.updatedDtStart, filter?.updatedDtEnd)
-
-
-    // Total (exato ou range)
-    if (filter?.total !== undefined) {
-      query.where("vendas.total", filter.total)
-    } else {
-      applyRange("vendas.total", filter?.total_start, filter?.total_end)
-    }
-
-    // Filtros exatos
-    if (filter?.venda_tipo) {
-      query.where("vendas.venda_tipo", filter.venda_tipo)
-    }
-
+    // `status` cobre os 4 estados directamente; `fechado` é um atalho booleano mais antigo
+    // que só distingue aberta/fechada — mantido à parte por não ser um simples match de coluna.
     if (filter?.status) {
       query.where("vendas.status", filter.status)
     } else if (filter?.fechado === true) {
       query.where("vendas.status", "fechada")
     } else if (filter?.fechado === false) {
       query.where("vendas.status", "aberta")
-    }
-
-    if (filter?.caixa_id) {
-      query.where("vendas.caixa_id", filter.caixa_id)
-    }
-
-    if (filter?.user_id) {
-      query.where("vendas.user_id", filter.user_id)
-    }
-
-    if (filter?.cliente_online_id) {
-      query.where("vendas.cliente_online_id", filter.cliente_online_id)
-    }
-
-    if (filter?.cliente_presencial_id) {
-      query.where("vendas.cliente_presencial_id", filter.cliente_presencial_id)
     }
 
     // Empresa/Company

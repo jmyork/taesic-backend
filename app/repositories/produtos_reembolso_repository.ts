@@ -16,6 +16,13 @@ import db from '@adonisjs/lucid/services/db'
 import Lote from '#models/faturacao/lote'
 import emitter from '@adonisjs/core/services/emitter'
 import EstoqueRevertido from '#events/estoque_revertido'
+import { applyCommonFilters, FieldSpec } from '../helpers/query_filters.js'
+
+const REEMBOLSO_FILTER_FIELDS: FieldSpec[] = [
+  { kind: 'range', column: 'produtos_reembolso.quantidade', startKey: 'quantidade_start', endKey: 'quantidade_end', exactKey: 'quantidade' },
+  { kind: 'exact', column: 'produtos_reembolso.user_id', key: 'user_id' },
+  { kind: 'exact', column: 'produtos_reembolso.venda_item_id', key: 'venda_item_id' },
+]
 
 export default class produtos_reembolsoRepository {
 
@@ -24,76 +31,10 @@ export default class produtos_reembolsoRepository {
   }
 
   async paginate(page = 1, limit = 20, filter?: ProdutosReembolsoQueryDTO) {
-    let query = this.baseQuery()
-
-    // deleted at filter
-    if (filter?.deleted === 'deleted') {
-      query = query.whereNotNull('produtos_reembolso.deleted_at')
-    } else if (filter?.deleted === 'all') {
-      query = query
-    } else {
-      query = query.whereNull('produtos_reembolso.deleted_at')
-    }
-
-    // created_at filter
-    if (filter?.createdDtStart && filter?.createdDtEnd) {
-      query = query.whereBetween('produtos_reembolso.created_at', [
-        new Date(filter.createdDtStart).toISOString(),
-        new Date(filter.createdDtEnd).toISOString(),
-      ])
-    } else if (filter?.createdDtStart) {
-      query = query.where(
-        'produtos_reembolso.created_at',
-        '>=',
-        new Date(filter.createdDtStart).toISOString()
-      )
-    } else if (filter?.createdDtEnd) {
-      query = query.where('produtos_reembolso.created_at', '<=', new Date(filter.createdDtEnd).toISOString())
-    }
-
-    // updated_at filter
-    if (filter?.updatedDtStart && filter?.updatedDtEnd) {
-      query = query.whereBetween('produtos_reembolso.updated_at', [
-        new Date(filter.updatedDtStart).toISOString(),
-        new Date(filter.updatedDtEnd).toISOString(),
-      ])
-    } else if (filter?.updatedDtStart) {
-      query = query.where(
-        'produtos_reembolso.updated_at',
-        '>=',
-        new Date(filter.updatedDtStart).toISOString()
-      )
-    } else if (filter?.updatedDtEnd) {
-      query = query.where('produtos_reembolso.updated_at', '<=', new Date(filter.updatedDtEnd).toISOString())
-    }
-
-    // quantidade filter (exata ou range)
-    if (filter?.quantidade !== undefined) {
-      query = query.where('produtos_reembolso.quantidade', filter.quantidade)
-    } else {
-      if (filter?.quantidade_start !== undefined && filter?.quantidade_end !== undefined) {
-        query = query.whereBetween('produtos_reembolso.quantidade', [filter.quantidade_start, filter.quantidade_end])
-      } else if (filter?.quantidade_start !== undefined) {
-        query = query.where('produtos_reembolso.quantidade', '>=', filter.quantidade_start)
-      } else if (filter?.quantidade_end !== undefined) {
-        query = query.where('produtos_reembolso.quantidade', '<=', filter.quantidade_end)
-      }
-    }
-
-
-    // filtros exatos
-    if (filter?.quantidade !== undefined) {
-      query = query.where('produtos_reembolso.quantidade', filter.quantidade)
-    }
-
-    if (filter?.user_id) {
-      query = query.where('produtos_reembolso.user_id', filter.user_id)
-    }
-
-    if (filter?.venda_item_id) {
-      query = query.where('produtos_reembolso.venda_item_id', filter.venda_item_id)
-    }
-
+    let query = applyCommonFilters(this.baseQuery(), filter, {
+      table: 'produtos_reembolso',
+      fields: REEMBOLSO_FILTER_FIELDS,
+    })
 
     // empresa filters
     if (filter?.company_alias) {

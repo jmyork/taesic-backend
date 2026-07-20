@@ -14,6 +14,18 @@ import estoqueRepository from './estoque_repository.js'
 import venda_itensRepository from './venda_itens_repository.js'
 import NotAllowedChangeIsServiceTagException from '#exceptions/not_allowed_change_is_service_tag_exception'
 import ProdutoComMovimentacoesException from '#exceptions/produto_com_movimentacoes_exception'
+import { applyCommonFilters, FieldSpec } from '../helpers/query_filters.js'
+
+const PRODUTOS_FILTER_FIELDS: FieldSpec[] = [
+  { kind: 'like', column: 'produtos.nome', key: 'nome' },
+  { kind: 'exact', column: 'produtos.marca_id', key: 'marca_id' },
+  { kind: 'exact', column: 'produtos.formato_id', key: 'formato_id' },
+  { kind: 'exact', column: 'produtos.fabricante_id', key: 'fabricante_id' },
+  { kind: 'exact', column: 'produtos.fornecedor_id', key: 'fornecedor_id' },
+  // is_service é booleana; "like" nunca combinava porque o MySQL guarda 0/1, não as
+  // strings "true"/"false" — este filtro nunca funcionou antes de passar a "exact".
+  { kind: 'exact', column: 'produtos.is_service', key: 'is_service' },
+]
 
 export default class produtosRepository {
   baseQuery() {
@@ -21,75 +33,10 @@ export default class produtosRepository {
   }
 
   async paginate(page = 1, limit = 20, filter?: ProdutoQueryDTO) {
-    let query = this.baseQuery()
-
-    // deleted at filter
-    if (filter?.deleted === 'deleted') {
-      query = query.whereNotNull('produtos.deleted_at')
-    } else if (filter?.deleted === 'all') {
-      query = query
-    } else {
-      query = query.whereNull('produtos.deleted_at')
-    }
-
-    // created_at filter
-    if (filter?.createdDtStart && filter?.createdDtEnd) {
-      query = query.whereBetween('produtos.created_at', [
-        new Date(filter.createdDtStart).toISOString(),
-        new Date(filter.createdDtEnd).toISOString(),
-      ])
-    } else if (filter?.createdDtStart) {
-      query = query.where(
-        'produtos.created_at',
-        '>=',
-        new Date(filter.createdDtStart).toISOString()
-      )
-    } else if (filter?.createdDtEnd) {
-      query = query.where('produtos.created_at', '<=', new Date(filter.createdDtEnd).toISOString())
-    }
-
-    // updated_at filter
-    if (filter?.updatedDtStart && filter?.updatedDtEnd) {
-      query = query.whereBetween('produtos.updated_at', [
-        new Date(filter.updatedDtStart).toISOString(),
-        new Date(filter.updatedDtEnd).toISOString(),
-      ])
-    } else if (filter?.updatedDtStart) {
-      query = query.where(
-        'produtos.updated_at',
-        '>=',
-        new Date(filter.updatedDtStart).toISOString()
-      )
-    } else if (filter?.updatedDtEnd) {
-      query = query.where('produtos.updated_at', '<=', new Date(filter.updatedDtEnd).toISOString())
-    }
-
-    // nome filter
-    if (filter?.nome) {
-      query = query.where('produtos.nome', 'like', `%${filter.nome}%`)
-    }
-
-    // marca_id filter (era duplicado — o mesmo bloco corria duas vezes)
-    if (filter?.marca_id) {
-      query = query.where('produtos.marca_id', filter.marca_id)
-    }
-    // formato_id filter
-    if (filter?.formato_id) {
-      query = query.where('produtos.formato_id', filter.formato_id)
-    }
-    // fabricante_id filter
-    if (filter?.fabricante_id) {
-      query = query.where('produtos.fabricante_id', filter.fabricante_id)
-    }
-    // fornecedor_id filter
-    if (filter?.fornecedor_id) {
-      query = query.where('produtos.fornecedor_id', filter.fornecedor_id)
-    }
-    // is_service filter — coluna booleana; "like" nunca combinava porque o MySQL guarda
-    // 0/1, não as strings "true"/"false" — este filtro nunca funcionou.
-    if (filter?.is_service !== undefined) {
-      query = query.where('produtos.is_service', filter.is_service)
-    }
+    let query = applyCommonFilters(this.baseQuery(), filter, {
+      table: 'produtos',
+      fields: PRODUTOS_FILTER_FIELDS,
+    })
 
     // empresa filters
     if (filter?.company_alias) {
