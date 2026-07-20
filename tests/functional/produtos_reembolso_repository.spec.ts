@@ -132,4 +132,41 @@ test.group('produtos_reembolso_repository', (group) => {
     assert.equal(vendaAfter.status, 'reembolsada')
     assert.equal(Number(vendaAfter.total), 0)
   })
+
+  /**
+   * `listByVenda` (chamado por `GET consultar-reembolso/:venda_id`) filtrava antes por
+   * `produtos_reembolso.id = data.id` — um campo que a rota nunca envia (só manda
+   * `venda_id`) e que, mesmo enviado, não corresponde ao id de uma venda. A rota rebentava
+   * sempre com erro de validação (mascarado como 500 pelo controller). Corrigido para
+   * filtrar pela venda e devolver todos os reembolsos associados a ela.
+   */
+  test('listByVenda devolve todos os reembolsos (parciais e totais) de uma venda', async ({ assert }) => {
+    const { empresa, user, pos } = await createTenant()
+    const produtoA = await createProduto(empresa)
+    const loteA = await createLote(produtoA, { quantidade_em_estoque: 10 })
+
+    const caixa = await createCaixa(user, pos)
+    const venda = await createVenda(caixa)
+    const itemA = await createVendaItem(venda, loteA, { quantidade: 5, preco_unitario: 1000 })
+
+    const vendasRepo = new VendasRepository()
+    await vendasRepo.close({ id: venda.id, user_id: user.id, company_alias: empresa.company_alias })
+
+    const reembolsoRepo = new ProdutosReembolsoRepository()
+    await reembolsoRepo.reembolsar_parcial({
+      venda_id: venda.id,
+      venda_item_id: itemA.id,
+      user_id: user.id,
+      company_alias: empresa.company_alias,
+      quantidade: 2,
+    })
+
+    const reembolsos = await reembolsoRepo.listByVenda({
+      venda_id: venda.id,
+      company_alias: empresa.company_alias,
+    })
+
+    assert.lengthOf(reembolsos, 1)
+    assert.equal(reembolsos[0].venda_item_id, itemA.id)
+  })
 })

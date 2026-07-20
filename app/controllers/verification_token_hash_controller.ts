@@ -1,12 +1,5 @@
 import type { HttpContext } from '@adonisjs/core/http'
 import VerificationTokenHashService from '#services/verification_token_hash_service'
-import {
-  createVerificationTokenValidator,
-  verifyTokenValidator,
-} from '#validators/verification_token_hash_validator'
-import VerificationTokenHash from '#models/verification_token_hash'
-import { DateTime } from 'luxon'
-import hash from '@adonisjs/core/services/hash'
 
 export default class VerificationTokenHashController {
   private service = new VerificationTokenHashService()
@@ -19,8 +12,7 @@ export default class VerificationTokenHashController {
    */
   async verify({ params, response }: HttpContext) {
     try {
-      // const { token } = await request.validateUsing(verifyTokenValidator)
-      const verified = await this.service.verifyToken(params.token)
+      await this.service.verifyToken(params.token)
       return response.ok({
         data: null,
         message: 'Activação da conta realizada com sucesso',

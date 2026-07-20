@@ -154,6 +154,10 @@ export default class extends BaseSeeder {
       { nome: 'domain_produtos.store', descricao: 'Criar produto' },
       { nome: 'domain_produtos.update', descricao: 'Editar produto' },
       { nome: 'domain_produtos.destroy', descricao: 'Remover/Recuperar produto' },
+      {
+        nome: 'domain_produtos.registrar_com_detalhes',
+        descricao: 'Registar produto com detalhes (descrições, categorias, contraindicações, recomendações)',
+      },
 
       // ==================== PRODUTO-DESCRICOES ====================
       { nome: 'domain_produto_descricoes.index', descricao: 'Listar descrições de produto' },
@@ -217,6 +221,12 @@ export default class extends BaseSeeder {
       { nome: 'domain_pos.store', descricao: 'Criar pos' },
       { nome: 'domain_pos.update', descricao: 'Editar pos' },
       { nome: 'domain_pos.destroy', descricao: 'Remover/Recuperar pos' },
+
+      // User-Pos (associar utilizadores a pontos de venda)
+      { nome: 'domain_user_pos.index', descricao: 'Listar associações user-pos' },
+      { nome: 'domain_user_pos.show', descricao: 'Ver associação user-pos' },
+      { nome: 'domain_user_pos.store', descricao: 'Associar utilizador a um pos' },
+      { nome: 'domain_user_pos.destroy', descricao: 'Remover associação user-pos' },
 
       // ==================== USER-PAPEL DOMAIN ====================
       { nome: 'domain_user_papel.index', descricao: 'Listar associações usuário-papel' },
@@ -395,6 +405,7 @@ export default class extends BaseSeeder {
       { nome: 'domain_caixas.store', descricao: 'Criar um caixa' },
       { nome: 'domain_caixas.update', descricao: 'Actualizar o caixa' },
       { nome: 'domain_caixas.destroy', descricao: 'Remover o caixa' },
+      { nome: 'domain_caixa.my', descricao: 'Listar os meus caixas' },
       //  Lote
       { nome: 'domain_lote_produto.index', descricao: 'Listar caixas' },
       { nome: 'domain_lote_produto.show', descricao: 'Ver um caixa' },
@@ -422,6 +433,12 @@ export default class extends BaseSeeder {
       { nome: 'domain_vendas_itens.store', descricao: 'Criar um caixa' },
       { nome: 'domain_vendas_itens.update', descricao: 'Actualizar o caixa' },
       { nome: 'domain_vendas_itens.destroy', descricao: 'Remover o caixa' },
+
+      // Reembolso
+      { nome: 'domain_reembolso_total', descricao: 'Reembolsar o total de uma venda' },
+      { nome: 'domain_reembolso_parcial', descricao: 'Reembolsar parcialmente uma venda' },
+      { nome: 'domain_reembolso_consultar', descricao: 'Listar reembolsos' },
+      { nome: 'domain_reembolso_consultar_id', descricao: 'Ver reembolsos de uma venda' },
 
       // ==================== CUPOM ====================
       { nome: 'platform_cupom.index', descricao: 'Listar cupons' },
@@ -525,6 +542,7 @@ export default class extends BaseSeeder {
       'domain_produtos.store',
       'domain_produtos.update',
       'domain_produtos.destroy',
+      'domain_produtos.registrar_com_detalhes',
 
       // Produto-Descrições (5 perms)
       'domain_produto_descricoes.index',
@@ -611,6 +629,7 @@ export default class extends BaseSeeder {
       'domain_caixas.show',
       'domain_caixas.store',
       'domain_caixas.destroy',
+      'domain_caixa.my',
 
       // pos
       'domain_pos.index',
@@ -618,6 +637,12 @@ export default class extends BaseSeeder {
       'domain_pos.store',
       'domain_pos.update',
       'domain_pos.destroy',
+
+      // user-pos
+      'domain_user_pos.index',
+      'domain_user_pos.show',
+      'domain_user_pos.store',
+      'domain_user_pos.destroy',
 
       // -------
       // lote
@@ -640,6 +665,13 @@ export default class extends BaseSeeder {
       'domain_vendas.update',
       'domain_vendas.destroy',
       'domain_vendas.anular',
+
+      // reembolso
+      'domain_reembolso_total',
+      'domain_reembolso_parcial',
+      'domain_reembolso_consultar',
+      'domain_reembolso_consultar_id',
+
       // venda itens
       'domain_vendas_itens.index',
       'domain_vendas_itens.show',
@@ -721,6 +753,7 @@ export default class extends BaseSeeder {
       'domain_produtos.store',
       'domain_produtos.update',
       'domain_produtos.destroy',
+      'domain_produtos.registrar_com_detalhes',
 
       // Produto-Descrições (5 perms)
       'domain_produto_descricoes.index',
@@ -916,6 +949,7 @@ export default class extends BaseSeeder {
       'domain_caixas.show',
       'domain_caixas.store',
       'domain_caixas.destroy',
+      'domain_caixa.my',
 
       // pos
       'domain_pos.index',
@@ -940,6 +974,12 @@ export default class extends BaseSeeder {
       'domain_vendas.update',
       'domain_vendas.destroy',
       'domain_vendas.anular',
+
+      // reembolso
+      'domain_reembolso_total',
+      'domain_reembolso_parcial',
+      'domain_reembolso_consultar',
+      'domain_reembolso_consultar_id',
       // venda itens
       'domain_vendas_itens.index',
       'domain_vendas_itens.show',
@@ -1157,6 +1197,12 @@ export default class extends BaseSeeder {
       'domain_user_papel.update',
       'domain_user_papel.destroy',
       'domain_user_papel.papeis_disponiveis',
+
+      // User-Pos (associar utilizadores a pontos de venda)
+      'domain_user_pos.index',
+      'domain_user_pos.show',
+      'domain_user_pos.store',
+      'domain_user_pos.destroy',
 
       // Auth
       'domain_auth.me',

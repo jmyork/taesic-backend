@@ -1,4 +1,5 @@
 import vine from '@vinejs/vine'
+import { commonQueryFields } from './common_query_fields.js'
 // import { randomUUID } from 'crypto'
 
 export const createproduto_categoriasValidator = vine.compile(
@@ -39,15 +40,8 @@ export const updateproduto_categoriasValidator = vine.compile(
 
 export const ProdutoCategoriaQueryValidator = vine.compile(
   vine.object({
-    deleted: vine.enum(['deleted', 'all']).optional(),
-    createdDtStart: vine.date({ formats: ['iso8601'] }).optional(),
-    createdDtEnd: vine.date({ formats: ['iso8601'] }).optional(),
-    updatedDtStart: vine.date({ formats: ['iso8601'] }).optional(),
-    updatedDtEnd: vine.date({ formats: ['iso8601'] }).optional(),
+    ...commonQueryFields,
     nome: vine.string().trim().escape().optional(),
     descricao: vine.string().trim().escape().optional(),
-    empresa_id: vine.string().trim().uuid().optional(),
-    page: vine.number().positive().optional(),
-    limit: vine.number().positive().optional(),
   })
 )

@@ -50,11 +50,21 @@ export default class ResourceSync extends BaseCommand {
       .filter(Boolean)
       .map((f) => {
         const [name, typeRaw] = f.split(':')
+
+        // Nome de campo tem de ser um identificador TS válido — caso contrário o
+        // gerador escreve texto inválido directamente no model/DTO/validator (já
+        // aconteceu com "empresa_id@relations.Empresa", que partiu os 3 ficheiros).
+        if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) {
+          throw new Error(
+            `Nome de campo inválido: "${name}". Use apenas letras/números/underscore. ` +
+              `Para relações use "campo:relation.Modelo" (ex.: empresa_id:relation.Empresa).`
+          )
+        }
+
         const optional = typeRaw?.endsWith('?')
         const rawType = typeRaw?.replace('?', '') || 'string'
 
-        // Detecta relação @relation(Modelo)
-        // const relationMatch = rawType.match(/^@relation\((\w+)\)$/)
+        // Detecta relação campo:relation.Modelo
         const relationMatch = rawType.match(/^relation\.(\w+)$/)
         if (relationMatch) {
           const relationModel = relationMatch[1]
@@ -182,7 +192,7 @@ export default class ResourceSync extends BaseCommand {
       const createRegex = new RegExp(`(Create${modelPascal}DTO\\s*{)`)
       const createMatch = content.match(createRegex)
       if (createMatch) {
-        const newField = `\n  ${f.name}: ${this.tsType(f)}${f.optional ? '?' : ''},`
+        const newField = `\n  ${f.name}${f.optional ? '?' : ''}: ${this.tsType(f)},`
         content = content.replace(createRegex, createMatch[1] + newField)
         modified = true
       }

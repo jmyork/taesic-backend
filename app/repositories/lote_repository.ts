@@ -4,6 +4,9 @@ import { CreateloteDTO, UpdateloteDTO, LoteQueryDTO } from '#dtos/lote_dto'
 import Empresa from '#models/empresa'
 import produtos from '#models/faturacao/produtos'
 import estoque from '#models/faturacao/estoque'
+import env from '#start/env'
+import emitter from '@adonisjs/core/services/emitter'
+import LoteValidadeProxima from '#events/lote_validade_proxima'
 
 export default class loteRepository {
   baseQuery() {
@@ -186,5 +189,42 @@ export default class loteRepository {
       .firstOrFail()
     lote.deletedAt = lote.deletedAt ? null : DateTime.now()
     await lote.save()
+  }
+
+  /**
+   * Emite `LoteValidadeProxima` para lotes com stock > 0 dentro de `diasAlerta` da validade
+   * (ou já expirados). Usado por `node ace estoque:check-alertas` — correr periodicamente
+   * via cron externo, mesmo padrão de agendamento que `empresa:clean:expired`.
+   *
+   * @returns número de lotes para os quais um alerta foi emitido.
+   */
+  async avisarLotesProximosValidade(diasAlerta = Number(env.get('LOTE_VALIDADE_ALERTA_DIAS', '30'))) {
+    const limite = DateTime.now().plus({ days: diasAlerta })
+
+    const lotes = await this.baseQuery()
+      .join('produtos', 'produtos.id', 'lote_produto.produto_id')
+      .join('empresa', 'empresa.id', 'produtos.empresa_id')
+      .where('lote_produto.quantidade_em_estoque', '>', 0)
+      .whereNull('lote_produto.deleted_at')
+      .where('lote_produto.data_validade', '<=', limite.toSQLDate()!)
+      .select('lote_produto.*', 'produtos.nome as produto_nome', 'empresa.company_alias as company_alias_alerta')
+
+    for (const lote of lotes) {
+      const dataValidade = DateTime.fromJSDate(new Date(lote.data_validade))
+      const diasRestantes = Math.ceil(dataValidade.diff(DateTime.now(), 'days').days)
+
+      await emitter.emit(
+        LoteValidadeProxima,
+        new LoteValidadeProxima(
+          lote.id,
+          lote.$extras.produto_nome ?? 'desconhecido',
+          lote.$extras.company_alias_alerta ?? '',
+          dataValidade,
+          diasRestantes
+        )
+      )
+    }
+
+    return lotes.length
   }
 }

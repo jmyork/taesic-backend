@@ -115,7 +115,7 @@ export default class authRepository {
                 username: user.username,
               },
               company: {
-                name: empresa.nome || empresa.companyAlias,
+                name: empresa.nome || empresa.company_alias,
               },
               resetUrl: password_definition_url,
             })
@@ -190,7 +190,7 @@ export default class authRepository {
 
     // Enviar o email de recuperação
     const password_definition_url = await buildPasswordDefinitionUrl(
-      empresa?.companyAlias!,
+      empresa?.company_alias!,
       user?.id!
     )
     await mail.send((message) => {

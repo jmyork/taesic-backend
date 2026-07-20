@@ -20,6 +20,16 @@ test.group('cliente/pessoa validators - campos mínimos', () => {
     await assert.rejects(() => createclienteValidator.validate({}))
   })
 
+  /**
+   * `tipo` era `vine.string()` livre, mas a coluna `cliente.tipo` é um ENUM('Pessoa Física',
+   * 'Pessoa Jurídica') na BD — qualquer outro valor (ex.: 'Cliente', copiado por engano do
+   * enum de `pessoa`) passava a validação e só rebentava no INSERT com "Data truncated for
+   * column 'tipo'" (500 genérico em vez de um 400 claro). Só descoberto ao testar via HTTP real.
+   */
+  test('createclienteValidator rejeita um tipo fora do enum da tabela cliente', async ({ assert }) => {
+    await assert.rejects(() => createclienteValidator.validate({ tipo: 'Cliente', nome: 'Cliente Inválido' }))
+  })
+
   test('createpessoaValidator aceita um payload só com tipo e nome', async ({ assert }) => {
     const result = await createpessoaValidator.validate({ tipo: 'Colaborador', nome: 'Pessoa Mínima' })
     assert.equal(result.tipo, 'Colaborador')

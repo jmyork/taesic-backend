@@ -17,6 +17,7 @@ import produto_categorias from './produto_categorias.js'
 import produto_contraindicacoes from './produto_contraindicacoes.js'
 import produto_recomendacoes from './produto_recomendacoes.js'
 import Empresa from '#models/empresa'
+import produto_fornecedores from '#models/faturacao/produto_fornecedores'
 // import categorias_produtos from './categorias_produtos.js'
 
 export default class produtos extends BaseModel {
@@ -77,10 +78,10 @@ export default class produtos extends BaseModel {
   @column()
   declare formato_id: string | null
 
-  @belongsTo(() => produto_formatos, {
+  @belongsTo(() => produto_fornecedores, {
     foreignKey: 'fornecedor_id',
   })
-  declare fornecedor: BelongsTo<typeof produto_formatos>
+  declare fornecedor: BelongsTo<typeof produto_fornecedores>
 
   @hasMany(() => produto_descricao, {
     foreignKey: 'produto_id',
@@ -116,7 +117,7 @@ export default class produtos extends BaseModel {
   declare empresa_id: string
 
   @belongsTo(() => Empresa, {
-    foreignKey: 'produto_id',
+    foreignKey: 'empresa_id',
   })
   declare empresa: BelongsTo<typeof Empresa>
 }

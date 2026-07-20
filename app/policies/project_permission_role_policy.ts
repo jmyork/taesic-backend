@@ -1,9 +1,9 @@
 import User from '#models/user'
-import ProjectPermissionRole from '#models/project_permission_role'
+import ProjectPermissionRole from '#models/authplatform/project_permission_role'
 import { BasePolicy } from '@adonisjs/bouncer'
 import type { AuthorizerResponse } from '@adonisjs/bouncer/types'
-import project from '#models/project'
-import permissao from '#models/project_permission'
+import project from '#models/authplatform/project'
+import permissao from '#models/authplatform/project_permission'
 export default class ProjectPermissionRolePolicy extends BasePolicy {
   async edit(
     user: User,

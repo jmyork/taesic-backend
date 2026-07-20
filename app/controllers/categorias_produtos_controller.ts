@@ -2,7 +2,6 @@ import type { HttpContext } from '@adonisjs/core/http'
 import categorias_produtosService from '#services/categorias_produtos_service'
 import {
   createcategorias_produtosValidator,
-  //updatecategorias_produtosValidator,
   CategoriaProdutoQueryValidator,
 } from '#validators/categorias_produtos_validator'
 import { CategoriaProdutoQueryDTO } from '#dtos/categorias_produtos_dto'

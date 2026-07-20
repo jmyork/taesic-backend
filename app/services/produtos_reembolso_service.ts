@@ -14,7 +14,7 @@ export default class produtos_reembolsoService {
   }
 
   show(data: ShowProdutosReembolsoDTO) {
-    return this.repo.findOrFail(data)
+    return this.repo.listByVenda(data)
   }
 
   reembolsar_total(data: ReembolsoTotalDTO) {

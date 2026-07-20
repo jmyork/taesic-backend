@@ -38,6 +38,8 @@ export default class project_user extends BaseModel {
   @column()
   declare project_id: string
 
-  @belongsTo(() => project)
+  @belongsTo(() => project, {
+    foreignKey: 'project_id',
+  })
   declare project: BelongsTo<typeof project>
 }

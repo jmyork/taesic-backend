@@ -176,7 +176,9 @@ export const CreateProdutoWithDetailsValidator = vine.compile(
             tenantColumn: 'empresa_id',
           }).createRule()
         ),
-      descricao: vine.string().trim().trim().escape().optional(),
+      // Obrigatório aqui tal como em createprodutosValidator — as duas formas de criar
+      // um produto (com ou sem detalhes) devem exigir os mesmos campos base.
+      descricao: vine.string().trim().escape(),
       marca_id: vine
         .string()
         .uuid()

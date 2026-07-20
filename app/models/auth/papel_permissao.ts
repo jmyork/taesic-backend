@@ -30,10 +30,14 @@ export default class papel_permissao extends BaseModel {
 
   @column()
   declare papel_id: string
-  @belongsTo(() => papel)
+  @belongsTo(() => papel, {
+    foreignKey: 'papel_id',
+  })
   declare papel: BelongsTo<typeof papel>
   @column()
   declare permissao_id: string
-  @belongsTo(() => permissao)
+  @belongsTo(() => permissao, {
+    foreignKey: 'permissao_id',
+  })
   declare permissao: BelongsTo<typeof permissao>
 }

@@ -1,5 +1,6 @@
 import planoRepository from '#repositories/plano_repository'
 import { CreateplanoDTO, UpdateplanoDTO } from '#dtos/plano_dto'
+import { DeletedValue } from '../helpers/Types.js'
 
 export default class planoService {
   repo = new planoRepository()

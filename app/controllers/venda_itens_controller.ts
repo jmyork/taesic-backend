@@ -2,7 +2,6 @@ import type { HttpContext } from '@adonisjs/core/http'
 import venda_itensService from '#services/venda_itens_service'
 import {
   createvenda_itensValidator,
-  // updatevenda_itensValidator,
   VendaItensQueryValidator
 } from '#validators/venda_itens_validator'
 import { VendaItensQueryDTO } from '#dtos/venda_itens_dto'

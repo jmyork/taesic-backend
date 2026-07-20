@@ -13,6 +13,9 @@ import posRepository from './pos_repository.js'
 import caixaRepository from './caixa_repository.js'
 import { DateTime } from 'luxon'
 import db from '@adonisjs/lucid/services/db'
+import Lote from '#models/faturacao/lote'
+import emitter from '@adonisjs/core/services/emitter'
+import EstoqueRevertido from '#events/estoque_revertido'
 
 export default class produtos_reembolsoRepository {
 
@@ -110,8 +113,8 @@ export default class produtos_reembolsoRepository {
     return await query.select('produtos_reembolso.*').orderBy('created_at', 'desc').paginate(page, limit)
   }
 
-  async findOrFail(data: ShowProdutosReembolsoDTO) {
-    //console.log(reaching query)
+  /** Lista todos os reembolsos (totais e parciais) associados a uma venda. */
+  async listByVenda(data: ShowProdutosReembolsoDTO) {
     return await this.baseQuery()
       .join("venda_itens", "venda_itens.id", "produtos_reembolso.venda_item_id")
       .join("vendas", "vendas.id", "venda_itens.venda_id")
@@ -119,9 +122,8 @@ export default class produtos_reembolsoRepository {
       .join('pos', 'pos.id', 'caixa.pos_id')
       .join('empresa', 'empresa.id', 'pos.empresa_id')
       .where('empresa.company_alias', data.company_alias ?? '')
-      .where('produtos_reembolso.id', data.id)
+      .where('vendas.id', data.venda_id)
       .select(['produtos_reembolso.*'])
-      .firstOrFail()
   }
 
   async reembolsar_total(data: ReembolsoTotalDTO) {
@@ -143,7 +145,7 @@ export default class produtos_reembolsoRepository {
     // Movimentações de stock, criação dos registos de reembolso e atualização da venda correm
     // todas na mesma transação — um item a falhar a meio não pode deixar reembolsos parciais
     // gravados sem a devolução de stock correspondente (ou vice-versa).
-    return db.transaction(async (trx) => {
+    const reembolsosCriados = await db.transaction(async (trx) => {
       for (const item of venda_itens) {
         await estoqueRepo.create({
           pos_id: pos.id,
@@ -157,7 +159,7 @@ export default class produtos_reembolsoRepository {
       }
 
       // criar os registros de reembolso
-      const reembolsosCriados = []
+      const criados = []
       for (const item of venda_itens) {
         const reembolsoCriado = await produtos_reembolso.create({
           venda_item_id: item.id,
@@ -168,7 +170,7 @@ export default class produtos_reembolsoRepository {
         item.deletedAt = DateTime.now()
         item.useTransaction(trx)
         await item.save()
-        reembolsosCriados.push(reembolsoCriado)
+        criados.push(reembolsoCriado)
       }
 
       // um reembolso total esvazia a venda por completo — refletir isso no registo da venda,
@@ -178,8 +180,36 @@ export default class produtos_reembolsoRepository {
       venda.useTransaction(trx)
       await venda.save()
 
-      return reembolsosCriados
+      return criados
     })
+
+    // Só depois da transação confirmar — nunca alerta sobre uma reversão que possa ainda
+    // vir a ser desfeita.
+    for (const item of venda_itens) {
+      await this.avisarEstoqueRevertido(
+        item.lote_produto_id,
+        item.quantidade,
+        `Reembolso total da venda ${venda.id}`,
+        data.company_alias
+      )
+    }
+
+    return reembolsosCriados
+  }
+
+  /** Emite `EstoqueRevertido` quando um reembolso devolve produtos ao stock. */
+  private async avisarEstoqueRevertido(loteId: string, quantidade: number, motivo: string, companyAlias?: string) {
+    try {
+      const lote = await Lote.query().where('lote_produto.id', loteId).preload('produto').first()
+      if (!lote) return
+
+      await emitter.emit(
+        EstoqueRevertido,
+        new EstoqueRevertido(loteId, lote.produto?.nome ?? 'desconhecido', companyAlias ?? '', quantidade, motivo)
+      )
+    } catch (error) {
+      console.error('Falha ao avaliar/emitir alerta de reversão de estoque:', error)
+    }
   }
 
   async reembolsar_parcial(data: ReembolsoParcialDTO) {
@@ -254,6 +284,16 @@ export default class produtos_reembolsoRepository {
       venda.useTransaction(trx)
       await venda.save()
 
+      return reembolsoCriado
+    }).then(async (reembolsoCriado) => {
+      // Só depois da transação confirmar — nunca alerta sobre uma reversão que possa ainda
+      // vir a ser desfeita.
+      await this.avisarEstoqueRevertido(
+        venda_item.lote_produto_id,
+        data.quantidade ?? 0,
+        `Reembolso parcial do item ${venda_item.id}`,
+        data.company_alias
+      )
       return reembolsoCriado
     })
   }

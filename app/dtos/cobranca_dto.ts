@@ -1,7 +1,7 @@
 export interface CreatecobrancaDTO {
-  referencia: string?
-  pago: boolean?
-  data_vencimento: Date?
+  referencia?: string
+  pago?: boolean
+  data_vencimento?: Date
   data_emissao: Date
   status: string
   moeda: string

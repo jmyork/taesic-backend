@@ -27,7 +27,7 @@ export default class MakeEnterpriseResource extends BaseCommand {
       this.migration(table)
       this.dto(Name)
       this.validator(Name)
-      this.repository(Name)
+      this.repository(Name, table)
       this.service(Name)
       this.controller(Name, plural)
       this.route(plural)
@@ -129,53 +129,28 @@ export const update${Name}Validator=vine.compile(vine.object({}))
     )
   }
 
-  repository(Name: string) {
+  repository(Name: string, table: string) {
     fs.writeFileSync(
       `app/repositories/${Name}_repository.ts`,
       `
-import { DateTime } from 'luxon'
 import ${Name} from '#models/${Name}'
 import {Create${Name}DTO,Update${Name}DTO} from '#dtos/${Name}_dto'
-import { DeletedValue } from '../helpers/Types.js'
+import BaseRepository from './base_repository.js'
 
-export default class ${Name}Repository{
+export default class ${Name}Repository extends BaseRepository<InstanceType<typeof ${Name}>, Create${Name}DTO, Update${Name}DTO> {
 
- baseQuery(){ return ${Name}.query() }
+  constructor() {
+    super(${Name}, '${table}')
+  }
 
- paginate(page = 1, limit = 20, deleted: DeletedValue = null){
-    let query = this.baseQuery()
-    if (deleted === "deleted") {
-      query = ${Name}.query().whereNotNull('deleted_at')
-    } else if (deleted === "all") {
-      query = ${Name}.query()
-    } else {
-      query = ${Name}.query().whereNull('deleted_at')
-    }
-    return query.paginate(page, limit)
- }
-
- findOrFail(id:string){
-  return this.baseQuery().where('id',id).firstOrFail()
- }
-
- create(data:Create${Name}DTO){
-  return ${Name}.create(data)
- }
-
- async update(id:string,data:Update${Name}DTO){
-  const r=await this.findOrFail(id)
-  r.merge(data)
-  await r.save()
-  return r
- }
-
- async softDelete(id:string){
-    const r = await this.findOrFail(id)
-    if (r.deletedAt) r.deletedAt = null
-    else r.deletedAt = DateTime.now()
-    await r.save()
- }
-
+  // Este recurso pertence a uma empresa (tem company_alias/empresa_id)? Sobrescrever
+  // scopeToTenant para isolar por tenant — sem isto, paginate/findOrFail/update/softDelete
+  // NÃO filtram por company_alias mesmo que seja passado, e qualquer empresa consegue ler/
+  // alterar registos de outra. Ver cliente_repository.ts para um exemplo real.
+  //
+  // protected scopeToTenant(query: any, companyAlias: string) {
+  //   return query.join('empresa', 'empresa.id', '${table}.empresa_id').where('empresa.company_alias', companyAlias)
+  // }
 }
 `.trim()
     )
@@ -187,6 +162,7 @@ export default class ${Name}Repository{
       `
 import ${Name}Repository from '#repositories/${Name}_repository'
 import {Create${Name}DTO,Update${Name}DTO} from '#dtos/${Name}_dto'
+import { DeletedValue } from '../helpers/Types.js'
 
 export default class ${Name}Service{
 
@@ -215,162 +191,48 @@ import type { HttpContext } from '@adonisjs/core/http'
 import ${Name}Service from '#services/${Name}_service'
 import { create${Name}Validator, update${Name}Validator } from '#validators/${Name}_validator'
 
+// Erros de validação (VineJS), "registo não encontrado" (Lucid) e qualquer Exception de
+// domínio lançada pelo repository/service já são traduzidos de forma consistente pelo
+// handler global (app/exceptions/handler.ts) — não repetir aqui "if (error.code === 'X')";
+// só apanhar um erro nesta classe se for preciso fazer algo diferente do envelope padrão.
 export default class ${Name}sController {
     private service = new ${Name}Service()
 
     // ==================== INDEX ====================
-    async index({ request, response,route }: HttpContext) {
-        try {
-            const page = request.input('page', 1)
-            const limit = request.input('limit', 20)            
-            const deleted = request.input('deleted', null)
-            const data = await this.service.list(page, limit, deleted)
-            return response.ok({
-                data,
-                message: 'Listagem realizada com sucesso',
-                status: 200
-            })
-        } catch (error) {
-            console.error('Erro ao listar ${plural}:', error)
-            return response.internalServerError({
-                data: null,
-                message: 'Erro interno do servidor',
-                status: 500
-            })
-        }
+    async index({ request }: HttpContext) {
+        const page = request.input('page', 1)
+        const limit = request.input('limit', 20)
+        const deleted = request.input('deleted', null)
+        const data = await this.service.list(page, limit, deleted)
+        return { data, message: 'Listagem realizada com sucesso', status: 200 }
     }
 
     // ==================== STORE ====================
-    async store({ request, response,route }: HttpContext) {
-        try {
-            const payload = await request.validateUsing(create${Name}Validator)
-            const data = await this.service.create(payload)
-
-            return response.created({
-                data,
-                message: 'Registro criado com sucesso',
-                status: 201
-            })
-        } catch (error: any) {
-            // Erro de validação do Vine
-            if (error.messages) {
-                return response.badRequest({
-                    data: null,
-                    message: 'Dados inválidos',
-                    errors: error.messages,
-                    status: 400
-                })
-            }
-
-            console.error('Erro ao criar ${Name}:', error)
-            return response.internalServerError({
-                data: null,
-                message: 'Erro interno do servidor',
-                status: 500
-            })
-        }
+    async store({ request, response }: HttpContext) {
+        const payload = await request.validateUsing(create${Name}Validator)
+        const data = await this.service.create(payload)
+        return response.created({ data, message: 'Registro criado com sucesso', status: 201 })
     }
 
     // ==================== SHOW ====================
-    async show({ params, response,route }: HttpContext) {
-        try {
-            const data = await this.service.show(params.id)
-
-            return response.ok({
-                data,
-                message: 'Registro encontrado',
-                status: 200
-            })
-        } catch (error: any) {
-            // Captura erro de registro não encontrado (Lucid)
-            if (error.code === 'E_ROW_NOT_FOUND') {
-                return response.notFound({
-                    data: null,
-                    message: 'Registro não encontrado',
-                    status: 404
-                })
-            }
-
-            console.error('Erro ao buscar ${Name}:', error)
-            return response.internalServerError({
-                data: null,
-                message: 'Erro interno do servidor',
-                status: 500
-            })
-        }
+    async show({ params }: HttpContext) {
+        const data = await this.service.show(params.id)
+        return { data, message: 'Registro encontrado', status: 200 }
     }
 
     // ==================== UPDATE ====================
-    async update({ params, request, response,route }: HttpContext) {
-        try {
-            const payload = await request.validateUsing(update${Name}Validator,{
-                meta:{
-                id:params.id
-                }
-            })
-            const data = await this.service.update(params.id, payload)
-
-            return response.ok({
-                data,
-                message: 'Registro atualizado com sucesso',
-                status: 200
-            })
-        } catch (error: any) {
-            // Erro de validação
-            if (error.messages) {
-                return response.badRequest({
-                    data: null,
-                    message: 'Dados inválidos',
-                    errors: error.messages,
-                    status: 400
-                })
-            }
-
-            // Registro não encontrado
-            if (error.code === 'E_ROW_NOT_FOUND') {
-                return response.notFound({
-                    data: null,
-                    message: 'Registro não encontrado para atualização',
-                    status: 404
-                })
-            }
-
-            console.error('Erro ao atualizar ${Name}:', error)
-            return response.internalServerError({
-                data: null,
-                message: 'Erro interno do servidor',
-                status: 500
-            })
-        }
+    async update({ params, request }: HttpContext) {
+        const payload = await request.validateUsing(update${Name}Validator, {
+            meta: { id: params.id },
+        })
+        const data = await this.service.update(params.id, payload)
+        return { data, message: 'Registro atualizado com sucesso', status: 200 }
     }
 
     // ==================== DESTROY ====================
-    async destroy({ params, response,route }: HttpContext) {
-        try {
-            await this.service.delete(params.id)
-
-            return response.ok({
-                data: null,
-                message: 'Registro removido/recuperado com sucesso',
-                status: 200
-            })
-        } catch (error: any) {
-            // Registro não encontrado
-            if (error.code === 'E_ROW_NOT_FOUND') {
-                return response.notFound({
-                    data: null,
-                    message: 'Registro não encontrado para remoção',
-                    status: 404
-                })
-            }
-
-            console.error('Erro ao remover ${Name}:', error)
-            return response.internalServerError({
-                data: null,
-                message: 'Erro interno do servidor',
-                status: 500
-            })
-        }
+    async destroy({ params }: HttpContext) {
+        await this.service.delete(params.id)
+        return { data: null, message: 'Registro removido/recuperado com sucesso', status: 200 }
     }
 }
 `.trim()
@@ -385,7 +247,15 @@ export default class ${Name}sController {
 
     const importRouter = "import router from '@adonisjs/core/services/router'"
     if (!c.includes(importRouter)) c = importRouter + '\n' + c
-    const line = `router.resource('${plural}',()=>import('#controllers/${plural}_controller')).apiOnly()`
+    const importMiddleware = "import { middleware } from './kernel.js'"
+    if (!c.includes(importMiddleware)) c = importMiddleware + '\n' + c
+
+    // Exige sessão autenticada por omissão — sem isto a rota gerada ficava completamente
+    // pública. Isto NÃO isola por company_alias nem aplica RBAC por si só: um recurso
+    // por-empresa tem de ser registado em companydomainroutes.ts (grupo `api/:company_alias`
+    // com ValidateCompanyAliasMiddleware + permission), não aqui — ver comentário em
+    // start/routes.ts sobre a diferença entre os dois ficheiros.
+    const line = `router.resource('${plural}',()=>import('#controllers/${plural}_controller')).apiOnly().use('*', middleware.auth({ guards: ['api'] }))`
     if (!c.includes(line)) {
       c += '\n' + line + '\n'
       fs.writeFileSync(routes, c)
@@ -393,14 +263,21 @@ export default class ${Name}sController {
   }
 
   policy(Name: string) {
+    // Nota: antes desta correção, um `if (!fs.existsSync(policiesFile)) return` invertido
+    // fazia este método nunca criar o ficheiro para um recurso novo (só faria algo se a
+    // policy já existisse) — a policy nunca era gerada nem registada em main.ts.
     const policiesFile = `app/policies/${Name}_policy.ts`
-    if (!fs.existsSync(policiesFile)) return
     const content = `
         import User from '#models/user'
         import ${Name} from '#models/${Name}'
         import { BasePolicy } from '@adonisjs/bouncer'
         import type { AuthorizerResponse } from '@adonisjs/bouncer/types'
-        export default class ${Name}Policy {}
+
+        // Stub vazio: sem métodos definidos, chamar bouncer.authorize(...) com esta policy
+        // rebenta em vez de bloquear. Preencher com regras reais (ex.: index/store/update/
+        // delete) antes de usar Bouncer neste controller — até lá, a única coisa que
+        // protege esta rota é o middleware.auth() aplicado em routes.ts.
+        export default class ${Name}Policy extends BasePolicy {}
 `.trim()
     fs.writeFileSync(policiesFile, content)
 
@@ -409,11 +286,13 @@ export default class ${Name}sController {
 
     if (fs.existsSync(mainPoliciesFile)) {
       let c = fs.readFileSync(mainPoliciesFile, 'utf8')
-      const importLine = `import ${Name}Policy from './${Name}_policy'`
-      if (!c.includes(importLine)) {
-        c = importLine + '\n' + c
-        fs.writeFileSync(mainPoliciesFile, c)
-      }
+
+      // Nota: chegou a existir aqui um `import ${Name}Policy from './${Name}_policy'`
+      // estático no topo do ficheiro — nunca era usado (o registo real é só a entrada
+      // dynamic-import abaixo, com o alias '#policies/...'), ficava sempre por trás do
+      // bug do `return` invertido acima, e quando esse bug foi corrigido passou a
+      // rebentar o typecheck (faltava-lhe a extensão `.js`, exigida em ESM/nodenext).
+      // Removido — a entrada no objeto `policies` é a única coisa necessária.
 
       const exportLine = `  ${Name}Policy: () => import('#policies/${Name}_policy')`
       if (!c.includes(exportLine)) {

@@ -74,6 +74,7 @@ export default defineConfig({
     () => import('#start/lucid'),
     () => import('#start/routes'),
     () => import('#start/kernel'),
+    () => import('#start/events'),
   ],
 
   /*

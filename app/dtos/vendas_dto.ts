@@ -12,6 +12,7 @@ export interface VendasQueryDTO {
   // Filtros exatos
   venda_tipo?: 'presencial' | 'online' | 'online_loja'
   status?: 'aberta' | 'fechada' | 'cancelada' | 'reembolsada'
+  fechado?: boolean
   caixa_id?: string
   user_id?: string
   cliente_online_id?: string

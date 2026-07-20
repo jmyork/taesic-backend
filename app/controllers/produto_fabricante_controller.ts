@@ -1,12 +1,12 @@
 import type { HttpContext } from '@adonisjs/core/http'
-import produto_fabricanteService from '#services/produto_fabricante_service'
+import produto_fabricantesService from '#services/produto_fabricantes_service'
 import {
-  createproduto_fabricanteValidator,
-  updateproduto_fabricanteValidator,
-} from '#validators/produto_fabricante_validator'
+  createproduto_fabricantesValidator,
+  updateproduto_fabricantesValidator,
+} from '#validators/produto_fabricantes_validator'
 
 export default class produto_fabricantesController {
-  private service = new produto_fabricanteService()
+  private service = new produto_fabricantesService()
 
   // ==================== INDEX ====================
   async index({ request, response }: HttpContext) {
@@ -33,7 +33,7 @@ export default class produto_fabricantesController {
   // ==================== STORE ====================
   async store({ request, response }: HttpContext) {
     try {
-      const payload = await request.validateUsing(createproduto_fabricanteValidator)
+      const payload = await request.validateUsing(createproduto_fabricantesValidator)
       const data = await this.service.create(payload)
 
       return response.created({
@@ -93,7 +93,7 @@ export default class produto_fabricantesController {
   // ==================== UPDATE ====================
   async update({ params, request, response }: HttpContext) {
     try {
-      const payload = await request.validateUsing(updateproduto_fabricanteValidator, {
+      const payload = await request.validateUsing(updateproduto_fabricantesValidator, {
         meta: {
           id: params.id,
         },

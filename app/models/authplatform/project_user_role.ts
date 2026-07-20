@@ -30,11 +30,15 @@ export default class project_user_role extends BaseModel {
 
   @column()
   declare project_user_id: string
-  @belongsTo(() => project_user)
+  @belongsTo(() => project_user, {
+    foreignKey: 'project_user_id',
+  })
   declare project_user: BelongsTo<typeof project_user>
   @column()
   declare project_role_id: string
 
-  @belongsTo(() => project_role)
+  @belongsTo(() => project_role, {
+    foreignKey: 'project_role_id',
+  })
   declare project_role: BelongsTo<typeof project_role>
 }

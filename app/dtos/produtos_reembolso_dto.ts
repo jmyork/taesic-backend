@@ -54,7 +54,7 @@ export interface ReembolsoTotalDTO {
 
 
 export interface ShowProdutosReembolsoDTO {
-  id: string
+  venda_id: string
 
   company_alias?: string
   empresa_id?: string

@@ -1,5 +1,5 @@
-import Plano from './Plano.js'
-import Empresa from './Empresa.js'
+import Plano from './plano.js'
+import Empresa from './empresa.js'
 import { DateTime } from 'luxon'
 import { BaseModel, column, beforeCreate, belongsTo } from '@adonisjs/lucid/orm'
 import { randomUUID } from 'node:crypto'

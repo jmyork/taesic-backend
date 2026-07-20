@@ -2,7 +2,6 @@ import type { HttpContext } from '@adonisjs/core/http'
 import produto_mediaService from '#services/produto_media_service'
 import {
   createproduto_mediaValidator,
-  //updateproduto_mediaValidator,
   ProdutoImagemQueryValidator,
 } from '#validators/produto_media_validator'
 import { ProdutoDescricaoQueryDTO } from '#dtos/produto_descricao_dto'

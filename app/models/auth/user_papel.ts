@@ -31,10 +31,14 @@ export default class UserPapel extends BaseModel {
   @column()
   declare user_id: string
 
-  @belongsTo(() => User)
+  @belongsTo(() => User, {
+    foreignKey: 'user_id',
+  })
   declare User: BelongsTo<typeof User>
   @column()
   declare papel_id: string
-  @belongsTo(() => papel)
+  @belongsTo(() => papel, {
+    foreignKey: 'papel_id',
+  })
   declare papel: BelongsTo<typeof papel>
 }

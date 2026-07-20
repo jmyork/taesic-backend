@@ -1,5 +1,6 @@
 import papelRepository from '#repositories/papel_repository'
 import { CreatepapelDTO, UpdatepapelDTO } from '#dtos/papel_dto'
+import { DeletedValue } from '../helpers/Types.js'
 
 export default class papelService {
   repo = new papelRepository()

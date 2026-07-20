@@ -57,13 +57,12 @@ export interface UpdateprodutosDTO {
 
 export interface CreateProdutoDetalhesDTO {
   produto: CreateprodutosDTO
-  detalhes: {
-    descricoes?: Createproduto_descricaoDTO[]
-    imagens?: { url: string }[]
+  detalhes?: {
+    // `produto_id` é preenchido pelo Lucid via `produto.related('descricoes').createMany(...)`
+    // — nunca é fornecido pelo chamador (nem pelo validator, que também não o pede).
+    descricoes?: Omit<Createproduto_descricaoDTO, 'produto_id'>[]
     categorias?: { produto_categoria_id: string }[]
     contraindicacoes?: { contraindicacao: string }[]
     recomendacoes?: { recomendacao: string }[]
-    fornecedor?: { nome: string; contato: string }
-    marca?: { nome: string }
   }
 }

@@ -12,6 +12,9 @@ import posRepository from './pos_repository.js'
 import cupomRepository from './cupom_repository.js'
 import CupomInvalidoException from '#exceptions/cupom_invalido_exception'
 import db from '@adonisjs/lucid/services/db'
+import env from '#start/env'
+import emitter from '@adonisjs/core/services/emitter'
+import VendaCanceladaAltoValor from '#events/venda_cancelada_alto_valor'
 
 export default class vendasRepository {
   baseQuery() {
@@ -62,6 +65,10 @@ export default class vendasRepository {
 
     if (filter?.status) {
       query.where("vendas.status", filter.status)
+    } else if (filter?.fechado === true) {
+      query.where("vendas.status", "fechada")
+    } else if (filter?.fechado === false) {
+      query.where("vendas.status", "aberta")
     }
 
     if (filter?.caixa_id) {
@@ -240,7 +247,30 @@ export default class vendasRepository {
 
     venda.status = 'cancelada'
     await venda.save()
+
+    await this.avisarSeCancelamentoAltoValor(venda.id, data.company_alias)
+
     return venda
+  }
+
+  /** Emite `VendaCanceladaAltoValor` quando o total dos itens de uma venda cancelada (ainda
+   * aberta, por isso `vendas.total` nunca foi preenchido) excede o limiar configurado (env
+   * `VENDA_CANCELADA_LIMIAR`, por omissão 50000). */
+  private async avisarSeCancelamentoAltoValor(vendaId: string, companyAlias?: string) {
+    try {
+      const limiar = Number(env.get('VENDA_CANCELADA_LIMIAR', '50000'))
+
+      const itens = await venda_itens.query().where('venda_id', vendaId).whereNull('deleted_at')
+      const total = itens.reduce((soma, item) => soma + item.preco_unitario * item.quantidade, 0)
+      if (total < limiar) return
+
+      await emitter.emit(
+        VendaCanceladaAltoValor,
+        new VendaCanceladaAltoValor(vendaId, companyAlias ?? '', total, limiar)
+      )
+    } catch (error) {
+      console.error('Falha ao avaliar/emitir alerta de venda cancelada de alto valor:', error)
+    }
   }
 
   // async softDelete(id: string, company_alias?: string, user_id?: string) {

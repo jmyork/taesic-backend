@@ -1,5 +1,6 @@
 import clienteRepository from '#repositories/cliente_repository'
 import { CreateclienteDTO, UpdateclienteDTO } from '#dtos/cliente_dto'
+import { DeletedValue } from '../helpers/Types.js'
 
 export default class clienteService {
   repo = new clienteRepository()

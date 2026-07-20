@@ -11,6 +11,8 @@ import Empresa from '#models/empresa'
 import { randomUUID } from 'node:crypto'
 import { ResendCompanyActivationEmailDTO } from '#dtos/empresa_dto'
 import VerificationTokenHashService from '#services/verification_token_hash_service'
+import emitter from '@adonisjs/core/services/emitter'
+import EmpresaActivated from '#events/empresa_activated'
 const empresaRepo = new empresaRepository()
 export default class verification_token_hashRepository {
   baseQuery() {
@@ -88,6 +90,12 @@ export default class verification_token_hashRepository {
     // verificar mesmo depois de um clique de ativação bem-sucedido.
     if (record.empresa_id) {
       await Empresa.query().where('id', record.empresa_id).update({ verified: true })
+
+      if (record.purpose === 'account_activation' && record.user_id) {
+        // `empresa:activated` existia desde sempre mas nunca era emitido nem ouvido (ver
+        // start/events.ts) — o email de boas-vindas nunca chegou a ser enviado.
+        await emitter.emit(EmpresaActivated, new EmpresaActivated(record.empresa_id, record.user_id))
+      }
     }
 
     return {

@@ -3,6 +3,7 @@ import {
   Createempresa_conta_bancariaDTO,
   Updateempresa_conta_bancariaDTO,
 } from '#dtos/empresa_conta_bancaria_dto'
+import { DeletedValue } from '../helpers/Types.js'
 
 export default class empresa_conta_bancariaService {
   repo = new empresa_conta_bancariaRepository()

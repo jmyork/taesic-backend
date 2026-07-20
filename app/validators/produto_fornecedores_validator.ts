@@ -1,4 +1,5 @@
 import vine from '@vinejs/vine'
+import { commonQueryFields } from './common_query_fields.js'
 
 export const createproduto_fornecedoresValidator = vine.compile(
   vine.object({
@@ -96,17 +97,10 @@ export const updateproduto_fornecedoresValidator = vine.compile(
 
 export const ProdutoFornecedorQueryValidator = vine.compile(
   vine.object({
-    deleted: vine.enum(['deleted', 'all']).optional(),
-    createdDtStart: vine.date({ formats: ['iso8601'] }).optional(),
-    createdDtEnd: vine.date({ formats: ['iso8601'] }).optional(),
-    updatedDtStart: vine.date({ formats: ['iso8601'] }).optional(),
-    updatedDtEnd: vine.date({ formats: ['iso8601'] }).optional(),
-    empresa_id: vine.string().trim().uuid().optional(),
+    ...commonQueryFields,
     nome: vine.string().trim().escape().optional(),
-    endereço: vine.string().trim().escape().optional(),
+    endereco: vine.string().trim().escape().optional(),
     email: vine.string().trim().email().optional(),
     telefone: vine.string().trim().escape().optional(),
-    page: vine.number().positive().optional(),
-    limit: vine.number().positive().optional(),
   })
 )

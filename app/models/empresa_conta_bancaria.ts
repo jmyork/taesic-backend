@@ -24,7 +24,7 @@ export default class empresa_conta_bancaria extends BaseModel{
  }
 
   @column()
-  declare empresa_id@relations.Empresa: string
+  declare empresa_id: string
   @column()
   declare conta: string
   @column()

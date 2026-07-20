@@ -34,7 +34,9 @@ export default class estoque extends BaseModel {
   @column()
   declare lote_produto_id: string
 
-  @belongsTo(() => lote)
+  @belongsTo(() => lote, {
+    foreignKey: 'lote_produto_id',
+  })
   declare lote: BelongsTo<typeof lote>
 
   @column()
@@ -57,12 +59,16 @@ export default class estoque extends BaseModel {
   @column()
   declare registrado_por: string
 
-  @belongsTo(() => users)
+  @belongsTo(() => users, {
+    foreignKey: 'registrado_por',
+  })
   declare user: BelongsTo<typeof users>
 
   @column()
   declare pos_id: string
 
-  @belongsTo(() => pos)
+  @belongsTo(() => pos, {
+    foreignKey: 'pos_id',
+  })
   declare pos: BelongsTo<typeof pos>
 }

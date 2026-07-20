@@ -1,8 +1,8 @@
 import User from '#models/user'
-import ProjectUser from '#models/project_user'
+import ProjectUser from '#models/authplatform/project_user'
 import { BasePolicy } from '@adonisjs/bouncer'
 import type { AuthorizerResponse } from '@adonisjs/bouncer/types'
-import project from '#models/project'
+import project from '#models/authplatform/project'
 export default class ProjectUserPolicy extends BasePolicy {
   async edit(user: User, projectUser: ProjectUser): Promise<AuthorizerResponse> {
     // Check if the user is the owner of the project user

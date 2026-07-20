@@ -1,4 +1,5 @@
 import vine from '@vinejs/vine'
+import { commonQueryFields } from './common_query_fields.js'
 // import { randomUUID } from 'crypto'
 // import UniqueValidator from '../helpers/Validator.js'
 // const uniqueValidator = new UniqueValidator({ table: 'marcas', column: 'nome', tenantColumn: 'empresa_id' })
@@ -45,15 +46,8 @@ export const updatemarcaValidator = vine.compile(
 
 export const MarcaQueryValidator = vine.compile(
   vine.object({
-    deleted: vine.enum(['deleted', 'all']).optional(),
-    createdDtStart: vine.date({ formats: ['iso8601'] }).optional(),
-    createdDtEnd: vine.date({ formats: ['iso8601'] }).optional(),
-    updatedDtStart: vine.date({ formats: ['iso8601'] }).optional(),
-    updatedDtEnd: vine.date({ formats: ['iso8601'] }).optional(),
+    ...commonQueryFields,
     nome: vine.string().trim().escape().optional(),
     descricao: vine.string().trim().escape().optional(),
-    empresa_id: vine.string().trim().uuid().optional(),
-    page: vine.number().positive().optional(),
-    limit: vine.number().positive().optional(),
   })
 )

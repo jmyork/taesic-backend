@@ -13,6 +13,7 @@ import loteRepository from './lote_repository.js'
 import estoqueRepository from './estoque_repository.js'
 import venda_itensRepository from './venda_itens_repository.js'
 import NotAllowedChangeIsServiceTagException from '#exceptions/not_allowed_change_is_service_tag_exception'
+import ProdutoComMovimentacoesException from '#exceptions/produto_com_movimentacoes_exception'
 
 export default class produtosRepository {
   baseQuery() {
@@ -68,29 +69,26 @@ export default class produtosRepository {
       query = query.where('produtos.nome', 'like', `%${filter.nome}%`)
     }
 
-    // descricao filter
+    // marca_id filter (era duplicado — o mesmo bloco corria duas vezes)
     if (filter?.marca_id) {
-      query = query.where('produtos.marca_id', 'like', `%${filter.marca_id}%`)
-    }
-    // marca_id filter
-    if (filter?.marca_id) {
-      query = query.where('produtos.marca_id', 'like', `%${filter.marca_id}%`)
+      query = query.where('produtos.marca_id', filter.marca_id)
     }
     // formato_id filter
     if (filter?.formato_id) {
-      query = query.where('produtos.formato_id', 'like', `%${filter.formato_id}%`)
+      query = query.where('produtos.formato_id', filter.formato_id)
     }
     // fabricante_id filter
     if (filter?.fabricante_id) {
-      query = query.where('produtos.fabricante_id', 'like', `%${filter.fabricante_id}%`)
+      query = query.where('produtos.fabricante_id', filter.fabricante_id)
     }
     // fornecedor_id filter
     if (filter?.fornecedor_id) {
-      query = query.where('produtos.fornecedor_id', 'like', `%${filter.fornecedor_id}%`)
+      query = query.where('produtos.fornecedor_id', filter.fornecedor_id)
     }
-    // is_service filter
-    if (filter?.is_service) {
-      query = query.where('produtos.is_service', 'like', `%${filter.is_service}%`)
+    // is_service filter — coluna booleana; "like" nunca combinava porque o MySQL guarda
+    // 0/1, não as strings "true"/"false" — este filtro nunca funcionou.
+    if (filter?.is_service !== undefined) {
+      query = query.where('produtos.is_service', filter.is_service)
     }
 
     // empresa filters
@@ -166,7 +164,7 @@ export default class produtosRepository {
       const movimentacoesEstoque = await estoqueRepo.paginate(1, 2, { produto_id: produto.id, company_alias })
 
       if (movimentacoesEstoque.all.length > 2) {
-        throw new Error('Não é permitido alterar um produto para serviço se ele tiver movimentações de estoque associadas.')
+        throw new ProdutoComMovimentacoesException()
       }
 
       // actualizar o lote do produto para atualizar os preços de venda e compra do serviço, caso eles tenham sido alterados, para manter o histórico de preços atualizado e também para o caso de o serviço ter um custo associado (ex: um serviço de manutenção pode ter um custo de peças e mão de obra).
@@ -208,15 +206,21 @@ export default class produtosRepository {
   }
 
   async registrarProdutoAndDetalhes(data: CreateProdutoDetalhesDTO) {
+    // `data.produto` vem do validator sem `empresa_id` (só tem `company_alias`, que a
+    // tabela `produtos` não tem) — sem esta resolução, o INSERT ia com `empresa_id`
+    // undefined, quebrando o isolamento por tenant deste produto.
+    const empresa = await Empresa.findByOrFail('company_alias', data.produto.company_alias)
+    const { company_alias, user_id, ...produtoData } = data.produto
+
     const trx = await db.transaction()
     try {
-      const produto = await produtos.create(data.produto, { client: trx })
+      const produto = await produtos.create({ ...produtoData, empresa_id: empresa.id }, { client: trx })
 
-      if (data.detalhes.descricoes && data.detalhes.descricoes.length > 0) {
+      if (data.detalhes?.descricoes && data.detalhes.descricoes.length > 0) {
         await produto.related('descricoes').createMany(data.detalhes.descricoes, { client: trx })
       }
 
-      if (data.detalhes.categorias && data.detalhes.categorias.length > 0) {
+      if (data.detalhes?.categorias && data.detalhes.categorias.length > 0) {
         const categorias: { produto_id: string; produto_categoria_id: string }[] = []
         data.detalhes.categorias.forEach((currentCategoria) => {
           categorias.push({
@@ -225,16 +229,15 @@ export default class produtosRepository {
           })
         })
         await categorias_produtos.createMany(categorias, { client: trx })
-        // await produto.related('categorias').attach(data.detalhes.categorias, { client: trx })
       }
 
-      if (data.detalhes.contraindicacoes && data.detalhes.contraindicacoes.length > 0) {
+      if (data.detalhes?.contraindicacoes && data.detalhes.contraindicacoes.length > 0) {
         await produto
           .related('contraindicacoes')
           .createMany(data.detalhes.contraindicacoes, { client: trx })
       }
 
-      if (data.detalhes.recomendacoes && data.detalhes.recomendacoes.length > 0) {
+      if (data.detalhes?.recomendacoes && data.detalhes.recomendacoes.length > 0) {
         await produto
           .related('recomendacoes')
           .createMany(data.detalhes.recomendacoes, { client: trx })

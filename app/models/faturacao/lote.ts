@@ -54,7 +54,9 @@ export default class lote extends BaseModel {
   @column()
   declare produto_id: string
 
-  @belongsTo(() => produtos)
+  @belongsTo(() => produtos, {
+    foreignKey: 'produto_id',
+  })
   declare produto: BelongsTo<typeof produtos>
 
   @column()

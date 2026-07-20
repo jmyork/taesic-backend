@@ -37,6 +37,10 @@ router
             .as('domain_produtos') //(v)
 
         router
+            .post('produtos/registrar-com-detalhes', '#controllers/produtos_controller.registrar_produto_and_detalhes')
+            .as('domain_produtos.registrar_com_detalhes')
+
+        router
             .resource('produto-descricoes', () => import('#controllers/produto_descricao_controller'))
             .apiOnly()
             .as('domain_produto_descricoes') //(v)
@@ -93,9 +97,13 @@ router
             .except(['update'])
             .as('domain_user_pos') //(v)
 
-        router.resource("caixas", () => import('#controllers/caixa_controller')).apiOnly().except(["update"]).as('domain_caixas') //(v)
-
+        // Tem de ser registada antes de `.resource('caixas', ...)` — caso contrário a rota
+        // genérica `GET caixas/:id` do resource intercepta `caixas/meu` (tratando "meu" como
+        // um id) antes de esta rota ser sequer considerada, e o pedido rebenta com um 404
+        // "Row not found" em vez de chamar `myCaixas`.
         router.get('caixas/meu', '#controllers/caixa_controller.myCaixas').as('domain_caixa.my')
+
+        router.resource("caixas", () => import('#controllers/caixa_controller')).apiOnly().except(["update"]).as('domain_caixas') //(v)
 
 
         // ---------------------- vendas start----------------------

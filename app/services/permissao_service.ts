@@ -1,5 +1,6 @@
 import permissaoRepository from '#repositories/permissao_repository'
 import { CreatepermissaoDTO, UpdatepermissaoDTO } from '#dtos/permissao_dto'
+import { DeletedValue } from '../helpers/Types.js'
 
 export default class permissaoService {
   repo = new permissaoRepository()

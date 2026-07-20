@@ -1,5 +1,6 @@
 import cobrancaRepository from '#repositories/cobranca_repository'
 import { CreatecobrancaDTO, UpdatecobrancaDTO } from '#dtos/cobranca_dto'
+import { DeletedValue } from '../helpers/Types.js'
 
 export default class cobrancaService {
   repo = new cobrancaRepository()

@@ -1,5 +1,6 @@
 import pessoaRepository from '#repositories/pessoa_repository'
 import { CreatepessoaDTO, UpdatepessoaDTO } from '#dtos/pessoa_dto'
+import { DeletedValue } from '../helpers/Types.js'
 
 export default class pessoaService {
   repo = new pessoaRepository()

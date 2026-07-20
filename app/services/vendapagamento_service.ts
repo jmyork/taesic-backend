@@ -1,5 +1,6 @@
 import vendapagamentoRepository from '#repositories/vendapagamento_repository'
 import {CreatevendapagamentoDTO,UpdatevendapagamentoDTO} from '#dtos/vendapagamento_dto'
+import { DeletedValue } from '../helpers/Types.js'
 
 export default class vendapagamentoService{
 

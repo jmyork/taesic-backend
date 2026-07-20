@@ -78,6 +78,30 @@ test.group('estoque_repository.create()', (group) => {
     assert.equal(Number((await Lote.findOrFail(lote.id)).quantidade_em_estoque), 17)
   })
 
+  /**
+   * `estoque.produto_id` existe na tabela e é um filtro exposto em `EstoqueQueryValidator`,
+   * mas `create()` nunca o preenchia — todas as linhas ficavam com `produto_id: null`, e
+   * `GET estoque?produto_id=...` devolvia sempre vazio, silenciosamente. Só descoberto ao
+   * testar os filtros via HTTP real.
+   */
+  test('create() preenche produto_id a partir do lote', async ({ assert }) => {
+    const { empresa, pos } = await createTenant()
+    const produto = await createProduto(empresa)
+    const lote = await createLote(produto, { quantidade_em_estoque: 5 })
+
+    const repo = new EstoqueRepository()
+    const est = await repo.create({
+      pos_id: pos.id,
+      motivo: 'compra',
+      tipo_movimentacao: 'entrada',
+      quantidade: 10,
+      lote_produto_id: lote.id,
+      company_alias: empresa.company_alias,
+    } as any)
+
+    assert.equal(est.produto_id, produto.id)
+  })
+
   // Nota: dentro de testUtils.db().withGlobalTransaction() todas as queries do teste
   // partilham uma única ligação/transação (cada create() vira um savepoint nessa mesma
   // ligação), por isso este teste não exercita bloqueio real entre ligações concorrentes —

@@ -11,7 +11,7 @@ export const createcobrancaValidator = vine.compile(
         const exists = await db.from('subscricao').where('id', value).first()
         return exists !== undefined
       }),
-    valor: vine.number().decimal(30),
+    valor: vine.number().decimal([0, 12]),
     moeda: vine.string().trim().escape(),
     status: vine.string().trim().escape(),
     data_emissao: vine.date({ formats: ['iso8601'] }),
@@ -31,7 +31,7 @@ export const updatecobrancaValidator = vine.compile(
         return exists !== undefined
       })
       .optional(),
-    valor: vine.number().decimal(30).optional(),
+    valor: vine.number().decimal([0, 12]).optional(),
     moeda: vine.string().trim().escape().optional(),
     status: vine.string().trim().escape().optional(),
     data_emissao: vine.date({ formats: ['iso8601'] }).optional(),

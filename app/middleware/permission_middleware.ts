@@ -14,9 +14,7 @@ export default class PermissionMiddleware {
     }
 
     const routeName = ctx.route?.name
-    console.log(routeName)
 
-    //console.log(routeName)
     if (!routeName) {
       return ctx.response.forbidden({
         message: 'Route without permission mapping',

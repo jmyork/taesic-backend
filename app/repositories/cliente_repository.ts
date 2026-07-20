@@ -1,39 +1,21 @@
-import { DateTime } from 'luxon'
 import cliente from '#models/cliente'
 import Empresa from '#models/empresa'
 import { CreateclienteDTO, UpdateclienteDTO } from '#dtos/cliente_dto'
-import { DeletedValue } from '../helpers/Types.js'
+import BaseRepository from './base_repository.js'
 
-export default class clienteRepository {
-  baseQuery() {
-    return cliente.query()
+export default class clienteRepository extends BaseRepository<
+  InstanceType<typeof cliente>,
+  CreateclienteDTO & { company_alias?: string },
+  UpdateclienteDTO
+> {
+  constructor() {
+    super(cliente, 'cliente')
   }
 
-  paginate(page = 1, limit = 20, deleted: DeletedValue = null, company_alias?: string) {
-    let query = this.baseQuery()
-    if (deleted === 'deleted') {
-      query = query.whereNotNull('cliente.deleted_at')
-    } else if (deleted === 'all') {
-      query = query
-    } else {
-      query = query.whereNull('cliente.deleted_at')
-    }
-    if (company_alias) {
-      query = query
-        .join('empresa', 'empresa.id', 'cliente.empresa_id')
-        .where('empresa.company_alias', company_alias)
-    }
-    return query.select('cliente.*').paginate(page, limit)
-  }
-
-  findOrFail(id: string, company_alias?: string) {
-    let query = this.baseQuery().where('cliente.id', id)
-    if (company_alias) {
-      query = query
-        .join('empresa', 'empresa.id', 'cliente.empresa_id')
-        .where('empresa.company_alias', company_alias)
-    }
-    return query.select('cliente.*').firstOrFail()
+  protected scopeToTenant(query: any, companyAlias: string) {
+    return query
+      .join('empresa', 'empresa.id', 'cliente.empresa_id')
+      .where('empresa.company_alias', companyAlias)
   }
 
   async create(data: CreateclienteDTO & { company_alias?: string }) {
@@ -43,19 +25,5 @@ export default class clienteRepository {
       return cliente.create({ ...clienteData, empresa_id: empresa.id })
     }
     return cliente.create(clienteData)
-  }
-
-  async update(id: string, data: UpdateclienteDTO, company_alias?: string) {
-    const r = await this.findOrFail(id, company_alias)
-    r.merge(data)
-    await r.save()
-    return r
-  }
-
-  async softDelete(id: string, company_alias?: string) {
-    const r = await this.findOrFail(id, company_alias)
-    if (r.deletedAt) r.deletedAt = null
-    else r.deletedAt = DateTime.now()
-    await r.save()
   }
 }

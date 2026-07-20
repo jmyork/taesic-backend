@@ -1,5 +1,6 @@
 import user_papelRepository from '#repositories/user_papel_repository'
 import { Createuser_papelDTO, Updateuser_papelDTO } from '#dtos/user_papel_dto'
+import { DeletedValue } from '../helpers/Types.js'
 
 export default class user_papelService {
   repo = new user_papelRepository()

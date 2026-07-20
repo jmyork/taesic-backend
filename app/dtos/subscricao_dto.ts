@@ -1,7 +1,7 @@
 export interface CreatesubscricaoDTO {
-  cancelada_em: Date?
-  renova: boolean?
-  data_fim: Date?
+  cancelada_em?: Date
+  renova?: boolean
+  data_fim?: Date
   data_inicio: Date
   status: string
   plano_id: string

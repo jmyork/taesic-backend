@@ -40,7 +40,6 @@ export const ReembolsoTotalValidator = vine.compile(
         .join('empresa', 'empresa.id', 'pos.empresa_id')
         .where('empresa.company_alias', field.data.params.company_alias ?? '')
         .where('vendas.id', value)
-        .select(['venda_itens.*'])
         .first()
       return !!exists
     }),
@@ -50,7 +49,7 @@ export const ReembolsoTotalValidator = vine.compile(
 
 export const ShowProdutosReembolsoValidator = vine.compile(
   vine.object({
-    id: vine.string().uuid(),
+    venda_id: vine.string().uuid(),
   })
 )
 export const ProdutosReembolsoQueryValidator = vine.compile(

@@ -1,5 +1,6 @@
 import vine from '@vinejs/vine'
 import { validateEstoqueDisponivel } from '../helpers/ValidatorCustomRule.js'
+import { commonQueryFields } from './common_query_fields.js'
 
 export const createestoqueValidator = vine.compile(
   vine.object({
@@ -54,14 +55,10 @@ export const createestoqueValidator = vine.compile(
 )
 export const EstoqueQueryValidator = vine.compile(
   vine.object({
-    // Filtros de status
-    deleted: vine.enum(['deleted', 'all']).optional(),
-
-    // Audit dates (ranges)
-    createdDtStart: vine.date({ formats: ['iso8601'] }).optional(),
-    createdDtEnd: vine.date({ formats: ['iso8601'] }).optional(),
-    updatedDtStart: vine.date({ formats: ['iso8601'] }).optional(),
-    updatedDtEnd: vine.date({ formats: ['iso8601'] }).optional(),
+    ...commonQueryFields,
+    // este recurso limita o `limit` a 100 (paginação potencialmente grande) — sobrescreve
+    // o campo partilhado, que por si só não impõe máximo.
+    limit: vine.number().positive().withoutDecimals().max(100).optional(),
 
     // Filtros exatos
     pos_id: vine.string().trim().escape().uuid().optional(),
@@ -70,7 +67,6 @@ export const EstoqueQueryValidator = vine.compile(
     motivo: vine.string().trim().escape().optional(),
     tipo_movimentacao: vine
       .enum([
-        ,
         'entrada', // Entrada genérica
         'saida', // Saída genérica
         'ajuste_positivo', // Aumenta estoque (correção)
@@ -93,13 +89,5 @@ export const EstoqueQueryValidator = vine.compile(
     // Quantidade (ranges)
     quantidade_start: vine.number().min(0).optional(),
     quantidade_end: vine.number().min(0).optional(),
-
-    // Empresa
-    empresa_id: vine.string().trim().escape().uuid().optional(),
-    company_alias: vine.string().trim().escape().optional(),
-
-    // Paginação
-    page: vine.number().positive().optional(),
-    limit: vine.number().positive().withoutDecimals().max(100).optional(),
   })
 )

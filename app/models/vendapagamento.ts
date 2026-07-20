@@ -1,5 +1,5 @@
-import MetodoPagamento from './MetodoPagamento.js'
-import Vendas from './Vendas.js'
+import MetodoPagamento from './metodopagamento.js'
+import Vendas from './faturacao/vendas.js'
 import { DateTime } from 'luxon'
 import { BaseModel, column, beforeCreate, belongsTo } from '@adonisjs/lucid/orm'
 import { randomUUID } from 'node:crypto'

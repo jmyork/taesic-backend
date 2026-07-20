@@ -5,6 +5,11 @@ import loteRepository from './lote_repository.js'
 import Lote from '#models/faturacao/lote'
 import db from '@adonisjs/lucid/services/db'
 import type { TransactionClientContract } from '@adonisjs/lucid/types/database'
+import env from '#start/env'
+import emitter from '@adonisjs/core/services/emitter'
+import EstoqueCritico from '#events/estoque_critico'
+import EstoqueInsuficienteException from '#exceptions/estoque_insuficiente_exception'
+import TipoMovimentacaoInvalidoException from '#exceptions/tipo_movimentacao_invalido_exception'
 
 export default class estoqueRepository {
   baseQuery() {
@@ -120,9 +125,10 @@ export default class estoqueRepository {
     if (!movimentacoesEntrada.includes(tipo_movimentacao) && !movimentacoesSaida.includes(tipo_movimentacao)) {
       // tipos genéricos como "ajuste"/"transferencia" (sem direção) nunca atualizavam o saldo
       // do lote de forma silenciosa — falhar alto em vez de gravar um movimento sem efeito.
-      throw new Error(
-        `Tipo de movimentação inválido: "${tipo_movimentacao}". Use um dos valores com direção explícita (${[...movimentacoesEntrada, ...movimentacoesSaida].join(', ')}).`
-      )
+      throw new TipoMovimentacaoInvalidoException(tipo_movimentacao, [
+        ...movimentacoesEntrada,
+        ...movimentacoesSaida,
+      ])
     }
 
     // Verificação prévia (fora da transação) apenas para devolver um erro amigável cedo no
@@ -133,9 +139,7 @@ export default class estoqueRepository {
     if (movimentacoesSaida.includes(tipo_movimentacao)) {
       const disponivel = lotePreCheck.quantidade_em_estoque || 0
       if (disponivel < estoqueData.quantidade!) {
-        throw new Error(
-          `Estoque insuficiente. Disponível: ${disponivel}, Solicitado: ${estoqueData.quantidade}`
-        )
+        throw new EstoqueInsuficienteException(disponivel, estoqueData.quantidade!)
       }
     }
 
@@ -150,14 +154,13 @@ export default class estoqueRepository {
       const quantidadeAtual = lote.quantidade_em_estoque || 0
 
       if (movimentacoesSaida.includes(tipo_movimentacao) && quantidadeAtual < estoqueData.quantidade!) {
-        throw new Error(
-          `Estoque insuficiente. Disponível: ${quantidadeAtual}, Solicitado: ${estoqueData.quantidade}`
-        )
+        throw new EstoqueInsuficienteException(quantidadeAtual, estoqueData.quantidade!)
       }
 
       const est = await estoque.create(
         {
           ...estoqueData,
+          produto_id: lote.produto_id,
           tipo_movimentacao,
           motivo,
         },
@@ -173,15 +176,45 @@ export default class estoqueRepository {
       lote.useTransaction(client)
       await lote.save()
 
-      return est
+      return { est, quantidadeRestante: lote.quantidade_em_estoque }
     }
 
     // Quando o chamador já tem uma transação aberta (ex.: fecho de venda, reembolso), a
     // movimentação de stock participa nela — se algo falhar a meio, tudo é revertido junto.
     // Caso contrário, gere a sua própria transação como antes.
-    if (trx) {
-      return runInTransaction(trx)
+    const resultado = trx ? await runInTransaction(trx) : await db.transaction(runInTransaction)
+
+    // Só depois da transação confirmar — nunca atrasa nem arrisca a movimentação em si.
+    if (movimentacoesSaida.includes(tipo_movimentacao)) {
+      await this.avisarSeEstoqueCritico(estoqueData.lote_produto_id, resultado.quantidadeRestante, company_alias)
     }
-    return db.transaction(runInTransaction)
+
+    return resultado.est
+  }
+
+  /** Emite `EstoqueCritico` quando uma saída deixa o lote com quantidade <= limiar
+   * configurado (env `ESTOQUE_LIMIAR_CRITICO`, por omissão 5). Nunca deixa um erro aqui
+   * (na notificação) transformar uma movimentação de stock já confirmada em falha. */
+  private async avisarSeEstoqueCritico(loteId: string, quantidadeRestante: number, companyAlias?: string) {
+    try {
+      const limiar = Number(env.get('ESTOQUE_LIMIAR_CRITICO', '5'))
+      if (quantidadeRestante > limiar) return
+
+      const lote = await Lote.query().where('lote_produto.id', loteId).preload('produto').first()
+      if (!lote) return
+
+      await emitter.emit(
+        EstoqueCritico,
+        new EstoqueCritico(
+          loteId,
+          lote.produto?.nome ?? 'desconhecido',
+          companyAlias ?? '',
+          quantidadeRestante,
+          limiar
+        )
+      )
+    } catch (error) {
+      console.error('Falha ao avaliar/emitir alerta de estoque crítico:', error)
+    }
   }
 }

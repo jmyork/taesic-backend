@@ -1,4 +1,4 @@
-import Subscricao from './Subscricao.js'
+import Subscricao from './subscricao.js'
 import { DateTime } from 'luxon'
 import { BaseModel, column, beforeCreate, belongsTo } from '@adonisjs/lucid/orm'
 import { randomUUID } from 'node:crypto'

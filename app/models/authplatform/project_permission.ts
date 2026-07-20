@@ -29,7 +29,9 @@ export default class project_permission extends BaseModel {
 
   @column()
   declare project_id: string
-  @belongsTo(() => project)
+  @belongsTo(() => project, {
+    foreignKey: 'project_id',
+  })
   declare project: BelongsTo<typeof project>
   @column()
   declare name: string

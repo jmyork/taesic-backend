@@ -1,7 +1,6 @@
 import app from '@adonisjs/core/services/app'
 import { HttpContext, ExceptionHandler } from '@adonisjs/core/http'
-// import type { StatusPageRange, StatusPageRenderer } from '@adonisjs/core/types/http'
-import CaixaAlreadyClosedException from './caixa_already_closed_exception.js'
+import { Exception } from '@adonisjs/core/exceptions'
 
 export default class HttpExceptionHandler extends ExceptionHandler {
   /**
@@ -17,41 +16,39 @@ export default class HttpExceptionHandler extends ExceptionHandler {
    */
   protected renderStatusPages = app.inProduction
 
-  /**
-   * Status pages is a collection of error code range and a callback
-   * to return the HTML contents to send as a response.
-   */
-  // protected statusPages: Record<StatusPageRange, StatusPageRenderer> = {
-  //   '404': (error, { inertia }) => inertia.render('errors/not_found', { error }),
-  //   '500..599': (error, { inertia }) => inertia.render('errors/server_error', { error }),
-  // }
-
-  /**
-   * The method is used for handling errors and returning
-   * response to the client
-   */
-
-  private errorResponse(ctx: HttpContext, status: number, message: string, code?: string) {
+  private envelope(ctx: HttpContext, status: number, message: string, extra?: Record<string, any>) {
     return ctx.response.status(status).json({
-      success: false,
+      data: null,
       message,
-      code,
+      status,
+      ...extra,
     })
   }
+
+  /**
+   * Regra única para todas as exceções da aplicação, em vez de cada controller repetir
+   * `if (error.code === 'X') {...}` a mão em cada acção (era o padrão em todos os
+   * controllers gerados). `app/exceptions/*` — as ~19 exceções de domínio (CaixaAlreadyOpen,
+   * CupomInvalido, UserNotInCompany, etc.) — e o `E_ROW_NOT_FOUND` do Lucid partilham a
+   * mesma base `Exception` do `@adonisjs/core` (`static status`/`code`/`message`), por isso
+   * um único `instanceof Exception` cobre todas sem listar cada uma. Um controller só
+   * precisa de continuar a apanhar um erro explicitamente se quiser fazer algo diferente
+   * do envelope de erro padrão (ex.: reverter algo antes de responder).
+   */
   async handle(error: any, ctx: HttpContext) {
+    // Validação (VineJS) — tem uma forma própria (`messages`), não é uma `Exception`.
+    if (error.messages) {
+      return this.envelope(ctx, 400, 'Dados inválidos', { errors: error.messages })
+    }
+
+    if (error instanceof Exception) {
+      return this.envelope(ctx, error.status ?? 500, error.message, error.code ? { code: error.code } : undefined)
+    }
+
     if (error.status === 404) {
-      return ctx.response.status(404).json({
-        message: 'Rota não encontrada',
-        path: ctx.request.url(),
-      })
+      return this.envelope(ctx, 404, 'Rota não encontrada', { path: ctx.request.url() })
     }
 
-    if (error instanceof CaixaAlreadyClosedException) {
-      return this.errorResponse(ctx, error.status, error.message, error.code)
-    }
-
-    // if(error instanceof errors.E_INVALID_CREDENTIALS)
-    // if(error instanceof errorValidation.E_VALIDATION_ERROR)
     return super.handle(error, ctx)
   }
 

@@ -1,5 +1,6 @@
 import projectRepository from '#repositories/project_repository'
 import { CreateprojectDTO, UpdateprojectDTO } from '#dtos/project_dto'
+import { DeletedValue } from '../helpers/Types.js'
 
 export default class projectService {
   repo = new projectRepository()

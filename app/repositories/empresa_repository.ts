@@ -50,7 +50,43 @@ export default class empresaRepository {
   async getUnverifiedCompanies(trx?: TransactionClientContract) {
     return this.baseQuery(trx).where('verified', false)
   }
- 
+
+  /**
+   * Remove definitivamente empresas por activar cujo(s) token(s) de activação
+   * (`verification_token_hash`, purpose `account_activation`) já expiraram e que não têm
+   * nenhum token ainda válido. Usado por `node ace empresa:clean:expired`.
+   *
+   * Substitui a versão antiga do comando, que filtrava `empresa.verifiyed` (nome errado
+   * da coluna) e `empresa.verification_token_expires_at` (coluna que nunca existiu em
+   * `empresa` — a expiração vive em `verification_token_hash`); por isso o comando falhava
+   * sempre com erro de SQL e nunca chegou a apagar nada.
+   */
+  async deleteExpiredUnverified(now: DateTime = DateTime.now()) {
+    const expiradas = await db
+      .from('empresa')
+      .where('empresa.verified', false)
+      .whereExists((query) => {
+        query
+          .from('verification_token_hash')
+          .whereRaw('verification_token_hash.empresa_id = empresa.id')
+          .where('verification_token_hash.purpose', 'account_activation')
+          .where('verification_token_hash.verified', false)
+          .where('verification_token_hash.verification_token_expires_at', '<', now.toSQL())
+      })
+      .whereNotExists((query) => {
+        query
+          .from('verification_token_hash')
+          .whereRaw('verification_token_hash.empresa_id = empresa.id')
+          .where('verification_token_hash.purpose', 'account_activation')
+          .where('verification_token_hash.verification_token_expires_at', '>=', now.toSQL())
+      })
+      .select('empresa.id')
+
+    const ids = expiradas.map((e: { id: string }) => e.id)
+    if (ids.length === 0) return 0
+    return db.from('empresa').whereIn('id', ids).delete()
+  }
+
   async CreateEmpresaUserDetalhes(data: CreateEmpresaUserDTO) {
     const trx = await db.transaction()
 
@@ -108,7 +144,7 @@ export default class empresaRepository {
       if (data.dados_foto) {
         const file = data.dados_foto
         const fileName = `${randomUUID()}.${file.extname}`
-        const imagePath = `images/products/${fileName}`
+        const imagePath = `images/profile/${fileName}`
         await file.moveToDisk(imagePath)
 
         imageUrl =

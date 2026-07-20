@@ -7,7 +7,7 @@ export const createclienteValidator = vine.compile(
     // campos eram obrigatórios só por faltar `.optional()` (ao contrário do
     // updateclienteValidator, que já os tem todos opcionais), o que na prática exigia duas
     // fotos e um cliente_pai_id apontando para um cliente já existente só para criar o primeiro.
-    tipo: vine.string().trim().escape(),
+    tipo: vine.enum(['Pessoa Física', 'Pessoa Jurídica']),
     nome: vine.string().trim().escape(),
     nome_fantasia: vine.string().trim().escape().optional(),
     razao_social: vine.string().trim().escape().optional(),
@@ -28,8 +28,8 @@ export const createclienteValidator = vine.compile(
     pais: vine.string().trim().escape().optional(),
     codigo_postal: vine.string().trim().escape().optional(),
     ativo: vine.boolean().optional(),
-    limite_credito: vine.number().decimal(30).optional(),
-    saldo: vine.number().decimal(30).optional(),
+    limite_credito: vine.number().decimal([0, 12]).optional(),
+    saldo: vine.number().decimal([0, 12]).optional(),
     observacao: vine.string().trim().escape().optional(),
     logo: vine
       .file({ size: '25mb', extnames: ['jpg', 'jpeg', 'png', 'gif'] })
@@ -60,7 +60,7 @@ export const createclienteValidator = vine.compile(
 )
 export const updateclienteValidator = vine.compile(
   vine.object({
-    tipo: vine.string().trim().escape().optional(),
+    tipo: vine.enum(['Pessoa Física', 'Pessoa Jurídica']).optional(),
     nome: vine.string().trim().escape().optional(),
     nome_fantasia: vine.string().trim().escape().optional(),
     razao_social: vine.string().trim().escape().optional(),
@@ -81,8 +81,8 @@ export const updateclienteValidator = vine.compile(
     pais: vine.string().trim().escape().optional(),
     codigo_postal: vine.string().trim().escape().optional(),
     ativo: vine.boolean().optional(),
-    limite_credito: vine.number().decimal(30).optional(),
-    saldo: vine.number().decimal(30).optional(),
+    limite_credito: vine.number().decimal([0, 12]).optional(),
+    saldo: vine.number().decimal([0, 12]).optional(),
     observacao: vine.string().trim().escape().optional(),
     logo: vine
       .file({ size: '25mb', extnames: ['jpg', 'jpeg', 'png', 'gif'] })

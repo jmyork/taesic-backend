@@ -1,5 +1,5 @@
 import { DateTime } from 'luxon'
-import produto_fornecedores from '#models/produto_fornecedores'
+import produto_fornecedores from '#models/faturacao/produto_fornecedores'
 import {
   Createproduto_fornecedoresDTO,
   ProdutoFornecedorQueryDTO,

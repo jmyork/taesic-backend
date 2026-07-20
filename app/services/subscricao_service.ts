@@ -1,5 +1,6 @@
 import subscricaoRepository from '#repositories/subscricao_repository'
 import { CreatesubscricaoDTO, UpdatesubscricaoDTO } from '#dtos/subscricao_dto'
+import { DeletedValue } from '../helpers/Types.js'
 
 export default class subscricaoService {
   repo = new subscricaoRepository()

@@ -1,5 +1,6 @@
 import vine from '@vinejs/vine'
 import { userHasRole } from '../helpers/Utils.js'
+import { commonQueryFields } from './common_query_fields.js'
 
 export const OpenCaixaValidator = vine.compile(
   vine.object({
@@ -77,47 +78,33 @@ export const updatecaixaValidator = vine.compile(
       .optional(),
     data_abertura: vine.date({ formats: ['iso8601'] }).optional(),
     data_fecho: vine.date({ formats: ['iso8601'] }).optional(),
-    valor_inicial: vine.number().decimal(30).optional(),
-    total_vendas: vine.number().decimal(30).optional(),
+    valor_inicial: vine.number().decimal([0, 12]).optional(),
+    total_vendas: vine.number().decimal([0, 12]).optional(),
     status: vine.string().trim().escape().optional(),
     observacoes: vine.string().trim().escape().optional(),
-    total_caixa: vine.number().decimal(30).optional(),
+    total_caixa: vine.number().decimal([0, 12]).optional(),
   })
 )
 
 export const CaixaQueryValidator = vine.compile(
   vine.object({
-    // Datas genéricas
-    createdDtStart: vine
-      .date({
-        formats: ['iso8601'],
-      })
-      .optional(),
-    createdDtEnd: vine.date({ formats: ['iso8601'] }).optional(),
-    updatedDtStart: vine.date({ formats: ['iso8601'] }).optional(),
-    updatedDtEnd: vine.date({ formats: ['iso8601'] }).optional(),
-    deleted: vine.enum(['deleted', 'all']).optional(),
+    ...commonQueryFields,
 
-    // Campos pesquisáveis
+    // Campos pesquisáveis específicos de caixa
     observacoes: vine.string().trim().escape().optional(),
     status: vine.string().trim().escape().optional(),
-    total_vendas: vine.number().decimal(30).optional(),
-    valor_inicial: vine.number().decimal(30).optional(),
+    total_vendas: vine.number().decimal([0, 12]).optional(),
+    valor_inicial: vine.number().decimal([0, 12]).optional(),
     data_fecho: vine.date({ formats: ['iso8601'] }).optional(),
     user_id: vine.string().trim().escape().optional(),
-    total_caixa: vine.number().decimal(30).optional(),
+    total_caixa: vine.number().decimal([0, 12]).optional(),
 
-    total_vendas_start: vine.number().decimal(30).optional(),
-    total_vendas_end: vine.number().decimal(30).optional(),
-    valor_inicial_start: vine.number().decimal(30).optional(),
-    valor_inicial_end: vine.number().decimal(30).optional(),
+    total_vendas_start: vine.number().decimal([0, 12]).optional(),
+    total_vendas_end: vine.number().decimal([0, 12]).optional(),
+    valor_inicial_start: vine.number().decimal([0, 12]).optional(),
+    valor_inicial_end: vine.number().decimal([0, 12]).optional(),
 
-    total_caixa_start: vine.number().decimal(30).optional(),
-    total_caixa_end: vine.number().decimal(30).optional(),
-
-    empresa_id: vine.string().trim().uuid().optional(),
-    company_alias: vine.string().trim().escape().optional(),
-    page: vine.number().positive().optional(),
-    limit: vine.number().positive().optional(),
+    total_caixa_start: vine.number().decimal([0, 12]).optional(),
+    total_caixa_end: vine.number().decimal([0, 12]).optional(),
   })
 )

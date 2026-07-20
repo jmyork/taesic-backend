@@ -37,6 +37,8 @@ export default class pos extends BaseModel {
   declare email: string
   @column()
   declare empresa_id: string
-  @belongsTo(() => empresa)
+  @belongsTo(() => empresa, {
+    foreignKey: 'empresa_id',
+  })
   declare empresa: BelongsTo<typeof empresa>
 }
