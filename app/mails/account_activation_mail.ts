@@ -30,6 +30,7 @@ export default class AccountActivationMail extends BaseMail {
           companyName: this.companyName,
         },
         verifyUrl: this.verifyUrl,
+        year: new Date().getFullYear(),
       })
   }
 }

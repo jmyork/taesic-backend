@@ -906,6 +906,32 @@ export class PromotorOtpSchema extends BaseModel {
   declare usedAt: DateTime | null
 }
 
+export class RateLimitSchema extends BaseModel {
+  static $columns = ['expire', 'key', 'points'] as const
+  $columns = RateLimitSchema.$columns
+  @column()
+  declare expire: bigint | number | null
+  @column({ isPrimary: true })
+  declare key: string
+  @column()
+  declare points: number
+}
+
+export class SecurityLogSchema extends BaseModel {
+  static $columns = ['createdAt', 'details', 'event', 'id', 'ip'] as const
+  $columns = SecurityLogSchema.$columns
+  @column.dateTime({ autoCreate: true })
+  declare createdAt: DateTime
+  @column()
+  declare details: string | null
+  @column()
+  declare event: string
+  @column({ isPrimary: true })
+  declare id: string
+  @column()
+  declare ip: string | null
+}
+
 export class SubscricaoSchema extends BaseModel {
   static $columns = ['canceladaEm', 'clienteId', 'createdAt', 'dataFim', 'dataInicio', 'deletedAt', 'id', 'planoId', 'renova', 'status', 'updatedAt'] as const
   $columns = SubscricaoSchema.$columns

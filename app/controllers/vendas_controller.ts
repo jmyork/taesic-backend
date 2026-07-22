@@ -142,60 +142,20 @@ export default class vendassController {
     }
 
     // ==================== CLOSE ====================
+    // Erros de validação (VineJS), excepções de domínio (VendaSemPagamentoException,
+    // VendaPagamentoIncompletoException, CupomInvalidoException, etc.) e "registo não
+    // encontrado" (Lucid) já são traduzidos de forma consistente pelo handler global
+    // (app/exceptions/handler.ts) — repetir `if (error.code === 'X') {...}` aqui só
+    // escondia qualquer excepção nova (não listada) atrás de um 500 genérico.
     async close({ request, response, params }: HttpContext) {
-        try {
-            const payload = await CloseVendaValidator.validate({ ...params, ...request.body() })
-            await this.service.close({ ...payload, company_alias: params.company_alias })
+        const payload = await CloseVendaValidator.validate({ ...params, ...request.body() })
+        await this.service.close({ ...payload, company_alias: params.company_alias })
 
-            return response.ok({
-                data: null,
-                message: 'Venda fechada com sucesso',
-                status: 200,
-            })
-        } catch (error: any) {
-
-            if (error.code === 'E_VALIDATION_ERROR') {
-                return response.badRequest({
-                    data: null,
-                    message: 'Dados inválidos',
-                    errors: error.messages,
-                    status: 400,
-                })
-            }
-
-            if (error.code === 'VENDA_ALREADY_OPEN_OR_CLOSE') {
-                return response.badRequest({
-                    data: null,
-                    message: error.message,
-                    status: error.status,
-                })
-            }
-
-            if (error.code === 'CUPOM_INVALIDO') {
-                return response.unprocessableEntity({
-                    data: null,
-                    message: error.message,
-                    code: 'CUPOM_INVALIDO',
-                    status: 422,
-                })
-            }
-
-            // Captura erro de registro não encontrado (Lucid)
-            if (error.code === 'E_ROW_NOT_FOUND') {
-                return response.notFound({
-                    data: null,
-                    message: 'Registro não encontrado',
-                    status: 404,
-                })
-            }
-
-            console.error('Erro ao fechar venda:', error)
-            return response.internalServerError({
-                data: null,
-                message: 'Erro interno do servidor',
-                status: 500,
-            })
-        }
+        return response.ok({
+            data: null,
+            message: 'Venda fechada com sucesso',
+            status: 200,
+        })
     }
 
     // ==================== CANCEL ====================

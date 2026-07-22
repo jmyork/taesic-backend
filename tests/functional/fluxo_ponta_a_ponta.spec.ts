@@ -7,7 +7,7 @@ import FacturaRepository from '#repositories/factura_repository'
 import ProdutosReembolsoRepository from '#repositories/produtos_reembolso_repository'
 import Lote from '#models/faturacao/lote'
 import Vendas from '#models/faturacao/vendas'
-import { createTenant, createProduto, createLote } from '../helpers/fixtures.js'
+import { createTenant, createProduto, createLote, pagarVenda } from '../helpers/fixtures.js'
 
 /**
  * Percorre o fluxo de negócio completo do PDV ponta-a-ponta, através dos repositórios
@@ -58,6 +58,7 @@ test.group('fluxo ponta-a-ponta: caixa -> venda -> factura -> reembolso', (group
     } as any)
 
     // 4. Fechar a venda — decrementa stock (50 -> 48) e fixa o total (2 x 1000)
+    await pagarVenda(venda, 2000)
     const vendaFechada = await vendasRepo.close({ id: venda.id, user_id: user.id, company_alias: companyAlias })
     assert.equal(vendaFechada.status, 'fechada')
     assert.equal(Number(vendaFechada.total), 2000)

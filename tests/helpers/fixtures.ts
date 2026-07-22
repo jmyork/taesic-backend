@@ -7,6 +7,8 @@ import Lote from '#models/faturacao/lote'
 import Caixa from '#models/caixa'
 import Vendas from '#models/faturacao/vendas'
 import VendaItens from '#models/faturacao/venda_itens'
+import MetodoPagamento from '#models/metodopagamento'
+import Vendapagamento from '#models/vendapagamento'
 import { giveRoleToUser } from '../../app/helpers/Utils.js'
 
 /**
@@ -133,4 +135,28 @@ export async function createTenant(roles: string[] = ['Admin']) {
   const user = await createUser(empresa, roles)
   const pos = await createPos(empresa)
   return { empresa, user, pos }
+}
+
+/** `metodopagamento` é um recurso de plataforma (sem tenant) — um único "Numerário" chega para os testes. */
+export async function createMetodoPagamento(overrides: Partial<{ nome: string }> = {}) {
+  const suffix = randomUUID().slice(0, 8)
+  return MetodoPagamento.create({
+    nome: overrides.nome ?? `Numerário ${suffix}`,
+    descricao: 'Método de pagamento de teste',
+  })
+}
+
+/**
+ * `vendas_repository.close()` exige pelo menos um pagamento registado cujo total bata
+ * certo com o total da venda (já com desconto de cupão aplicado, se houver) — sem isto,
+ * `close()` rejeita com `VendaSemPagamentoException`/`VendaPagamentoIncompletoException`.
+ * Cria um `MetodoPagamento` novo e um único pagamento no valor exacto indicado.
+ */
+export async function pagarVenda(venda: Vendas, valor: number) {
+  const metodo = await createMetodoPagamento()
+  return Vendapagamento.create({
+    venda_id: venda.id,
+    metodo_pagamento_id: metodo.id,
+    valor,
+  })
 }

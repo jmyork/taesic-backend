@@ -181,9 +181,23 @@ middleware genérico já cobre):
   `export const policies = {...}` (alias `#policies/...`) — não um `import` estático no
   topo do ficheiro, isso não é usado em lado nenhum e parte o build ESM (faltava-lhe a
   extensão `.js`).
-- Rotas simples via `router.resource('<plural>', () => import(...)).apiOnly()`; rotas
-  por-empresa (que exigem `company_alias` + auth) vivem em `companydomainroutes.ts`,
-  nunca em `routes.ts` directamente (ver comentário em `start/routes.ts`).
+- **Rotas em notação de tuplo, não string mágica**: `router.get(path, [controllers.X,
+  'method'])` em vez de `router.get(path, '#controllers/x_controller.method')`. O barrel
+  `app/generated/controllers.ts` (alias `#generated/controllers`) importa TODOS os
+  controllers (import eager, não lazy — trade-off aceite: perde-se lazy-loading por
+  ganhar verificação de nome de método em tempo de compilação) e reexporta cada um sob
+  uma chave `PascalCase` limpa (`controllers.Vendas`, `controllers.ProdutoMedia`, etc.),
+  contornando nomes de classe gerados de forma inconsistente (`caixasController`,
+  `produtossController`). Ao adicionar um controller novo: (1) acrescentar o import +
+  entrada no barrel, (2) usar `controllers.NomeNovo` na rota. Este barrel é **mantido à
+  mão**, não gerado automaticamente — mantê-lo sincronizado com `app/controllers/` é
+  responsabilidade de quem adiciona/remove um controller. Rotas por-empresa (que exigem
+  `company_alias` + auth) vivem em `companydomainroutes.ts`, nunca em `routes.ts`
+  directamente (ver comentário em `start/routes.ts`). Esta convenção substituiu a
+  notação de string anterior nesta sessão (ver secção 7.4) — migrar tudo de uma vez
+  apanhou 2 rotas duplicadas em `routes.ts` que nunca tinham funcionado (método
+  inexistente/nome errado), só detectável porque a notação de tuplo verifica o nome do
+  método em tempo de compilação.
 - **Erros/excepções**: nunca envolver uma acção de controller em try/catch só para
   reclassificar `error.messages`/`error.code`/`E_ROW_NOT_FOUND` — `app/exceptions/
   handler.ts` já trata isso de forma genérica e consistente (`{data,message,status,code}`)
@@ -393,7 +407,58 @@ middleware genérico já cobre):
   `fluxo_ponta_a_ponta.spec.ts` da sessão 2). Confirma que `cancel()` nunca toca no
   stock, ao contrário de `close()`.
 
-### 7.4 Backlog conhecido, não tocado (propositadamente — ver secção 2)
+### 7.4 Quarta sessão — rotas em tuplo, regra de pagamento no fecho, log em BD
+
+- **Rotas migradas de string mágica (`'#controllers/x.method'`) para notação de tuplo**
+  (`[controllers.X, 'method']`), via o novo barrel `app/generated/controllers.ts`
+  (`#generated/controllers`, ver secção 6) — cobre `routes.ts`,
+  `public_platform_routes.ts` e `companydomainroutes.ts` por inteiro. A verificação de
+  nome de método em tempo de compilação apanhou **2 rotas em `routes.ts` que nunca
+  tinham funcionado**: `auth/reset-password/:token` → `password_recovery` (método nunca
+  existiu em `AuthController`) e `auth/forgot-password` → `forgotPassword` (devia ser
+  `forgot_password`, e faltava-lhe `:company_alias` no path) — removidas como
+  duplicados quebrados; a funcionalidade real e testada já existia nas versões
+  tenant-scoped em `companydomainroutes.ts`.
+- **Nova regra de negócio: uma venda não pode fechar sem pagamento indicado.**
+  `vendas_repository.close()` agora exige pelo menos um `vendapagamento` associado
+  (`VendaSemPagamentoException`, `VENDA_SEM_PAGAMENTO`, 400) e que a soma dos valores
+  pagos bata certo com `total - desconto` (tolerância de 0.01, por arredondamento) —
+  senão `VendaPagamentoIncompletoException` (`VENDA_PAGAMENTO_INCOMPLETO`, 400,
+  mensagem distingue falta vs. excesso). Isto obrigou a acrescentar
+  `pagarVenda(venda, valor)` a **todos** os testes existentes que chamavam `close()`
+  sem nunca ter registado pagamento (6 ficheiros: `vendas_close_transaction`,
+  `fluxo_ponta_a_ponta`, `vendas_cupom`, `metricas_repository`,
+  `produtos_reembolso_repository`, `promotor_painel`) — o valor esperado tem de ser
+  calculado por teste (subtotal dos itens menos desconto do cupão, se houver).
+  - **Bug real encontrado ao verificar isto via API**: `vendas_controller.close()`
+    ainda usava o padrão antigo de try/catch com uma lista fixa de `error.code`
+    reconhecidos — qualquer excepção fora dessa lista (incluindo as duas novas) caía
+    no fallback 500 genérico, escondendo o 400 correcto. Removido o try/catch (só
+    nesta acção), deixando o handler global tratar tudo — mesmo padrão já aplicado a
+    `caixa_controller.ts`/`produtos_controller.ts`/etc. Prova de que este padrão
+    antigo (ainda presente em ~53 controllers) esconde silenciosamente qualquer
+    excepção de domínio nova até alguém testar o endpoint a sério.
+- **Log de segurança agora também persiste em BD**, não só pino/stdout:
+  `logSecurityEvent()` (`app/helpers/security_logger.ts`) continua a logar via pino
+  (inalterado) e adicionalmente grava em `security_logs` (migration
+  `1784662475773_create_security_logs_table`, model `SecurityLog`) — `event`, `ip`,
+  `details` (JSON serializado num `text`/`longtext`, não coluna `json` nativa — mais
+  portátil, sem depender de auto-parse do driver), `created_at`. A escrita em BD é
+  fire-and-forget (`.catch()` só loga o erro via pino, nunca propaga) — nunca deve
+  atrasar nem partir o pedido que originou o evento. Como isto passou a tocar BD, o
+  teste `tests/unit/security_logger.spec.ts` foi movido para
+  `tests/functional/security_logger.spec.ts` (com `withGlobalTransaction()`) e ganhou
+  2 testes novos a confirmar a persistência. **Lembrete**: uma tabela nova destas
+  precisa de migration corrida nos DOIS bancos (`auth_system` e `auth_system_test`,
+  ver `.env`/`.env.test`) — só correr `node ace migration:run` sem mais trata do dev;
+  o de teste ficou a dar "table doesn't exist" até se correr também com
+  `NODE_ENV=test`.
+- Suite completa verificada em 383 testes (era 381 antes desta sessão: +3 desta
+  feature, -1 do unit test movido para functional = +2 líquido), zero erros novos de
+  `tsc --noEmit` (os 37 já existentes, listados na secção 7.5, não têm relação com
+  nada tocado aqui).
+
+### 7.5 Backlog conhecido, não tocado (propositadamente — ver secção 2)
 
 - `pessoa_dto.ts` declara `tipo: string`, mas o model `pessoa.ts` tipa `tipo` como
   `'Cliente' | 'Funcionario' | 'Promotor'` — mismatch de tipos pré-existente (não

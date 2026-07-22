@@ -1,4 +1,6 @@
 import router from '@adonisjs/core/services/router'
+import { otpRequestThrottle, otpConfirmThrottle } from '#start/limiter'
+import { controllers } from '#generated/controllers'
 
 /**
  * Registered from a SEPARATE file imported BEFORE `./companydomainroutes.js` in routes.ts.
@@ -15,11 +17,11 @@ import router from '@adonisjs/core/services/router'
  * before this fix, `GET /api/catalogo/produtos` 401'd exactly like `GET /api/qualquer-coisa/produtos`
  * (i.e. any two-segment path whose second segment matches a real tenant resource name).
  */
-router.post('api/promotores/registo', '#controllers/promotor_controller.registoPublico')
-router.post('api/promotores/otp/pedir', '#controllers/promotor_auth_controller.pedirOtp')
-router.post('api/promotores/otp/confirmar', '#controllers/promotor_auth_controller.confirmarOtp')
-router.get('api/promotores/painel/resumo', '#controllers/promotor_painel_controller.resumo')
-router.get('api/promotores/painel/produtos', '#controllers/promotor_painel_controller.produtos')
+router.post('api/promotores/registo', [controllers.Promotor, 'registoPublico'])
+router.post('api/promotores/otp/pedir', [controllers.PromotorAuth, 'pedirOtp']).use(otpRequestThrottle)
+router.post('api/promotores/otp/confirmar', [controllers.PromotorAuth, 'confirmarOtp']).use(otpConfirmThrottle)
+router.get('api/promotores/painel/resumo', [controllers.PromotorPainel, 'resumo'])
+router.get('api/promotores/painel/produtos', [controllers.PromotorPainel, 'produtos'])
 
-router.get('api/catalogo/produtos', '#controllers/catalogo_publico_controller.produtos')
-router.get('api/p/:codigo_perfil', '#controllers/catalogo_publico_controller.perfil')
+router.get('api/catalogo/produtos', [controllers.CatalogoPublico, 'produtos'])
+router.get('api/p/:codigo_perfil', [controllers.CatalogoPublico, 'perfil'])

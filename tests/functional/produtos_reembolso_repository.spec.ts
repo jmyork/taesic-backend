@@ -13,6 +13,7 @@ import {
   createCaixa,
   createVenda,
   createVendaItem,
+  pagarVenda,
 } from '../helpers/fixtures.js'
 
 test.group('produtos_reembolso_repository', (group) => {
@@ -32,6 +33,7 @@ test.group('produtos_reembolso_repository', (group) => {
     await createVendaItem(venda, loteB, { quantidade: 2, preco_unitario: 1500 })
 
     const vendasRepo = new VendasRepository()
+    await pagarVenda(venda, 6000)
     await vendasRepo.close({ id: venda.id, user_id: user.id, company_alias: empresa.company_alias })
 
     // fechar a venda debita o stock — confirmar o ponto de partida antes de reembolsar
@@ -74,6 +76,7 @@ test.group('produtos_reembolso_repository', (group) => {
     await createVendaItem(venda, loteB, { quantidade: 2, preco_unitario: 1500 }) // 3000
 
     const vendasRepo = new VendasRepository()
+    await pagarVenda(venda, 7000)
     await vendasRepo.close({ id: venda.id, user_id: user.id, company_alias: empresa.company_alias })
     assert.equal(Number((await Vendas.findOrFail(venda.id)).total), 7000)
 
@@ -117,6 +120,7 @@ test.group('produtos_reembolso_repository', (group) => {
     const itemA = await createVendaItem(venda, loteA, { quantidade: 2, preco_unitario: 1000 })
 
     const vendasRepo = new VendasRepository()
+    await pagarVenda(venda, 2000)
     await vendasRepo.close({ id: venda.id, user_id: user.id, company_alias: empresa.company_alias })
 
     const reembolsoRepo = new ProdutosReembolsoRepository()
@@ -150,6 +154,7 @@ test.group('produtos_reembolso_repository', (group) => {
     const itemA = await createVendaItem(venda, loteA, { quantidade: 5, preco_unitario: 1000 })
 
     const vendasRepo = new VendasRepository()
+    await pagarVenda(venda, 5000)
     await vendasRepo.close({ id: venda.id, user_id: user.id, company_alias: empresa.company_alias })
 
     const reembolsoRepo = new ProdutosReembolsoRepository()

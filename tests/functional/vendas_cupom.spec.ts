@@ -11,6 +11,7 @@ import {
   createCaixa,
   createVenda,
   createVendaItem,
+  pagarVenda,
 } from '../helpers/fixtures.js'
 
 test.group('vendas_repository — aplicação de cupão ao fechar', (group) => {
@@ -34,6 +35,7 @@ test.group('vendas_repository — aplicação de cupão ao fechar', (group) => {
     const cupom = await cupomRepo.create({ promotor_id: promotor.id, desconto: 10, company_alias: empresa.company_alias })
 
     const vendasRepo = new VendasRepository()
+    await pagarVenda(venda, 1800)
     const fechada = await vendasRepo.close({
       id: venda.id,
       user_id: user.id,
@@ -56,6 +58,7 @@ test.group('vendas_repository — aplicação de cupão ao fechar', (group) => {
     await createVendaItem(venda, lote, { quantidade: 3, preco_unitario: 500 })
 
     const vendasRepo = new VendasRepository()
+    await pagarVenda(venda, 1500)
     const fechada = await vendasRepo.close({ id: venda.id, user_id: user.id, company_alias: empresa.company_alias })
 
     assert.isNull(fechada.cupom_id)
@@ -171,6 +174,7 @@ test.group('vendas_repository — aplicação de cupão ao fechar', (group) => {
     const cupom = await cupomRepo.create({ promotor_id: promotor.id, desconto: 100, company_alias: empresa.company_alias })
 
     const vendasRepo = new VendasRepository()
+    await pagarVenda(venda, 0)
     const fechada = await vendasRepo.close({
       id: venda.id,
       user_id: user.id,

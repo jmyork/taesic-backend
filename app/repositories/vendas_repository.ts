@@ -11,6 +11,9 @@ import caixaRepository from './caixa_repository.js'
 import posRepository from './pos_repository.js'
 import cupomRepository from './cupom_repository.js'
 import CupomInvalidoException from '#exceptions/cupom_invalido_exception'
+import vendapagamento from '#models/vendapagamento'
+import VendaSemPagamentoException from '#exceptions/venda_sem_pagamento_exception'
+import VendaPagamentoIncompletoException from '#exceptions/venda_pagamento_incompleto_exception'
 import db from '@adonisjs/lucid/services/db'
 import env from '#start/env'
 import emitter from '@adonisjs/core/services/emitter'
@@ -169,6 +172,28 @@ export default class vendasRepository {
       }
       cupomId = cupomEncontrado.id
       valorDesconto = Math.min(Number((total * (cupomEncontrado.desconto / 100)).toFixed(2)), total)
+    }
+
+    // Uma venda nunca pode fechar sem se saber como foi paga: pelo menos um método de
+    // pagamento com o respectivo valor, e a soma tem de bater certo com o total (menos
+    // desconto) — nem a menos (pagamento incompleto) nem a mais (valor a mais não
+    // reclamado por nenhum método).
+    const totalAPagar = Number((total - valorDesconto).toFixed(2))
+    const pagamentos = await vendapagamento
+      .query()
+      .where('venda_id', venda.id)
+      .whereNull('deleted_at')
+
+    if (pagamentos.length === 0) {
+      throw new VendaSemPagamentoException()
+    }
+
+    const totalPago = Number(
+      pagamentos.reduce((soma, pagamento) => soma + Number(pagamento.valor), 0).toFixed(2)
+    )
+
+    if (Math.abs(totalPago - totalAPagar) > 0.01) {
+      throw new VendaPagamentoIncompletoException(totalAPagar, totalPago)
     }
 
     // Todas as movimentações de stock e a atualização da venda correm na mesma transação:

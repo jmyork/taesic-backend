@@ -34,6 +34,7 @@ export default class PasswordDefinitionMail extends BaseMail {
         },
         temporaryPassword: this.temporaryPassword,
         resetUrl: this.resetUrl,
+        year: new Date().getFullYear(),
       })
   }
 }

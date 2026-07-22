@@ -30,6 +30,7 @@ export default class ForgotPasswordMail extends BaseMail {
           username: this.username,
         },
         resetUrl: this.resetUrl,
+        year: new Date().getFullYear(),
       })
   }
 }

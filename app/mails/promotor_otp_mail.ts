@@ -17,6 +17,10 @@ export default class PromotorOtpMail extends BaseMail {
       .to(this.destinatario)
       .from(FROM)
       .subject('O seu código de acesso — Alaragest')
-      .htmlView('emails/promotor_otp', { nome: this.nome, codigo: this.codigo })
+      .htmlView('emails/promotor_otp', {
+        nome: this.nome,
+        codigo: this.codigo,
+        year: new Date().getFullYear(),
+      })
   }
 }
