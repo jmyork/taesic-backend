@@ -3,10 +3,11 @@ import caixa from '#models/caixa'
 import { CaixaQueryDTO, CloseCaixaDTO, OpenCaixaDTO, ReOpenCaixaDTO } from '#dtos/caixa_dto'
 import CaixaAlreadyOpenException from '#exceptions/caixa_already_open_exception'
 import UnAuthorizedCaixaException from '#exceptions/un_authorized_caixa_exception'
-import { userHasRole } from '../helpers/Utils.js'
+import { userBelongsToPOS, userHasRole } from '../helpers/Utils.js'
 import { applyCommonFilters, FieldSpec } from '../helpers/query_filters.js'
 import CaixaAlreadyClosedException from '#exceptions/caixa_already_closed_exception'
 import CaixaIsAlreadyOpenException from '#exceptions/caixa_is_already_open_exception'
+import UserIsNotAPosWorkerException from '#exceptions/user_is_not_a_pos_worker_exception'
 
 const CAIXA_FILTER_FIELDS: FieldSpec[] = [
   { kind: 'like', column: 'caixa.observacoes', key: 'observacoes' },
@@ -64,25 +65,48 @@ export default class caixaRepository {
   }
 
   async open(data: OpenCaixaDTO) {
+    // verificar se o user é funcionário do POS indicado.
+    const userIsPosWorker= await userBelongsToPOS(data.user_id,data.pos_id)
+    if(!userIsPosWorker && !(await userHasRole(data.user_id!, ['Admin']))){
+      throw new UserIsNotAPosWorkerException()
+    }
+    // verificar se tem um caixa aberto deste user
     const caixaAberto = await this.baseQuery()
       .join('user', 'caixa.user_id', 'user.id')
       .join('empresa', 'empresa.id', 'user.empresa_id')
-      .where('caixa.status', 'aberto')
+      .where('caixa.status', 'Aberto')
       .where('empresa.company_alias', data.company_alias)
       .where('caixa.user_id', data.user_id)
+      .select('caixa.*')
       .first()
 
     if (caixaAberto) {
       throw new CaixaAlreadyOpenException()
     }
+
+    // checar o dia caixa aberto no dia de hoje
+    const hoje = new Date()
+    hoje.setHours(0, 0, 0, 0)
+    const caixaHoje = await this.baseQuery()
+      .join('user', 'caixa.user_id', 'user.id')
+      .join('empresa', 'empresa.id', 'user.empresa_id')
+      .where('caixa.status', 'Fechado')
+      .where('empresa.company_alias', data.company_alias)
+      .where('caixa.user_id', data.user_id)
+      .where('caixa.created_at', '>=', hoje)
+      .select('caixa.*')
+      .first()
+
+    if (caixaHoje?.status.toLocaleLowerCase() === 'fechado') {
+      return this.reopen(caixaHoje.id,{...data})
+    }
+
+    //validar
     const { company_alias, ...caixaData } = data
-    // `status` tem um default a nível de BD ('Aberto', capitalizado — inconsistente com o
-    // 'aberto' minúsculo usado em todo o resto do código), mas o MySQL não devolve defaults
-    // calculados pela BD depois de um INSERT — o objecto em memória ficava com
-    // `status: undefined` até à próxima leitura. Definir aqui explicitamente evita depender
-    // do default da BD (e da colação case-insensitive que escondia a inconsistência).
-    return await caixa.create({ ...caixaData, status: 'aberto' })
+
+    return await caixa.create({ ...caixaData, status: 'Aberto' })
   }
+
   async close(id: string, data: CloseCaixaDTO) {
     const caixa = await this.findOrFail(id, data.company_alias)
 
@@ -97,13 +121,14 @@ export default class caixaRepository {
       throw new CaixaAlreadyClosedException()
     }
     const { company_alias, ...caixaData } = data
-    caixa.merge({ ...caixaData, status: 'fechado', data_fecho: DateTime.now() })
+    caixa.merge({ ...caixaData, status: 'Fechado', data_fecho: DateTime.now() })
     await caixa.save()
     return caixa
   }
+
   async reopen(id: string, data: ReOpenCaixaDTO) {
     const caixa = await this.findOrFail(id, data.company_alias)
-
+    
     if (
       caixa.user_id !== data.user_id &&
       !(await userHasRole(data.user_id!, ['Admin', 'Gerente', 'Supervisor']))
@@ -115,7 +140,7 @@ export default class caixaRepository {
     }
 
     const { company_alias, ...caixaData } = data
-    caixa.merge({ ...caixaData, status: 'aberto', data_fecho: DateTime.now() })
+    caixa.merge({ ...caixaData, status: 'Aberto', data_fecho: null })
     await caixa.save()
     return caixa
   }
@@ -140,6 +165,7 @@ export default class caixaRepository {
         .where('caixa.status', 'aberto')
         .where('empresa.company_alias', data.company_alias!)
         .where('caixa.user_id', caixa.user_id)
+        .select('caixa.*')
         .first()
 
       if (caixaAberto) {
@@ -150,7 +176,7 @@ export default class caixaRepository {
 
     caixa.merge({
       ...caixaData,
-      status: isOpen ? 'fechado' : 'aberto',
+      status: isOpen ? 'Fechado' : 'Aberto',
       data_fecho: isOpen ? DateTime.now() : null,
     })
 

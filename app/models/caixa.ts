@@ -49,7 +49,7 @@ export default class caixa extends BaseModel {
   @column()
   declare total_vendas: number
   @column()
-  declare status: string
+  declare status: 'Aberto' | 'Fechado'
   @column()
   declare observacoes: string
   @column()

@@ -5,7 +5,7 @@ import type { BelongsTo } from '@adonisjs/lucid/types/relations'
 import User from './user.js'
 import pos from './faturacao/pos.js'
 
-export default class userpos extends BaseModel {
+export default class UserPos extends BaseModel {
   static table = 'userpos'
 
   @column({ isPrimary: true })
@@ -21,7 +21,7 @@ export default class userpos extends BaseModel {
   declare deletedAt: DateTime | null
 
   @beforeCreate()
-  static uuid(model: userpos) {
+  static uuid(model: UserPos) {
     model.id ??= randomUUID()
   }
 

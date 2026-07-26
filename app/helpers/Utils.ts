@@ -3,6 +3,7 @@ import papel_permissao from '#models/auth/papel_permissao'
 import Permissao from '#models/auth/permissao'
 import UserPapel from '#models/auth/user_papel'
 import User from '#models/user'
+import UserPos from '#models/userpos'
 import VerificationTokenHash from '#models/verification_token_hash'
 import db from '@adonisjs/lucid/services/db'
 import type { TransactionClientContract } from '@adonisjs/lucid/types/database'
@@ -262,4 +263,15 @@ export const generateResetToken = async (userId: string) => {
     verification_token_expires_at: DateTime.now().plus({ hours: 24 }),
   })
   return token
+}
+
+
+
+export const userBelongsToPOS = async (userId: string, posId: string) => {
+  return await UserPos.query().where('user_id', userId).where('pos_id', posId).first()
+}
+
+// checar se o user  pertence a um pos e tem papel de gerente e/ou supervisor do pos
+export const userIsGerenteOrSuperVisorOfPOS = async (userId: string, posId: string) => {
+  return await userBelongsToPOS(userId, posId) && userHasRole(userId, ["Gerente", "Supervisor"])
 }

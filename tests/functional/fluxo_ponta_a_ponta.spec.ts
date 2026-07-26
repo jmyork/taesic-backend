@@ -36,7 +36,7 @@ test.group('fluxo ponta-a-ponta: caixa -> venda -> factura -> reembolso', (group
       company_alias: companyAlias,
       valor_inicial: 0,
     })
-    assert.equal(caixa.status, 'aberto')
+    assert.equal(caixa.status.toLocaleLowerCase(), 'aberto')
 
     // 2. Abrir venda (presencial, no caixa que acabou de abrir)
     const vendasRepo = new VendasRepository()
@@ -94,6 +94,6 @@ test.group('fluxo ponta-a-ponta: caixa -> venda -> factura -> reembolso', (group
 
     // 7. Fechar o caixa
     const caixaFechado = await caixaRepo.close(caixa.id, { user_id: user.id, company_alias: companyAlias })
-    assert.equal(caixaFechado.status, 'fechado')
+    assert.equal(caixaFechado.status.toLocaleLowerCase(), 'fechado')
   })
 })

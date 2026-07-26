@@ -455,10 +455,56 @@ middleware genérico já cobre):
   `NODE_ENV=test`.
 - Suite completa verificada em 383 testes (era 381 antes desta sessão: +3 desta
   feature, -1 do unit test movido para functional = +2 líquido), zero erros novos de
-  `tsc --noEmit` (os 37 já existentes, listados na secção 7.5, não têm relação com
+  `tsc --noEmit` (os 37 já existentes, listados na secção 7.6, não têm relação com
   nada tocado aqui).
 
-### 7.5 Backlog conhecido, não tocado (propositadamente — ver secção 2)
+### 7.5 Quinta sessão — fluxo de abertura/fecho/reabertura de caixa
+
+- **`caixa_repository.open()` voltou a devolver `status: undefined`** — a explicitação de
+  `status: 'Aberto'` no `caixa.create(...)` descrita na sessão 2 (ver secção 7.2)
+  tinha-se perdido (provavelmente num refactor posterior, ex.: o dedup de
+  `applyFilters()`). Confirmado com um teste ad-hoc: `open()` devolvia um objecto com
+  `status: undefined` mesmo com a BD a gravar correctamente `'Aberto'` (o MySQL não
+  devolve defaults calculados pelo INSERT). Reposto `status: 'Aberto'` explícito.
+  `tests/functional/fluxo_ponta_a_ponta.spec.ts` já falhava por causa disto — não era
+  um teste novo, era regressão não apanhada porque a asserção lia `caixa.status`
+  logo a seguir ao `open()`, sem round-trip à BD.
+- **A reabertura automática da caixa fechada no próprio dia nunca disparava.**
+  `open()` faz duas queries com `join('user', ...).join('empresa', ...)` mas sem
+  `.select('caixa.*')` antes do `.first()` — como `empresa` também tem colunas
+  próprias `id`/`status`/`created_at`, o `SELECT *` implícito da query devolvia essas
+  colunas (não as de `caixa`) na hidratação do objecto resultante. A verificação
+  `caixaHoje?.status === 'Fechado'` comparava então o `status` **booleano** da
+  empresa com a string `'Fechado'` — sempre falso — pelo que o ramo de reabertura
+  nunca era alcançado e criava-se sempre uma caixa nova em vez de reabrir a de hoje.
+  Se o ramo alguma vez fosse alcançado, `caixaHoje.id` teria o mesmo problema (id da
+  empresa/user em vez do id da caixa). Corrigido com `.select('caixa.*')` nas duas
+  queries de `open()` (mesmo padrão já usado em `paginate()`/`findOrFail()`) — mesma
+  classe de bug já resolvida para `destroy()`, aplicada aqui por prevenção mesmo sem
+  sintoma observável (essa query só verifica truthiness, não lê campos).
+- **`reopen()` definia `data_fecho: DateTime.now()` ao reabrir** — invertido: uma
+  caixa reaberta (status volta a `'Aberto'`) deve ficar com `data_fecho: null`, tal
+  como `destroy()` já fazia correctamente na mesma situação. Alcançável a partir do
+  endpoint público `POST caixas` (via o ramo de reabertura automática acima).
+  Corrigido para `data_fecho: null`.
+- **Dois testes pré-existentes estavam a falhar** (`caixa_repository_authorization.spec.ts`,
+  asserções `assert.equal(closed.status, 'fechado')`) por comparar contra a string em
+  minúsculas, mas a coluna só aceita `'Aberto'`/`'Fechado'` capitalizado (enum da BD +
+  tipo do model) — `close()`/`reopen()` já escrevem sempre capitalizado, correctamente.
+  Alinhadas para `assert.equal(closed.status.toLocaleLowerCase(), 'fechado')`, seguindo
+  a mesma convenção que o próprio repositório já usa para leitura case-insensitive.
+- Note-se que `close()`/`reopen()` (os métodos do repositório) não têm rota própria —
+  `caixa_service.ts` tem-nos comentados; o único fluxo público de fecho/reabertura é
+  `destroy()` (`DELETE caixas/:id`, toggle conforme o estado actual), que **não tinha
+  nenhum teste** antes desta sessão. Adicionado `tests/functional/caixa_reabertura.spec.ts`
+  com 7 testes cobrindo `open()` (status preenchido, reabertura automática do mesmo
+  dia) e `destroy()` (fechar, reabrir, e bloqueio quando já existe outra caixa aberta).
+- Suite completa: 389 testes (era 383 antes desta sessão — os 6 casos acima), zero
+  erros novos de `tsc --noEmit` (38 pré-existentes, ver secção 7.6 — o `pessoa_dto`
+  mismatch mais um em `tests/helpers/fixtures.ts` sobre o mesmo `status` de `caixa`
+  que já lá estava, não introduzido aqui).
+
+### 7.6 Backlog conhecido, não tocado (propositadamente — ver secção 2)
 
 - `pessoa_dto.ts` declara `tipo: string`, mas o model `pessoa.ts` tipa `tipo` como
   `'Cliente' | 'Funcionario' | 'Promotor'` — mismatch de tipos pré-existente (não

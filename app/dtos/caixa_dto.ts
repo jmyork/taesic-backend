@@ -55,6 +55,8 @@ export interface OpenCaixaDTO {
 export interface ReOpenCaixaDTO {
   company_alias: string
   user_id: string
+  valor_inicial?: number
+  observacoes?: string
 }
 export interface CloseCaixaDTO {
   observacoes?: string

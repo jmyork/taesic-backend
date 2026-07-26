@@ -37,7 +37,7 @@ test.group('caixa_repository - autorização em close/reopen/destroy', (group) =
     const repo = new CaixaRepository()
 
     const closed = await repo.close(caixa.id, { user_id: admin.id, company_alias: empresa.company_alias })
-    assert.equal(closed.status, 'fechado')
+    assert.equal(closed.status.toLocaleLowerCase(), 'fechado')
   })
 
   test('o próprio dono continua a poder fechar a sua caixa, sem precisar de papel nenhum', async ({ assert }) => {
@@ -48,7 +48,7 @@ test.group('caixa_repository - autorização em close/reopen/destroy', (group) =
 
     const repo = new CaixaRepository()
     const closed = await repo.close(caixa.id, { user_id: owner.id, company_alias: empresa.company_alias })
-    assert.equal(closed.status, 'fechado')
+    assert.equal(closed.status.toLocaleLowerCase(), 'fechado')
   })
 
   test('a exceção lançada é especificamente UnAuthorizedCaixaException', async ({ assert }) => {

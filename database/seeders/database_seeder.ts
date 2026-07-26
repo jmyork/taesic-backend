@@ -81,7 +81,14 @@ export default class extends BaseSeeder {
         nome: 'AdminUserVisualizador',
         descricao: 'Visualizador de usuários do domínio',
       },
-
+      {
+        nome: 'Gerente',
+        descricao: 'Gerente do domínio/empresa',
+      },
+      {
+        nome: 'Supervisor',
+        descricao: 'Supervisor do domínio/empresa',
+      },
       // ===== PLATAFORMA (Global) =====
       {
         nome: 'Platform_Admin',
