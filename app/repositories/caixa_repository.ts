@@ -1,4 +1,5 @@
 import { DateTime } from 'luxon'
+import type { TransactionClientContract } from '@adonisjs/lucid/types/database'
 import caixa from '#models/caixa'
 import vendas from '#models/faturacao/vendas'
 import { CaixaQueryDTO, CloseCaixaDTO, OpenCaixaDTO, ReOpenCaixaDTO } from '#dtos/caixa_dto'
@@ -10,6 +11,10 @@ import CaixaAlreadyClosedException from '#exceptions/caixa_already_closed_except
 import CaixaIsAlreadyOpenException from '#exceptions/caixa_is_already_open_exception'
 import UserIsNotAPosWorkerException from '#exceptions/user_is_not_a_pos_worker_exception'
 import CaixaHasOpenVendaException from '#exceptions/caixa_has_open_venda_exception'
+
+/** Estados de venda cujo `total` já reflecte dinheiro efectivamente cobrado nesta caixa —
+ * 'aberta'/'cancelada' nunca têm `total` preenchido (só é calculado no fecho). */
+const STATUS_VENDA_CONTABILIZADA = ['fechada', 'reembolsada']
 
 const CAIXA_FILTER_FIELDS: FieldSpec[] = [
   { kind: 'like', column: 'caixa.observacoes', key: 'observacoes' },
@@ -36,6 +41,32 @@ export default class caixaRepository {
     if (vendaAberta) {
       throw new CaixaHasOpenVendaException()
     }
+  }
+
+  /**
+   * Recalcula `total_vendas`/`total_caixa` a partir das vendas actuais desta caixa — chamado
+   * sempre que uma venda é fechada, cancelada, ou sofre um reembolso (total ou parcial), para
+   * que os totais nunca fiquem desalinhados com o que realmente aconteceu às vendas. Soma
+   * `vendas.total`, que já reflecte qualquer reembolso parcial (recalculado em
+   * `produtos_reembolso_repository`) — não precisa de subtrair reembolsos à parte.
+   */
+  async recalcularTotais(caixaId: string, trx?: TransactionClientContract) {
+    const vendasDaCaixa = await vendas
+      .query(trx ? { client: trx } : undefined)
+      .where('caixa_id', caixaId)
+      .whereIn('status', STATUS_VENDA_CONTABILIZADA)
+      .select('vendas.*')
+
+    const totalVendas = vendasDaCaixa.reduce((soma, venda) => soma + Number(venda.total), 0)
+
+    const registoCaixaQuery = caixa.query(trx ? { client: trx } : undefined)
+    const registoCaixa = await registoCaixaQuery.where('caixa.id', caixaId).select('caixa.*').firstOrFail()
+
+    registoCaixa.total_vendas = totalVendas
+    registoCaixa.total_caixa = Number(registoCaixa.valor_inicial) + totalVendas
+    await registoCaixa.save()
+
+    return registoCaixa
   }
 
   paginate(page = 1, limit = 20, filter?: CaixaQueryDTO) {

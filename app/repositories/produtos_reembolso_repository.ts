@@ -121,6 +121,9 @@ export default class produtos_reembolsoRepository {
       venda.useTransaction(trx)
       await venda.save()
 
+      // total_vendas/total_caixa da caixa têm de deixar de contar este valor agora reembolsado.
+      await caixaRepo.recalcularTotais(caixa.id, trx)
+
       return criados
     })
 
@@ -224,6 +227,9 @@ export default class produtos_reembolsoRepository {
       }
       venda.useTransaction(trx)
       await venda.save()
+
+      // total_vendas/total_caixa da caixa têm de reflectir o novo total (reduzido) da venda.
+      await caixaRepo.recalcularTotais(caixa.id, trx)
 
       return reembolsoCriado
     }).then(async (reembolsoCriado) => {

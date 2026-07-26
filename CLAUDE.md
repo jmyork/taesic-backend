@@ -511,7 +511,24 @@ middleware genérico já cobre):
   `UserHasAnOpenVendaException` já existente em `vendas_repository.ts` porque é uma
   regra diferente (aquele impede abrir uma segunda venda; este impede fechar a caixa
   com a venda já aberta) e teria uma mensagem enganadora neste contexto.
-- Suite completa: 392 testes (era 383 antes desta sessão), zero erros novos de
+- **`caixa.total_vendas`/`total_caixa` nunca eram actualizados** — ficavam sempre no
+  default `0` do model, para sempre, independentemente de quantas vendas fossem
+  fechadas/reembolsadas/canceladas nessa caixa (confirmado por grep: só apareciam em
+  `dtos`/`model`/`validators`/filtros de `paginate()`, nunca escritos por nenhuma
+  lógica de negócio). Adicionado `caixaRepository.recalcularTotais(caixaId, trx?)` —
+  soma `vendas.total` (`whereIn('status', ['fechada', 'reembolsada'])`) da caixa e
+  grava `total_vendas` + `total_caixa = valor_inicial + total_vendas`. Chamado dentro
+  da mesma transação em 4 pontos: `vendas_repository.close()` (venda efectivada),
+  `vendas_repository.cancel()` (agora também transaccional — antes não usava
+  transação nenhuma; cancelar não altera o total porque uma venda `'aberta'` nunca
+  teve `total` preenchido, mas o recalculo corre à mesma para nunca assumir isso sem
+  verificar) e `produtos_reembolso_repository.reembolsar_total()`/
+  `reembolsar_parcial()` (o reembolso já recalculava `venda.total`; faltava propagar
+  para a caixa). Não subtrai reembolsos à parte — `vendas.total` já vem reduzido pelo
+  próprio reembolso, por isso somar só os estados `fechada`/`reembolsada` já dá o
+  valor correcto. Testado em `tests/functional/caixa_totais.spec.ts` (fecho simples,
+  duas vendas na mesma caixa, cancelamento, reembolso total, reembolso parcial).
+- Suite completa: 397 testes (era 383 antes desta sessão), zero erros novos de
   `tsc --noEmit` (38 pré-existentes, ver secção 7.6 — o `pessoa_dto` mismatch mais um
   em `tests/helpers/fixtures.ts` sobre o mesmo `status` de `caixa` que já lá estava,
   não introduzido aqui).

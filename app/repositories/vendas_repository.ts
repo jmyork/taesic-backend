@@ -217,12 +217,21 @@ export default class vendasRepository {
       venda.status = 'fechada'
       venda.useTransaction(trx)
       await venda.save()
+
+      // Uma venda efectivada entra na conta da caixa — total_vendas/total_caixa têm de
+      // reflectir isso de imediato, não só no fecho da caixa.
+      await caixaRepo.recalcularTotais(venda.caixa_id!, trx)
+
       return venda
     })
   }
 
   // Cancela uma venda ainda em aberto (nunca chegou a ser fechada). Ao contrário de close(),
-  // não há stock a reverter aqui: o stock só é decrementado no momento do fecho da venda.
+  // não há stock a reverter aqui: o stock só é decrementado no momento do fecho da venda — por
+  // isso uma venda cancelada nunca contribuiu para total_vendas/total_caixa da caixa (o seu
+  // `total` continua em 0). Ainda assim recalculamos a caixa dentro da mesma transação: mantém
+  // o estado sempre consistente com a fonte da verdade (as vendas), em vez de assumir que este
+  // caso nunca precisa de ajuste.
   async cancel(data: VendaCloseDTO) {
     const venda = await this.findOrFail(data)
 
@@ -230,8 +239,15 @@ export default class vendasRepository {
       throw new VendaIsAlreadyOpenOrCloseException()
     }
 
-    venda.status = 'cancelada'
-    await venda.save()
+    const caixaRepo = new caixaRepository()
+
+    await db.transaction(async (trx) => {
+      venda.status = 'cancelada'
+      venda.useTransaction(trx)
+      await venda.save()
+
+      await caixaRepo.recalcularTotais(venda.caixa_id!, trx)
+    })
 
     await this.avisarSeCancelamentoAltoValor(venda.id, data.company_alias)
 
