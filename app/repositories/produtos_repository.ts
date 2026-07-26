@@ -25,6 +25,7 @@ const PRODUTOS_FILTER_FIELDS: FieldSpec[] = [
   // is_service é booleana; "like" nunca combinava porque o MySQL guarda 0/1, não as
   // strings "true"/"false" — este filtro nunca funcionou antes de passar a "exact".
   { kind: 'exact', column: 'produtos.is_service', key: 'is_service' },
+  { kind: 'exact', column: 'produtos.disponivel', key: 'disponivel' },
 ]
 
 export default class produtosRepository {
@@ -72,6 +73,10 @@ export default class produtosRepository {
       const { formato_id, fornecedor_id, marca_id, fabricante_id, ...servicoData } = produtoData
       const produto = await produtos.create({
         ...servicoData,
+        // MySQL não devolve defaults calculados pelo INSERT — sem isto o objecto em
+        // memória ficava com `disponivel: undefined` até à próxima leitura (mesma classe
+        // de bug já vista em `caixa_repository.open()`, ver CLAUDE.md secção 7.5).
+        disponivel: servicoData.disponivel ?? true,
         empresa_id: empresa.id,
       })
 

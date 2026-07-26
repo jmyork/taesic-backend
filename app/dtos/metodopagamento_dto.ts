@@ -4,6 +4,8 @@ import { CreatedDtEnd, CreatedDtStart, UpdatedDtEnd, UpdatedDtStart } from "./au
 export interface CreatemetodopagamentoDTO {
   descricao: string
   nome: string
+  empresa_id?: string
+  company_alias?: string
 }
 export interface UpdatemetodopagamentoDTO {
   descricao?: string
@@ -19,4 +21,10 @@ export interface MetodoPagamentoQueryDTO {
 
   nome?: string
   descricao?: string
+
+  empresa_id?: string | null
+  company_alias?: string | null
+
+  page?: number
+  limit?: number
 }

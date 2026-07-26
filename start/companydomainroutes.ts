@@ -139,8 +139,17 @@ router
             .as('domain_pessoa')
             .apiOnly()
 
-        router.resource('vendapagamento', controllers.VendaPagamento)
+        router.resource('venda-pagamento', controllers.VendaPagamento)
             .as('domain_vendapagamento')
+            .apiOnly()
+
+        // Métodos de pagamento — isolados por empresa (deixaram de ser um recurso de
+        // plataforma partilhado por todos os tenants). Só Admin cria/edita/apaga
+        // (domain_metodo_pagamento.store/update/destroy); index/show também é dado a
+        // Gerente/Supervisor/Vendedor/Estoquista, que precisam de listar os métodos
+        // disponíveis para registar um vendapagamento.
+        router.resource('metodo-pagamento', controllers.MetodoPagamento)
+            .as('domain_metodo_pagamento')
             .apiOnly()
 
         router.resource('subscricao', controllers.Subscricao)

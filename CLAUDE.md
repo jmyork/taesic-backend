@@ -163,6 +163,12 @@ middleware genérico já cobre):
   models, confirmar o caminho E A CASING reais primeiro — o Windows tolera casing
   errado (case-insensitive), o Linux/CI não. `tests/unit/modules_load.spec.ts` apanha
   isto se errar (ver secção 7).
+  **`resource:sync` (secção 3) não sabe disto** — só verifica `fs.existsSync('app/models/
+  <nome>.ts')`; para um recurso em `faturacao/` (produtos, vendas, etc.) isso é sempre
+  falso, e o comando tentaria recriá-lo do zero via `make:enterprise:resource`. Para
+  adicionar um campo a um recurso em `faturacao/`, editar manualmente model/DTO/
+  validator/migration seguindo o padrão de um campo já existente — não usar
+  `resource:sync` (apanhado ao adicionar `produtos.disponivel`, ver secção 7.5).
 - **`@belongsTo`/`@hasMany` sem `foreignKey` explícito quase sempre está errado neste
   projecto.** Os models declaram as colunas em snake_case tal como estão na BD
   (`produto_id`, não `produtoId`) — a inferência automática do Lucid (que assume
@@ -528,12 +534,122 @@ middleware genérico já cobre):
   próprio reembolso, por isso somar só os estados `fechada`/`reembolsada` já dá o
   valor correcto. Testado em `tests/functional/caixa_totais.spec.ts` (fecho simples,
   duas vendas na mesma caixa, cancelamento, reembolso total, reembolso parcial).
-- Suite completa: 397 testes (era 383 antes desta sessão), zero erros novos de
+- **Era literalmente impossível fechar (vender) qualquer serviço.** `produtos.is_service`
+  já existia, mas um serviço não tem stock — o seu `lote` é sempre criado com
+  `quantidade_em_estoque: 0` (`produtos_repository.create()`). O critério de "stock
+  suficiente" (`EstoqueDisponivelCheck`, validator de `venda_itens`, E
+  `estoque_repository.create()`, chamado por `vendas_repository.close()` para cada
+  item da venda) tratava sempre `saida` da mesma forma, comparando a quantidade
+  pedida contra o disponível — que para um serviço é sempre `0`. Resultado: adicionar
+  ou fechar uma venda com qualquer serviço falhava sempre com "stock insuficiente".
+  Corrigido com uma nova flag `produtos.disponivel` (boolean, default `true`, migration
+  `1784662475774_alter_produtos_add_disponivel.ts`, model/DTO/validators actualizados
+  à mão — **não usar `resource:sync` aqui**: o comando só procura o model em
+  `app/models/<nome>.ts`, não em `app/models/faturacao/`, e tentaria recriar `produtos`
+  do zero via `make:enterprise:resource`, ver secção 6). Para serviços, `estoque_
+  repository.create()`/`EstoqueDisponivelCheck` deixam de olhar para
+  `quantidade_em_estoque` e passam a checar `produtos.disponivel` (nova
+  `ServicoIndisponivelException`, `SERVICO_INDISPONIVEL`, 400); o movimento de stock
+  continua a ser registado (auditoria), mas `quantidade_em_estoque` do lote do serviço
+  deixa de ser tocado (evita ficar negativo a cada venda). Cuidado ao comparar esta
+  flag: o driver mysql2 devolve boolean como `0`/`1`, não `true`/`false` — uma
+  comparação estrita (`=== false`) nunca combina com `0` (apanhado por teste a falhar;
+  corrigido para falsy, mesmo padrão que `if (produto.is_service)` já usa nos
+  repositórios). Produtos normais (`is_service: false`) continuam exactamente como
+  antes (critério de stock inalterado).
+- **`venda_itens_repository.create()` confiava inteiramente no validator HTTP
+  (`createvenda_itensValidator`) para garantir que `venda_id` pertence ao tenant certo
+  e está `'aberta'`** — chamado directamente (outro repositório, um teste), essa
+  protecção não existia. Adicionado no início de `create()`: resolve a venda via
+  `vendasRepository.findOrFail({id, company_alias})` (escopado por tenant através de
+  caixa→pos→empresa) e rejeita com `VendaIsAlreadyOpenOrCloseException` se não estiver
+  `'aberta'` — cobre ao mesmo tempo "pertence a outra empresa" (404, `E_ROW_NOT_FOUND`,
+  pela própria falha do `firstOrFail`) e "a caixa/POS já não está aberto" (dado o
+  invariante desta sessão de que uma caixa não fecha com venda aberta, ver acima —
+  `venda.status === 'aberta'` já implica caixa aberta).
+- Testado em `tests/functional/servico_disponibilidade.spec.ts`: fecho de venda com
+  serviço disponível (sucesso, stock do lote fica em 0), serviço indisponível
+  (`ServicoIndisponivelException`, venda não fecha), produto normal sem stock
+  continua a bloquear (comportamento inalterado), e os 3 casos de
+  `venda_itens_repository.create()` (venda de outro tenant, venda já fechada, venda
+  aberta do próprio tenant).
+- Suite completa: 403 testes (era 383 antes desta sessão), zero erros novos de
   `tsc --noEmit` (38 pré-existentes, ver secção 7.6 — o `pessoa_dto` mismatch mais um
   em `tests/helpers/fixtures.ts` sobre o mesmo `status` de `caixa` que já lá estava,
   não introduzido aqui).
 
-### 7.6 Backlog conhecido, não tocado (propositadamente — ver secção 2)
+### 7.6 Sexta sessão — metodopagamento tenant, RBAC de Gerente/Supervisor
+
+- **`metodopagamento` passou de recurso de plataforma (partilhado por todas as
+  empresas, sem `empresa_id`) a recurso de domínio, isolado por tenant**, a pedido
+  explícito do utilizador. Migration `1784662475775_alter_metodopagamento_add_empresa.ts`
+  acrescenta `empresa_id` (nullable — dados antigos sem tenant não são migrados, não
+  havia nenhum a sério além de fixtures de teste) e troca o `unique('nome')` global por
+  `unique(['empresa_id', 'nome'])` (duas empresas podem ambas ter um método
+  "Numerário"). Model, DTOs, validators (`commonQueryFields`), repositório (deixou de
+  duplicar filtros de data/deleted à mão — passou a usar `applyCommonFilters`, mesmo
+  padrão de `produtos_repository.ts`) e controller/service actualizados para escopar
+  por `company_alias`, seguindo o molde de `produtos_controller.ts`/`cliente_controller.ts`.
+  A rota moveu-se de `start/routes.ts` (`api/metodo-pagamento`, `adminOnly()`) para
+  `start/companydomainroutes.ts` (`api/:company_alias/metodo-pagamento`,
+  `permission_middleware`, nome `domain_metodo_pagamento.*`).
+- **`MetodoPagamentoPolicy` (Bouncer) removida** — recursos de domínio autorizam via
+  `permission_middleware` + permissões seedadas, não por policy; a policy verificava
+  `IsUserAnAdmin` (papel de tenant `"Admin"` literal), enquanto a rota antiga
+  verificava `adminOnly()` (qualquer papel `Platform_%`) — dois catálogos de papel
+  diferentes aplicados ao mesmo endpoint, exigindo os dois em simultâneo para lá
+  chegar. Não existe mais esse problema: só `domain_metodo_pagamento.*` decide agora.
+- **Gerente e Supervisor tinham 0 permissões seedadas** — existiam na tabela `papel`
+  mas `database_seeder.ts` nunca chamava `givePermissionsToRole` para eles; um
+  utilizador só com um destes papéis era bloqueado com 403 em *todas* as rotas de
+  domínio por `permission_middleware`, apesar de `caixa_repository.close/reopen/
+  destroy` já os tratar como papéis de gestão (podem agir sobre a caixa doutro
+  utilizador). Passaram a receber o mesmo conjunto do `Vendedor` (produtos leitura,
+  caixas, vendas, venda_itens, reembolsos, facturas) mais leitura de métricas de
+  desempenho da loja (`domain_metricas.resumo/postos/vendedores/por_dia` — não as de
+  promotores/marketing) — decisão confirmada com o utilizador antes de implementar,
+  dado tratar-se de fronteiras de acesso reais, não uma escolha só técnica. `Vendedor`
+  e `Estoquista` ganharam `domain_metodo_pagamento.index/show`; só `Admin` tem
+  `store/update/destroy`.
+- **Bug sistémico encontrado (e só parcialmente corrigido) ao escrever o teste de
+  isolamento de `vendapagamento`**: `vendapagamento_validator.ts` verificava
+  `venda_id`/`metodo_pagamento_id` só por existência global (sem tenant) — ao corrigir
+  para escopar por `company_alias`, os testes de rejeição não rejeitavam nada. Causa:
+  `db.from(...).first()` devolve `null` (não `undefined`) quando não há linha, e o
+  padrão `return exists !== undefined` usado neste `.exists()` (e em dezenas de outros
+  validators gerados) é **sempre verdadeiro** mesmo sem correspondência — `null !==
+  undefined` é `true` em JS. Corrigido aqui e na origem, no gerador
+  (`commands/resource_sync.ts`, método `vineRule` para campos de relação), para
+  `!!exists`. **Não corrigido em mais lado nenhum** — este padrão (`exists !==
+  undefined`) está espalhado por muitos validators gerados anteriormente (`produtos_
+  validator.ts`, `venda_itens_validator.ts` nos validators não usados, etc.); o
+  impacto real varia por caso: onde há FK a nível de BD, uma referência inexistente
+  ainda rebenta com erro de SQL (500 em vez de 400 amigável); onde o `.exists()` filtra
+  por algo além do id (ex.: tenant, `is_service`), esse filtro extra fica **sem
+  qualquer efeito**, sempre a aceitar. Vale a pena uma auditoria dedicada
+  (`grep -rn "!== undefined" app/validators`) numa sessão futura.
+- **`produto_media_validator.ts`: `media` exigia sempre um array** (`vine.array(vine.file(...))
+  .minLength(1)`) — rejeitava um upload de uma única imagem quando o cliente não envolve o
+  campo em `[]`, apesar de `produto_media_repository.create()` já normalizar com
+  `Array.isArray(data.media) ? data.media : [data.media]` (a validação bloqueava antes de lá
+  chegar). Corrigido com `vine.union([vine.union.if(Array.isArray, vine.array(vine.file(...))
+  .minLength(1).maxLength(10)), vine.union.else(vine.file(...))])`. **Não usar
+  `vine.unionOfTypes` para isto** — falha em runtime ("schema type is not compatible")
+  porque `VineMultipartFile` não é suportado por esse discriminador; só o `vine.union` com
+  `if`/`else` explícito funciona para ficheiros. `Createproduto_mediaDTO.media` passou a
+  `MultipartFile | MultipartFile[]`. Testado em `tests/functional/produto_media_validator.spec.ts`,
+  usando `MultipartFileFactory` de `@adonisjs/bodyparser/factories` (fábrica oficial para
+  criar `MultipartFile` falsos em testes, sem precisar de um pedido HTTP real) — primeiro
+  precedente neste projecto de testar um validator com campos `vine.file()` directamente.
+- Suite completa: 417 testes (era 383 no início desta sessão), zero erros novos de
+  `tsc --noEmit` (36 — 2 a menos que os 38 anteriores: removidos `randomUUID`/
+  `UniqueValidator` não usados de `vendapagamento_validator.ts` ao reescrevê-lo).
+  Seeder corrido de novo (`NODE_ENV=test node ace db:fresh:seed`) para aplicar as
+  novas permissões/papéis na BD de teste — necessário sempre que o seeder ganha
+  permissões novas ou atribuições a papéis, já que `database_seeder.ts` não é
+  idempotente (`Users.createMany` falha em emails duplicados numa segunda corrida).
+
+### 7.7 Backlog conhecido, não tocado (propositadamente — ver secção 2)
 
 - `pessoa_dto.ts` declara `tipo: string`, mas o model `pessoa.ts` tipa `tipo` como
   `'Cliente' | 'Funcionario' | 'Promotor'` — mismatch de tipos pré-existente (não
@@ -541,13 +657,14 @@ middleware genérico já cobre):
 - ~29 repositórios com `paginate()`/lógica própria (caixa, vendas, estoque, produtos,
   cupom, factura, promotor*, os `produto_*`, etc.) continuam por consolidar em
   `BaseRepository` — e é intencional (ver secção 2).
-- ~48 controllers ainda com o padrão antigo de try/catch duplicado (7 já migrados) —
+- ~48 controllers ainda com o padrão antigo de try/catch duplicado (8 já migrados) —
   migrar incrementalmente para o padrão do handler global, um de cada vez, com teste a
   confirmar antes/depois.
-- ~12 `*QueryValidator` ainda não usam `commonQueryFields` (userpos, pos, categorias_
-  produtos, metodopagamento, cupom, factura, vendas, produtos_reembolso, venda_itens,
-  lote, promotor, produtos [`ProdutoQueryValidator`, tem campos a mais que não se
-  encaixam 1:1]) — mesma receita a aplicar, ver secção 6.
+- ~11 `*QueryValidator` ainda não usam `commonQueryFields` (userpos, pos, categorias_
+  produtos, cupom, factura, vendas, produtos_reembolso, venda_itens, lote, promotor,
+  produtos [`ProdutoQueryValidator`, tem campos a mais que não se encaixam 1:1]) —
+  `metodopagamento` migrado nesta sessão; mesma receita a aplicar aos restantes, ver
+  secção 6.
 - Testes de integração HTTP real (via o `client` do `@japa/plugin-adonisjs`, com token
   de acesso real e permissões seedadas) ainda não existem neste projecto — todos os
   testes actuais chamam repositórios/services/middleware/controllers directamente. É
@@ -558,3 +675,7 @@ middleware genérico já cobre):
   periodicamente que nenhuma nova factory/seeder morta se acumula sem ser notada — não
   há nenhum smoke test automático para esta pasta (ao contrário de `app/repositories`
   etc., cobertos por `tests/unit/modules_load.spec.ts`).
+- **Auditoria do padrão `exists !== undefined`** (ver secção 7.6) — `grep -rn "!==
+  undefined" app/validators` para mapear todos os validators afectados e decidir,
+  caso a caso, se a referência devia mesmo ser rejeitada quando não existe/não passa
+  no filtro extra.

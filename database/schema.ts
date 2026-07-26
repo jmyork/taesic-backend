@@ -373,7 +373,7 @@ export class MarcaSchema extends BaseModel {
 }
 
 export class MetodopagamentoSchema extends BaseModel {
-  static $columns = ['createdAt', 'deletedAt', 'descricao', 'id', 'nome', 'updatedAt'] as const
+  static $columns = ['createdAt', 'deletedAt', 'descricao', 'empresaId', 'id', 'nome', 'updatedAt'] as const
   $columns = MetodopagamentoSchema.$columns
   @column.dateTime({ autoCreate: true })
   declare createdAt: DateTime
@@ -381,6 +381,8 @@ export class MetodopagamentoSchema extends BaseModel {
   declare deletedAt: DateTime | null
   @column()
   declare descricao: string | null
+  @column()
+  declare empresaId: string | null
   @column({ isPrimary: true })
   declare id: string
   @column()
@@ -686,7 +688,7 @@ export class ProdutoRecomendacoeSchema extends BaseModel {
 }
 
 export class ProdutoSchema extends BaseModel {
-  static $columns = ['createdAt', 'deletedAt', 'descricao', 'empresaId', 'fabricanteId', 'formatoId', 'fornecedorId', 'id', 'isService', 'marcaId', 'nome', 'updatedAt'] as const
+  static $columns = ['createdAt', 'deletedAt', 'descricao', 'disponivel', 'empresaId', 'fabricanteId', 'formatoId', 'fornecedorId', 'id', 'isService', 'marcaId', 'nome', 'updatedAt'] as const
   $columns = ProdutoSchema.$columns
   @column.dateTime({ autoCreate: true })
   declare createdAt: DateTime
@@ -694,6 +696,8 @@ export class ProdutoSchema extends BaseModel {
   declare deletedAt: DateTime | null
   @column()
   declare descricao: string | null
+  @column()
+  declare disponivel: boolean | null
   @column()
   declare empresaId: string | null
   @column()

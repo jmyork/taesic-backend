@@ -26,5 +26,4 @@ export const policies = {
   AuthPolicy: () => import('#policies/auth_policy'),
   CupomPolicy: () => import('#policies/cupom_policy'),
   PlanoPolicy: () => import('#policies/plano_policy'),
-  MetodoPagamentoPolicy: () => import('#policies/metodopagamento_policy'),
 }

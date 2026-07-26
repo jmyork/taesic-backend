@@ -17,6 +17,7 @@ export interface ProdutoQueryDTO {
   descricao?: string
   nome?: string
   is_service?: boolean | undefined
+  disponivel?: boolean | undefined
   company_alias?: string
 }
 
@@ -30,6 +31,8 @@ export interface CreateprodutosDTO {
   descricao: string
   nome: string
   is_service: boolean
+  // só relevante para serviços — ver comentário no model `produtos.ts`.
+  disponivel?: boolean
   company_alias?: string
   // para o caso de ser um serviço
   user_id?: string
@@ -46,6 +49,7 @@ export interface UpdateprodutosDTO {
   descricao?: string | undefined
   nome?: string | undefined
   // is_service?: boolean | undefined
+  disponivel?: boolean | undefined
   deleted_at?: Date | undefined
 
   // para o caso de ser um serviço

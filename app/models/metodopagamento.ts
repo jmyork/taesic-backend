@@ -1,6 +1,8 @@
 import { DateTime } from 'luxon'
-import { BaseModel, column, beforeCreate } from '@adonisjs/lucid/orm'
+import { BaseModel, column, beforeCreate, belongsTo } from '@adonisjs/lucid/orm'
 import { randomUUID } from 'node:crypto'
+import type { BelongsTo } from '@adonisjs/lucid/types/relations'
+import Empresa from '#models/empresa'
 
 export default class metodopagamento extends BaseModel {
   static table = 'metodopagamento'
@@ -26,4 +28,12 @@ export default class metodopagamento extends BaseModel {
   declare nome: string
   @column()
   declare descricao: string
+
+  @column()
+  declare empresa_id: string
+
+  @belongsTo(() => Empresa, {
+    foreignKey: 'empresa_id',
+  })
+  declare empresa: BelongsTo<typeof Empresa>
 }

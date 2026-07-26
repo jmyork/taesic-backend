@@ -2,6 +2,8 @@ import venda_itens from '#models/faturacao/venda_itens'
 import { Createvenda_itensDTO, VendaItensQueryDTO } from '#dtos/venda_itens_dto'
 import Empresa from '#models/empresa'
 import loteRepository from './lote_repository.js'
+import vendasRepository from './vendas_repository.js'
+import VendaIsAlreadyOpenOrCloseException from '#exceptions/venda_is_already_open_or_close_exception'
 import type { TransactionClientContract } from '@adonisjs/lucid/types/database'
 
 export default class venda_itensRepository {
@@ -113,6 +115,18 @@ export default class venda_itensRepository {
 
   async create(data: Createvenda_itensDTO) {
     await Empresa.findByOrFail('company_alias', data.company_alias)
+
+    // A venda tem de pertencer a este tenant (isolamento — `findOrFail` escopa por
+    // company_alias através de caixa->pos->empresa) e estar aberta. Sem isto, o repositório
+    // confiava inteiramente no validator HTTP para barrar um venda_id de outra empresa ou já
+    // fechada — qualquer chamador directo do repositório (outro repositório, um teste) não
+    // tinha essa proteção.
+    const vendasRepo = new vendasRepository()
+    const venda = await vendasRepo.findOrFail({ id: data.venda_id, company_alias: data.company_alias! })
+    if (venda.status !== 'aberta') {
+      throw new VendaIsAlreadyOpenOrCloseException()
+    }
+
     // se já existir um item para a venda_id e lote_produto_id, atualiza a quantidade e preço_unitario, caso contrário cria um novo item
     const existingItem = await this.baseQuery()
       .where('venda_id', data.venda_id)

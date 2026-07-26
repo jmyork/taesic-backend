@@ -15,12 +15,29 @@ export const createproduto_mediaValidator = vine.compile(
           .first()
         return !!exists
       }),
-    // .minLength(2) impedia o envio de uma única imagem — o pedido era explicitamente
-    // "uma ou mais imagens de uma vez". O limite de 30 por produto é aplicado no
-    // repository (soma o que já está registado com o que vem neste pedido).
-    media: vine.array(
-      vine.file({ size: '25mb', extnames: ['jpg', 'jpeg', 'png', 'gif', 'mkv', 'mp4', 'webm'] })
-    ).minLength(1).maxLength(10),
+    // Aceita tanto um único ficheiro (multipart/form-data com um só campo "media") como um
+    // array de ficheiros — antes exigia sempre array, o que rejeitava um upload de uma
+    // imagem só quando o cliente/browser não envolve o campo isolado em `[]`. `vine.
+    // unionOfTypes` não suporta VineMultipartFile (falha em runtime: "schema type is not
+    // compatible"), por isso usa-se `vine.union` com um `if` explícito por Array.isArray. O
+    // repository (`produto_media_repository.create()`) já normalizava com
+    // `Array.isArray(data.media) ? data.media : [data.media]`, só a validação bloqueava
+    // antes de lá chegar. O limite de 30 por produto é aplicado no repository (soma o que
+    // já está registado com o que vem neste pedido).
+    media: vine.union([
+      vine.union.if(
+        (value) => Array.isArray(value),
+        vine
+          .array(
+            vine.file({ size: '25mb', extnames: ['jpg', 'jpeg', 'png', 'gif', 'mkv', 'mp4', 'webm'] })
+          )
+          .minLength(1)
+          .maxLength(10)
+      ),
+      vine.union.else(
+        vine.file({ size: '25mb', extnames: ['jpg', 'jpeg', 'png', 'gif', 'mkv', 'mp4', 'webm'] })
+      ),
+    ]),
   })
 )
 export const updateproduto_mediaValidator = vine.compile(

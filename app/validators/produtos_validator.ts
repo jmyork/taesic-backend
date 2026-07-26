@@ -86,6 +86,7 @@ export const createprodutosValidator = vine.compile(
       .optional(),
     // .requiredWhen('is_service', '=', false)
     is_service: vine.boolean(),
+    disponivel: vine.boolean().optional(),
 
     preco_compra: vine.number().decimal([0, 12]).optional(),
     preco_venda: vine.number().decimal([0, 12]).optional().requiredWhen("is_service", "=", true)
@@ -156,6 +157,7 @@ export const updateprodutosValidator = vine.compile(
     // .requiredIfExists('is_service')
     // .requiredWhen('is_service', '=', false)
     is_service: vine.boolean().optional(),
+    disponivel: vine.boolean().optional(),
     // preços de venda e de fornecimento/produção do produto.
     preco_compra: vine.number().decimal([0, 12]).optional(),
     preco_venda: vine.number().decimal([0, 12]).optional().requiredWhen("is_service", "=", true)
@@ -206,6 +208,7 @@ export const CreateProdutoWithDetailsValidator = vine.compile(
         .optional()
         .requiredWhen('is_service', '=', false),
       is_service: vine.boolean(),
+      disponivel: vine.boolean().optional(),
       fornecedor_id: vine
         .string()
         .uuid()
@@ -287,5 +290,6 @@ export const ProdutoQueryValidator = vine.compile(
     formato_id: vine.string().uuid().optional(),
     fabricante_id: vine.string().uuid().optional(),
     is_service: vine.boolean().optional(),
+    disponivel: vine.boolean().optional(),
   })
 )

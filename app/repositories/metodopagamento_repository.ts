@@ -1,6 +1,13 @@
 import { DateTime } from 'luxon'
 import metodopagamento from '#models/metodopagamento'
+import Empresa from '#models/empresa'
 import { CreatemetodopagamentoDTO, UpdatemetodopagamentoDTO, MetodoPagamentoQueryDTO } from '#dtos/metodopagamento_dto'
+import { applyCommonFilters, FieldSpec } from '../helpers/query_filters.js'
+
+const METODOPAGAMENTO_FILTER_FIELDS: FieldSpec[] = [
+  { kind: 'like', column: 'metodopagamento.nome', key: 'nome' },
+  { kind: 'like', column: 'metodopagamento.descricao', key: 'descricao' },
+]
 
 export default class metodopagamentoRepository {
   baseQuery() {
@@ -8,84 +15,51 @@ export default class metodopagamentoRepository {
   }
 
   async paginate(page = 1, limit = 20, filter?: MetodoPagamentoQueryDTO) {
-    let query = this.baseQuery()
+    let query = applyCommonFilters(this.baseQuery(), filter, {
+      table: 'metodopagamento',
+      fields: METODOPAGAMENTO_FILTER_FIELDS,
+    })
 
-    // deleted at filter
-    if (filter?.deleted === 'deleted') {
-      query = query.whereNotNull('metodopagamento.deleted_at')
-    } else if (filter?.deleted === 'all') {
+    // empresa filters
+    if (filter?.company_alias) {
       query = query
-    } else {
-      query = query.whereNull('metodopagamento.deleted_at')
+        .join('empresa', 'empresa.id', 'metodopagamento.empresa_id')
+        .where('empresa.company_alias', filter.company_alias)
     }
 
-    // created_at filter
-    if (filter?.createdDtStart && filter?.createdDtEnd) {
-      query = query.whereBetween('metodopagamento.created_at', [
-        new Date(filter.createdDtStart).toISOString(),
-        new Date(filter.createdDtEnd).toISOString(),
-      ])
-    } else if (filter?.createdDtStart) {
-      query = query.where(
-        'metodopagamento.created_at',
-        '>=',
-        new Date(filter.createdDtStart).toISOString()
-      )
-    } else if (filter?.createdDtEnd) {
-      query = query.where('metodopagamento.created_at', '<=', new Date(filter.createdDtEnd).toISOString())
+    if (filter?.empresa_id && !filter?.company_alias) {
+      query = query.where('metodopagamento.empresa_id', filter.empresa_id)
     }
 
-    // updated_at filter
-    if (filter?.updatedDtStart && filter?.updatedDtEnd) {
-      query = query.whereBetween('metodopagamento.updated_at', [
-        new Date(filter.updatedDtStart).toISOString(),
-        new Date(filter.updatedDtEnd).toISOString(),
-      ])
-    } else if (filter?.updatedDtStart) {
-      query = query.where(
-        'metodopagamento.updated_at',
-        '>=',
-        new Date(filter.updatedDtStart).toISOString()
-      )
-    } else if (filter?.updatedDtEnd) {
-      query = query.where('metodopagamento.updated_at', '<=', new Date(filter.updatedDtEnd).toISOString())
-    }
-
-    // nome filter
-    if (filter?.nome) {
-      query = query.where('metodopagamento.nome', 'like', `%${filter.nome}%`)
-    }
-
-    // descricao filter
-    if (filter?.descricao) {
-      query = query.where('metodopagamento.descricao', 'like', `%${filter.descricao}%`)
-    }
-    return await query.select('metodopagamento.*').orderBy('created_at', 'desc').paginate(page, limit)
+    return await query.select('metodopagamento.*').orderBy('metodopagamento.created_at', 'desc').paginate(page, limit)
   }
 
-  async findOrFail(id: string) {
-    return await this.baseQuery()
-      .where('metodopagamento.id', id)
-      .select(['metodopagamento.*'])
-      .firstOrFail()
+  async findOrFail(id: string, company_alias?: string) {
+    let query = this.baseQuery().where('metodopagamento.id', id)
+    if (company_alias) {
+      query = query
+        .join('empresa', 'empresa.id', 'metodopagamento.empresa_id')
+        .where('empresa.company_alias', company_alias)
+    }
+    return await query.select(['metodopagamento.*']).firstOrFail()
   }
 
   async create(data: CreatemetodopagamentoDTO) {
-    return await metodopagamento.create({
-      ...data,
-    })
+    const empresa = await Empresa.findByOrFail('company_alias', data.company_alias)
+    const { company_alias, empresa_id, ...metodoData } = data
+    return await metodopagamento.create({ ...metodoData, empresa_id: empresa.id })
   }
 
-  async update(id: string, data: UpdatemetodopagamentoDTO) {
-    const produto = await this.findOrFail(id)
-    produto.merge(data)
-    await produto.save()
-    return produto
+  async update(id: string, data: UpdatemetodopagamentoDTO, company_alias?: string) {
+    const metodo = await this.findOrFail(id, company_alias)
+    metodo.merge(data)
+    await metodo.save()
+    return metodo
   }
 
-  async softDelete(id: string) {
-    const metodopagamento = await this.findOrFail(id)
-    metodopagamento.deletedAt = metodopagamento.deletedAt ? null : DateTime.now()
-    await metodopagamento.save()
+  async softDelete(id: string, company_alias?: string) {
+    const metodo = await this.findOrFail(id, company_alias)
+    metodo.deletedAt = metodo.deletedAt ? null : DateTime.now()
+    await metodo.save()
   }
 }

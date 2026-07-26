@@ -3,12 +3,14 @@ import { CreateestoqueDTO, EstoqueQueryDTO } from '#dtos/estoque_dto'
 import Empresa from '#models/empresa'
 import loteRepository from './lote_repository.js'
 import Lote from '#models/faturacao/lote'
+import produtos from '#models/faturacao/produtos'
 import db from '@adonisjs/lucid/services/db'
 import type { TransactionClientContract } from '@adonisjs/lucid/types/database'
 import env from '#start/env'
 import emitter from '@adonisjs/core/services/emitter'
 import EstoqueCritico from '#events/estoque_critico'
 import EstoqueInsuficienteException from '#exceptions/estoque_insuficiente_exception'
+import ServicoIndisponivelException from '#exceptions/servico_indisponivel_exception'
 import TipoMovimentacaoInvalidoException from '#exceptions/tipo_movimentacao_invalido_exception'
 import { applyCommonFilters, FieldSpec } from '../helpers/query_filters.js'
 
@@ -97,10 +99,30 @@ export default class estoqueRepository {
     // é a que corre dentro da transação, com a linha do lote bloqueada.
     const loteRepo = new loteRepository()
     const lotePreCheck = await loteRepo.findOrFail(estoqueData.lote_produto_id, company_alias)
+
+    // Serviços não têm stock real (quantidade_em_estoque do lote é sempre 0) — "stock
+    // insuficiente" nunca se aplica a eles. A disponibilidade de um serviço é decidida por
+    // `produtos.disponivel`, não pela quantidade em stock.
+    const produtoDoLote = await produtos
+      .query()
+      .where('id', lotePreCheck.produto_id)
+      .select('is_service', 'disponivel')
+      .first()
+    const ehServico = produtoDoLote?.is_service ?? false
+
     if (movimentacoesSaida.includes(tipo_movimentacao)) {
-      const disponivel = lotePreCheck.quantidade_em_estoque || 0
-      if (disponivel < estoqueData.quantidade!) {
-        throw new EstoqueInsuficienteException(disponivel, estoqueData.quantidade!)
+      if (ehServico) {
+        // MySQL devolve boolean como 0/1 via mysql2, não `true`/`false` — comparação estrita
+        // (`=== false`) nunca combinava com `0`. Usar falsy, mesmo padrão que `is_service` já
+        // usa em `produtos_repository.ts`/`lote_repository.ts` (`if (produto.is_service)`).
+        if (!produtoDoLote?.disponivel) {
+          throw new ServicoIndisponivelException()
+        }
+      } else {
+        const disponivel = lotePreCheck.quantidade_em_estoque || 0
+        if (disponivel < estoqueData.quantidade!) {
+          throw new EstoqueInsuficienteException(disponivel, estoqueData.quantidade!)
+        }
       }
     }
 
@@ -114,7 +136,11 @@ export default class estoqueRepository {
 
       const quantidadeAtual = lote.quantidade_em_estoque || 0
 
-      if (movimentacoesSaida.includes(tipo_movimentacao) && quantidadeAtual < estoqueData.quantidade!) {
+      if (
+        movimentacoesSaida.includes(tipo_movimentacao) &&
+        !ehServico &&
+        quantidadeAtual < estoqueData.quantidade!
+      ) {
         throw new EstoqueInsuficienteException(quantidadeAtual, estoqueData.quantidade!)
       }
 
@@ -128,14 +154,19 @@ export default class estoqueRepository {
         { client }
       )
 
-      if (movimentacoesEntrada.includes(tipo_movimentacao)) {
-        lote.quantidade_em_estoque = quantidadeAtual + estoqueData.quantidade!
-      } else {
-        lote.quantidade_em_estoque = quantidadeAtual - estoqueData.quantidade!
-      }
+      // Serviços mantêm o registo de movimentação (auditoria), mas nunca mexem em
+      // quantidade_em_estoque — não há stock real a somar/subtrair, e decrementar deixaria
+      // o valor permanentemente negativo a cada venda.
+      if (!ehServico) {
+        if (movimentacoesEntrada.includes(tipo_movimentacao)) {
+          lote.quantidade_em_estoque = quantidadeAtual + estoqueData.quantidade!
+        } else {
+          lote.quantidade_em_estoque = quantidadeAtual - estoqueData.quantidade!
+        }
 
-      lote.useTransaction(client)
-      await lote.save()
+        lote.useTransaction(client)
+        await lote.save()
+      }
 
       return { est, quantidadeRestante: lote.quantidade_em_estoque }
     }
@@ -146,7 +177,9 @@ export default class estoqueRepository {
     const resultado = trx ? await runInTransaction(trx) : await db.transaction(runInTransaction)
 
     // Só depois da transação confirmar — nunca atrasa nem arrisca a movimentação em si.
-    if (movimentacoesSaida.includes(tipo_movimentacao)) {
+    // Serviços ficam sempre com quantidade_em_estoque = 0 — alertar "stock crítico" a cada
+    // venda de serviço não tem sentido nenhum (não é stock a esgotar-se).
+    if (movimentacoesSaida.includes(tipo_movimentacao) && !ehServico) {
       await this.avisarSeEstoqueCritico(estoqueData.lote_produto_id, resultado.quantidadeRestante, company_alias)
     }
 

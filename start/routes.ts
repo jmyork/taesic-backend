@@ -50,13 +50,6 @@ router
   .group(() => {
     // --------------
     router
-      .resource('metodo-pagamento', controllers.MetodoPagamento)
-      .apiOnly()
-      .as('platform_metodo_pagamento')
-
-
-
-    router
       .resource('permissao', controllers.Permissao)
       .apiOnly()
       .as('platform_permissao')

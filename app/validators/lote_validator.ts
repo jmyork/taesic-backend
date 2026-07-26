@@ -14,6 +14,7 @@ export const createloteValidator = vine.compile(
           .where('empresa.company_alias', field.data.params.company_alias)
           .where('produtos.id', value)
           .whereNull('produtos.deleted_at')
+          .where("produtos.is_service", false)
           .first()
         return !!exists
       }),
