@@ -497,12 +497,24 @@ middleware genérico já cobre):
   `caixa_service.ts` tem-nos comentados; o único fluxo público de fecho/reabertura é
   `destroy()` (`DELETE caixas/:id`, toggle conforme o estado actual), que **não tinha
   nenhum teste** antes desta sessão. Adicionado `tests/functional/caixa_reabertura.spec.ts`
-  com 7 testes cobrindo `open()` (status preenchido, reabertura automática do mesmo
+  com testes cobrindo `open()` (status preenchido, reabertura automática do mesmo
   dia) e `destroy()` (fechar, reabrir, e bloqueio quando já existe outra caixa aberta).
-- Suite completa: 389 testes (era 383 antes desta sessão — os 6 casos acima), zero
-  erros novos de `tsc --noEmit` (38 pré-existentes, ver secção 7.6 — o `pessoa_dto`
-  mismatch mais um em `tests/helpers/fixtures.ts` sobre o mesmo `status` de `caixa`
-  que já lá estava, não introduzido aqui).
+- **Nova regra de negócio: uma caixa não pode ser fechada com uma venda em aberto
+  associada.** Nem `close()` nem `destroy()` verificavam isto — fechavam a caixa
+  normalmente e deixavam a venda (`vendas.status = 'aberta'`, `vendas.caixa_id` a
+  apontar para a caixa entretanto fechada) "órfã". Adicionado
+  `CaixaHasOpenVendaException` (`CAIXA_HAS_OPEN_VENDA`, 400,
+  `app/exceptions/caixa_has_open_venda_exception.ts`) e um helper privado
+  `assertNoVendaAberta(caixaId)` em `caixa_repository.ts`, chamado em `close()` (antes
+  do merge) e em `destroy()` (só no ramo em que `isOpen` é verdadeiro, i.e. quando a
+  operação é mesmo um fecho — não se aplica ao reabrir). Não usa o
+  `UserHasAnOpenVendaException` já existente em `vendas_repository.ts` porque é uma
+  regra diferente (aquele impede abrir uma segunda venda; este impede fechar a caixa
+  com a venda já aberta) e teria uma mensagem enganadora neste contexto.
+- Suite completa: 392 testes (era 383 antes desta sessão), zero erros novos de
+  `tsc --noEmit` (38 pré-existentes, ver secção 7.6 — o `pessoa_dto` mismatch mais um
+  em `tests/helpers/fixtures.ts` sobre o mesmo `status` de `caixa` que já lá estava,
+  não introduzido aqui).
 
 ### 7.6 Backlog conhecido, não tocado (propositadamente — ver secção 2)
 

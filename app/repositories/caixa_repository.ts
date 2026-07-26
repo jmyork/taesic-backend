@@ -1,5 +1,6 @@
 import { DateTime } from 'luxon'
 import caixa from '#models/caixa'
+import vendas from '#models/faturacao/vendas'
 import { CaixaQueryDTO, CloseCaixaDTO, OpenCaixaDTO, ReOpenCaixaDTO } from '#dtos/caixa_dto'
 import CaixaAlreadyOpenException from '#exceptions/caixa_already_open_exception'
 import UnAuthorizedCaixaException from '#exceptions/un_authorized_caixa_exception'
@@ -8,6 +9,7 @@ import { applyCommonFilters, FieldSpec } from '../helpers/query_filters.js'
 import CaixaAlreadyClosedException from '#exceptions/caixa_already_closed_exception'
 import CaixaIsAlreadyOpenException from '#exceptions/caixa_is_already_open_exception'
 import UserIsNotAPosWorkerException from '#exceptions/user_is_not_a_pos_worker_exception'
+import CaixaHasOpenVendaException from '#exceptions/caixa_has_open_venda_exception'
 
 const CAIXA_FILTER_FIELDS: FieldSpec[] = [
   { kind: 'like', column: 'caixa.observacoes', key: 'observacoes' },
@@ -26,6 +28,14 @@ export default class caixaRepository {
   /** Filtros partilhados por `paginate` e `listByUser` — antes duplicados linha a linha nos dois métodos. */
   private applyFilters(query: any, filter?: CaixaQueryDTO) {
     return applyCommonFilters(query, filter, { table: 'caixa', fields: CAIXA_FILTER_FIELDS })
+  }
+
+  /** Uma caixa não pode ser fechada enquanto tiver uma venda aberta associada. */
+  private async assertNoVendaAberta(caixaId: string) {
+    const vendaAberta = await vendas.query().where('caixa_id', caixaId).where('status', 'aberta').first()
+    if (vendaAberta) {
+      throw new CaixaHasOpenVendaException()
+    }
   }
 
   paginate(page = 1, limit = 20, filter?: CaixaQueryDTO) {
@@ -120,6 +130,8 @@ export default class caixaRepository {
     if (caixa.status.toLocaleLowerCase() === 'fechado') {
       throw new CaixaAlreadyClosedException()
     }
+    await this.assertNoVendaAberta(caixa.id)
+
     const { company_alias, ...caixaData } = data
     caixa.merge({ ...caixaData, status: 'Fechado', data_fecho: DateTime.now() })
     await caixa.save()
@@ -171,6 +183,8 @@ export default class caixaRepository {
       if (caixaAberto) {
         throw new CaixaAlreadyOpenException()
       }
+    } else {
+      await this.assertNoVendaAberta(caixa.id)
     }
     const { company_alias, user_id, ...caixaData } = data
 

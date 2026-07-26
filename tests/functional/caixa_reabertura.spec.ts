@@ -2,7 +2,8 @@ import { test } from '@japa/runner'
 import testUtils from '@adonisjs/core/services/test_utils'
 import CaixaRepository from '#repositories/caixa_repository'
 import CaixaAlreadyOpenException from '#exceptions/caixa_already_open_exception'
-import { createTenant, createCaixa } from '../helpers/fixtures.js'
+import CaixaHasOpenVendaException from '#exceptions/caixa_has_open_venda_exception'
+import { createTenant, createCaixa, createVenda } from '../helpers/fixtures.js'
 
 /**
  * Regressão para bugs encontrados no fluxo de abertura/fecho/reabertura:
@@ -29,6 +30,12 @@ import { createTenant, createCaixa } from '../helpers/fixtures.js'
  *
  * `destroy()` (o toggle real exposto pela API: `DELETE caixas/:id`) não tinha nenhum
  * teste antes desta sessão — coberto abaixo.
+ *
+ * 4. Nem `close()` nem `destroy()` impediam o fecho de uma caixa com uma venda em
+ *    aberto (`vendas.status = 'aberta'`) associada — passava a fechar normalmente,
+ *    deixando a venda "órfã" (caixa fechada, venda ainda aberta a apontar para ela).
+ *    Adicionado `CaixaHasOpenVendaException` (`CAIXA_HAS_OPEN_VENDA`, 400) lançada por
+ *    `assertNoVendaAberta()` antes de fechar em ambos os métodos.
  */
 test.group('caixa_repository - fluxo de abertura/fecho/reabertura', (group) => {
   group.each.setup(() => testUtils.db().withGlobalTransaction())
@@ -118,5 +125,44 @@ test.group('caixa_repository - fluxo de abertura/fecho/reabertura', (group) => {
     } catch (error) {
       assert.instanceOf(error, CaixaAlreadyOpenException)
     }
+  })
+
+  test('close() não fecha uma caixa com uma venda aberta associada', async ({ assert }) => {
+    const { empresa, user, pos } = await createTenant()
+    const caixaAberta = await createCaixa(user, pos, { status: 'aberto' })
+    await createVenda(caixaAberta, { status: 'aberta' })
+    const repo = new CaixaRepository()
+
+    try {
+      await repo.close(caixaAberta.id, { user_id: user.id, company_alias: empresa.company_alias })
+      assert.fail('deveria ter lançado CaixaHasOpenVendaException')
+    } catch (error) {
+      assert.instanceOf(error, CaixaHasOpenVendaException)
+    }
+  })
+
+  test('destroy() não fecha uma caixa com uma venda aberta associada', async ({ assert }) => {
+    const { empresa, user, pos } = await createTenant()
+    const caixaAberta = await createCaixa(user, pos, { status: 'aberto' })
+    await createVenda(caixaAberta, { status: 'aberta' })
+    const repo = new CaixaRepository()
+
+    try {
+      await repo.destroy(caixaAberta.id, { user_id: user.id, company_alias: empresa.company_alias })
+      assert.fail('deveria ter lançado CaixaHasOpenVendaException')
+    } catch (error) {
+      assert.instanceOf(error, CaixaHasOpenVendaException)
+    }
+  })
+
+  test('close() fecha normalmente quando as vendas da caixa já estão fechadas/canceladas', async ({ assert }) => {
+    const { empresa, user, pos } = await createTenant()
+    const caixaAberta = await createCaixa(user, pos, { status: 'aberto' })
+    await createVenda(caixaAberta, { status: 'fechada' })
+    await createVenda(caixaAberta, { status: 'cancelada' })
+    const repo = new CaixaRepository()
+
+    const fechada = await repo.close(caixaAberta.id, { user_id: user.id, company_alias: empresa.company_alias })
+    assert.equal(fechada.status.toLocaleLowerCase(), 'fechado')
   })
 })
