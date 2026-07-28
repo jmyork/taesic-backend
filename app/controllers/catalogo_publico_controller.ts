@@ -2,6 +2,7 @@ import type { HttpContext } from '@adonisjs/core/http'
 import CatalogoPublicoRepository from '#repositories/catalogo_publico_repository'
 import PromotorRepository from '#repositories/promotor_repository'
 import LeadRepository from '#repositories/lead_repository'
+import { CatalogoProdutosQueryValidator } from '#validators/catalogo_produtos_validator'
 
 export default class CatalogoPublicoController {
   private catalogoRepo = new CatalogoPublicoRepository()
@@ -11,12 +12,14 @@ export default class CatalogoPublicoController {
   // ==================== GET /catalogo/produtos (público, cross-tenant) ====================
   async produtos({ request, response }: HttpContext) {
     try {
-      const page = request.input('page', 1)
-      const limit = request.input('limit', 20)
-      const search = request.input('q') || undefined
-      const data = await this.catalogoRepo.paginateProdutos(page, limit, search)
+      const filter = await CatalogoProdutosQueryValidator.validate(request.qs())
+      const { page, limit, ...sanitezed } = filter
+      const data = await this.catalogoRepo.paginateProdutos(page ?? 1, limit ?? 20, sanitezed)
       return response.ok({ data, message: 'Catálogo carregado com sucesso', status: 200 })
-    } catch (error) {
+    } catch (error: any) {
+      if (error.messages) {
+        return response.badRequest({ data: null, message: 'Dados inválidos', errors: error.messages, status: 400 })
+      }
       console.error('Erro ao carregar catálogo público:', error)
       return response.internalServerError({ data: null, message: 'Erro interno do servidor', status: 500 })
     }

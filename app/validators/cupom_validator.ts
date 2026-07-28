@@ -1,6 +1,6 @@
 import vine from '@vinejs/vine'
 
-export const createcupomValidator = vine.compile(
+export const createcupomValidator = vine.create(
   vine.object({
     // Só confirma que o promotor existe e não está eliminado — o cupomRepository.create() é
     // que garante que um promotor de domínio só recebe cupões na SUA própria empresa (a
@@ -18,13 +18,13 @@ export const createcupomValidator = vine.compile(
       .unique(async (db, value) => !(await db.from('cupom').where('codigo', value).first()))
       .optional(),
     desconto: vine.number().min(0).max(100),
-    validade: vine.date({ formats: ['iso8601'] }).optional(),
+    validade: vine.date({ formats: ['iso8601'] }).after("today").optional(),
   })
 )
 
 export const updatecupomValidator = vine.compile(
   vine.object({
     desconto: vine.number().min(0).max(100).optional(),
-    validade: vine.date({ formats: ['iso8601'] }).optional(),
+    validade: vine.date({ formats: ['iso8601'] }).after("today").optional(),
   })
 )

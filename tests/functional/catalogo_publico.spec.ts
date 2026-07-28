@@ -22,7 +22,7 @@ test.group('catalogo_publico_repository', (group) => {
     const resultado = await repo.paginateProdutos(1, 50)
     const json = resultado.toJSON()
 
-    const nomesEmpresas = json.data.map((row: any) => row.empresa_nome)
+    const nomesEmpresas = json.data.map((row: any) => row.empresa?.nome)
     assert.include(nomesEmpresas, empresaA.nome)
     assert.include(nomesEmpresas, empresaB.nome)
   })
@@ -34,12 +34,12 @@ test.group('catalogo_publico_repository', (group) => {
     await createLote(produto, { preco_venda: 1200 })
 
     const repo = new CatalogoPublicoRepository()
-    const resultado = await repo.paginateProdutos(1, 50, produto.nome)
+    const resultado = await repo.paginateProdutos(1, 50, { q: produto.nome })
     const json = resultado.toJSON()
 
-    const linha = json.data.find((row: any) => row.produto_id === produto.id)
+    const linha = json.data.find((row: any) => row.id === produto.id)?.toJSON()
     assert.isDefined(linha)
-    assert.equal(Number(linha.preco_a_partir_de), 1200)
+    assert.equal(Number(linha.preco_venda_min), 1200)
   })
 
   test('a pesquisa (q) filtra por nome do produto', async ({ assert }) => {
@@ -49,11 +49,11 @@ test.group('catalogo_publico_repository', (group) => {
     await createLote(produto, { preco_venda: 500 })
 
     const repo = new CatalogoPublicoRepository()
-    const resultado = await repo.paginateProdutos(1, 50, `ProdutoUnico${nonce}`)
+    const resultado = await repo.paginateProdutos(1, 50, { q: `ProdutoUnico${nonce}` })
     const json = resultado.toJSON()
 
     assert.equal(json.data.length, 1)
-    assert.equal(json.data[0].produto_id, produto.id)
+    assert.equal(json.data[0].id, produto.id)
   })
 })
 

@@ -5,6 +5,7 @@ import {
   CreateProdutoDetalhesDTO,
   ProdutoQueryDTO,
 } from '#dtos/produtos_dto'
+import { CatalogoProdutosFilterDTO } from '#dtos/catalogo_produtos_dto'
 
 export default class produtosService {
   repo = new produtosRepository()
@@ -31,5 +32,9 @@ export default class produtosService {
 
   registrarProdutoAndDetalhes(data: CreateProdutoDetalhesDTO) {
     return this.repo.registrarProdutoAndDetalhes(data)
+  }
+
+  catalogo(page: number, limit: number, filter: CatalogoProdutosFilterDTO, company_alias: string) {
+    return this.repo.catalogo(page, limit, filter, company_alias)
   }
 }

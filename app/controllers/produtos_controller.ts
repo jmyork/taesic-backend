@@ -6,6 +6,7 @@ import {
   ProdutoQueryValidator,
   updateprodutosValidator,
 } from '#validators/produtos_validator'
+import { CatalogoProdutosQueryValidator } from '#validators/catalogo_produtos_validator'
 import { ProdutoQueryDTO } from '#dtos/produtos_dto'
 
 // Erros de validação (VineJS), "registo não encontrado" (Lucid) e qualquer Exception de
@@ -84,5 +85,16 @@ export default class produtossController {
       message: 'Produto e detalhes registrados com sucesso',
       status: 201,
     })
+  }
+
+  // ==================== CATALOGO (produtos em stock, com todas as características) ====================
+  // Tem de estar registada antes de `.resource('produtos', ...)` em companydomainroutes.ts —
+  // caso contrário `GET produtos/:id` intercepta `produtos/catalogo` (mesmo padrão que
+  // `caixas/meu`/`domain_caixa.my` já documenta ali).
+  async catalogo({ request, params }: HttpContext) {
+    const filter = await CatalogoProdutosQueryValidator.validate(request.qs())
+    const { page, limit, ...sanitezed } = filter
+    const data = await this.service.catalogo(page ?? 1, limit ?? 20, sanitezed, params.company_alias)
+    return { data, message: 'Catálogo carregado com sucesso', status: 200 }
   }
 }

@@ -18,6 +18,8 @@ import produto_contraindicacoes from './produto_contraindicacoes.js'
 import produto_recomendacoes from './produto_recomendacoes.js'
 import Empresa from '#models/empresa'
 import produto_fornecedores from '#models/faturacao/produto_fornecedores'
+import lote from './lote.js'
+import produto_media from './produto_media.js'
 // import categorias_produtos from './categorias_produtos.js'
 
 export default class produtos extends BaseModel {
@@ -118,6 +120,16 @@ export default class produtos extends BaseModel {
     pivotTimestamps: true,
   })
   declare categorias: ManyToMany<typeof produto_categorias>
+
+  @hasMany(() => lote, {
+    foreignKey: 'produto_id',
+  })
+  declare lotes: HasMany<typeof lote>
+
+  @hasMany(() => produto_media, {
+    foreignKey: 'produto_id',
+  })
+  declare medias: HasMany<typeof produto_media>
 
   @column()
   declare empresa_id: string

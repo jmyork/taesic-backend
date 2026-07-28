@@ -30,6 +30,13 @@ router
             .apiOnly()
             .as('domain_produto_fornecedores') //(v)
 
+        // Tem de ser registada antes de `.resource('produtos', ...)` — caso contrário a rota
+        // genérica `GET produtos/:id` do resource intercepta `produtos/catalogo` (mesmo
+        // problema já documentado para `caixas/meu` acima).
+        router
+            .get('produtos/catalogo', [controllers.Produtos, 'catalogo'])
+            .as('domain_produtos.catalogo')
+
         router
             .resource('produtos', controllers.Produtos)
             .apiOnly()

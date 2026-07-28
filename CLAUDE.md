@@ -648,6 +648,61 @@ middleware genérico já cobre):
   novas permissões/papéis na BD de teste — necessário sempre que o seeder ganha
   permissões novas ou atribuições a papéis, já que `database_seeder.ts` não é
   idempotente (`Users.createMany` falha em emails duplicados numa segunda corrida).
+- **Novo catálogo de produtos em stock, público (cross-tenant) e de domínio**, a pedido
+  explícito: pesquisável por `q` (nome, descrição, e as descrições detalhadas em
+  `produto_descricao`) e filtrável por marca/formato/fabricante/fornecedor/categoria/
+  is_service/disponivel/pos (produtos com pelo menos uma movimentação de `estoque`
+  nesse POS — não existe relação directa produto↔pos no schema)/intervalo de preço de
+  compra/intervalo de preço de venda. Devolve TODAS as características (descrições,
+  contraindicações, recomendações, categorias, marca, fabricante, formato, fornecedor,
+  medias, lotes) via `.preload()`.
+  - Lógica de query partilhada em `app/helpers/catalogo_produtos_query.ts`
+    (`paginateCatalogoProdutos(page, limit, filter, companyAlias?)`) — `companyAlias`
+    omitido é o único diferencial entre o catálogo público (`catalogo_publico_
+    repository.ts`, cross-tenant, já existia antes desta sessão só com busca por nome)
+    e o de domínio (novo método `produtos_repository.catalogo()`, rota `GET
+    produtos/catalogo` — registada **antes** de `.resource('produtos', ...)` em
+    `companydomainroutes.ts`, mesmo motivo que `caixas/meu`: a rota genérica
+    `GET produtos/:id` intercepta-a caso contrário).
+  - Um produto só aparece se tiver pelo menos um lote não-apagado (mesmo critério que
+    o catálogo público já usava) — inclui serviços, que têm sempre lote com
+    `quantidade_em_estoque = 0`.
+  - Novas relações `produtos.lotes` (hasMany `lote`) e `produtos.medias` (hasMany
+    `produto_media`) — não existiam no model; `lote.ts`↔`produtos.ts` ficam com import
+    circular (thunk `() => lote` nos decorators lazy-resolve, tal como
+    `vendas.ts`↔`venda_itens.ts` já fazia antes, ver secção 6).
+  - **Cada `.preload()` só traz os campos de negócio da relação** (nunca `enabled`/
+    `created_at`/`updated_at`/`deleted_at`, a pedido explícito do utilizador —
+    "preloads trazem dados desnecessários como dados de auditoria"): marca (nome,
+    descricao), fabricante/fornecedor (nome, email, telefone, endereco), formato
+    (nome, descricao), categorias (nome, descricao), descrições/contraindicações/
+    recomendações (só o texto), medias (só a url), lotes (dados do lote, sem
+    timestamps). A query principal de `produtos` também só selecciona colunas de
+    negócio + as FKs (`marca_id`/`formato_id`/`fabricante_id`/`fornecedor_id`/
+    `empresa_id`) que os `.preload()` precisam para resolver as relações belongsTo.
+  - **`$extras` (os agregados `quantidade_em_estoque`, `preco_venda_min/max`,
+    `preco_compra_min/max` de `.sum()/.min()/.max()`) não aparecem no JSON por
+    omissão** — Lucid só serializa `$extras` quando `serializeExtras` está definido na
+    instância (`true` → aninha em `meta`; função → o que a função devolver, espalhado
+    no topo). Sem isto, os agregados desapareciam silenciosamente da resposta (nunca
+    dava erro, só faltavam os campos — apanhado ao escrever o teste, que só falhava a
+    asserção, não a chamada). `paginateCatalogoProdutos()` define
+    `produto.serializeExtras = () => produto.$extras` em cada linha da página antes de
+    devolver o paginador.
+  - Nova permissão `domain_produtos.catalogo`, atribuída aos mesmos papéis que já têm
+    `domain_produtos.index/show` (Admin, Estoquista, EstoquistaVisualizador, Vendedor,
+    VendedorVisualizador, AdminVisualizador, Gerente, Supervisor).
+  - Testado em `tests/functional/catalogo_produtos.spec.ts` (características completas
+    sem campos de auditoria, filtros por marca/is_service+disponivel/preco_compra/pos,
+    isolamento por tenant do lado de domínio, permissão `domain_produtos.catalogo` por
+    papel) e `tests/functional/catalogo_publico.spec.ts` (reescrito — a assinatura de
+    `paginateProdutos()` passou de `(page, limit, search?: string)` para `(page,
+    limit, filter?: CatalogoProdutosFilterDTO)`, e a forma da resposta mudou de colunas
+    aliased à mão (`produto_id`, `produto_nome`, `preco_a_partir_de`) para o produto
+    Lucid inteiro com as características preloaded).
+  - Suite completa após esta funcionalidade: 426 testes, zero erros novos de
+    `tsc --noEmit` (36, sem alteração). Seeder corrido de novo em BD de teste (`NODE_ENV=
+    test node ace db:fresh:seed`) para aplicar `domain_produtos.catalogo`.
 
 ### 7.7 Backlog conhecido, não tocado (propositadamente — ver secção 2)
 

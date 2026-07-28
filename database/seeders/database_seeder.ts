@@ -162,6 +162,10 @@ export default class extends BaseSeeder {
       { nome: 'domain_produtos.update', descricao: 'Editar produto' },
       { nome: 'domain_produtos.destroy', descricao: 'Remover/Recuperar produto' },
       {
+        nome: 'domain_produtos.catalogo',
+        descricao: 'Catálogo de produtos em stock, pesquisável e filtrável, com todas as características',
+      },
+      {
         nome: 'domain_produtos.registrar_com_detalhes',
         descricao: 'Registar produto com detalhes (descrições, categorias, contraindicações, recomendações)',
       },
@@ -546,6 +550,7 @@ export default class extends BaseSeeder {
 
       'domain_produtos.index',
       'domain_produtos.show',
+      'domain_produtos.catalogo',
       'domain_produtos.store',
       'domain_produtos.update',
       'domain_produtos.destroy',
@@ -763,6 +768,7 @@ export default class extends BaseSeeder {
       // Produtos (5 perms)
       'domain_produtos.index',
       'domain_produtos.show',
+      'domain_produtos.catalogo',
       'domain_produtos.store',
       'domain_produtos.update',
       'domain_produtos.destroy',
@@ -866,6 +872,7 @@ export default class extends BaseSeeder {
       // Produtos (read only)
       'domain_produtos.index',
       'domain_produtos.show',
+      'domain_produtos.catalogo',
 
       // Produto-Descrições (read only)
       'domain_produto_descricoes.index',
@@ -934,6 +941,7 @@ export default class extends BaseSeeder {
       // Produtos (read only)
       'domain_produtos.index',
       'domain_produtos.show',
+      'domain_produtos.catalogo',
 
       // Produto-Descrições (read only)
       'domain_produto_descricoes.index',
@@ -1039,6 +1047,7 @@ export default class extends BaseSeeder {
       // Produtos (read only)
       'domain_produtos.index',
       'domain_produtos.show',
+      'domain_produtos.catalogo',
 
       // Produto-Descrições (read only)
       'domain_produto_descricoes.index',
@@ -1124,6 +1133,7 @@ export default class extends BaseSeeder {
       // Produtos (read only)
       'domain_produtos.index',
       'domain_produtos.show',
+      'domain_produtos.catalogo',
 
       // Produto-Descrições (read only)
       'domain_produto_descricoes.index',
@@ -1236,6 +1246,7 @@ export default class extends BaseSeeder {
       // Produtos (read only)
       'domain_produtos.index',
       'domain_produtos.show',
+      'domain_produtos.catalogo',
 
       // Produto-Descrições (read only)
       'domain_produto_descricoes.index',
@@ -1348,6 +1359,7 @@ export default class extends BaseSeeder {
       // Produtos (read only)
       'domain_produtos.index',
       'domain_produtos.show',
+      'domain_produtos.catalogo',
 
       // Produto-Descrições (read only)
       'domain_produto_descricoes.index',

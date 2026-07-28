@@ -15,6 +15,8 @@ import venda_itensRepository from './venda_itens_repository.js'
 import NotAllowedChangeIsServiceTagException from '#exceptions/not_allowed_change_is_service_tag_exception'
 import ProdutoComMovimentacoesException from '#exceptions/produto_com_movimentacoes_exception'
 import { applyCommonFilters, FieldSpec } from '../helpers/query_filters.js'
+import { paginateCatalogoProdutos } from '../helpers/catalogo_produtos_query.js'
+import { CatalogoProdutosFilterDTO } from '#dtos/catalogo_produtos_dto'
 
 const PRODUTOS_FILTER_FIELDS: FieldSpec[] = [
   { kind: 'like', column: 'produtos.nome', key: 'nome' },
@@ -201,5 +203,17 @@ export default class produtosRepository {
       await trx.rollback()
       throw error
     }
+  }
+
+  /**
+   * Catálogo do domínio: produtos em stock desta empresa com todas as características
+   * (descrições, contraindicações, recomendações, categorias, marca, fabricante, formato,
+   * fornecedor, medias, lotes), pesquisáveis por `q` (nome/descrição/descrições detalhadas)
+   * e filtráveis por marca/formato/fabricante/fornecedor/categoria/is_service/disponivel/
+   * pos/preço de compra/preço de venda. Mesma query do catálogo público
+   * (`catalogo_publico_repository.ts`), só que sempre escopada por `company_alias`.
+   */
+  async catalogo(page: number, limit: number, filter: CatalogoProdutosFilterDTO, company_alias: string) {
+    return paginateCatalogoProdutos(page, limit, filter, company_alias)
   }
 }
