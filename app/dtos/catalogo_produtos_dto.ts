@@ -17,6 +17,8 @@ export interface CatalogoProdutosFilterDTO {
 
   /** Só produtos com pelo menos uma movimentação de estoque registada neste POS. */
   pos_id?: string
+  /** Idem, mas por nome do POS (parcial) em vez do id exacto. */
+  pos_nome?: string
 
   preco_compra_start?: number
   preco_compra_end?: number

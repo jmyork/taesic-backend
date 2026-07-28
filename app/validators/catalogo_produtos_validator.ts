@@ -18,6 +18,7 @@ export const CatalogoProdutosQueryValidator = vine.create(
     is_service: vine.boolean().optional(),
     disponivel: vine.boolean().optional(),
     pos_id: vine.string().trim().uuid().optional(),
+    pos_nome: vine.string().trim().escape().optional(),
 
     preco_compra_start: vine.number().decimal([0, 12]).optional(),
     preco_compra_end: vine.number().decimal([0, 12]).optional(),

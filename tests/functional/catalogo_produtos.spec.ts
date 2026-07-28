@@ -149,7 +149,9 @@ test.group('catálogo de produtos — características, pesquisa e filtros', (gr
     assert.notInclude(ids, produtoBarato.id)
   })
 
-  test('filtra por pos_id (produtos com movimentação de estoque nesse pos)', async ({ assert }) => {
+  test('filtra por pos_id (produtos com movimentação de estoque nesse pos) e devolve os postos no resultado', async ({
+    assert,
+  }) => {
     const { empresa, user, pos } = await createTenant()
 
     const produtoComMovimento = await createProduto(empresa, { nome: `ComMovimento ${Date.now()}` })
@@ -169,6 +171,37 @@ test.group('catálogo de produtos — características, pesquisa e filtros', (gr
 
     const repo = new CatalogoPublicoRepository()
     const resultado = await repo.paginateProdutos(1, 20, { pos_id: pos.id })
+    const ids = resultado.all().map((r) => r.id)
+
+    assert.include(ids, produtoComMovimento.id)
+    assert.notInclude(ids, produtoSemMovimento.id)
+
+    const linha = resultado.all().find((r) => r.id === produtoComMovimento.id)!.toJSON() as any
+    assert.lengthOf(linha.postos, 1)
+    assert.equal(linha.postos[0].id, pos.id)
+    assert.equal(linha.postos[0].nome, pos.nome)
+  })
+
+  test('filtra por pos_nome (pesquisa parcial pelo nome do POS)', async ({ assert }) => {
+    const { empresa, user, pos } = await createTenant()
+
+    const produtoComMovimento = await createProduto(empresa, { nome: `ComMovimentoNome ${Date.now()}` })
+    const loteComMovimento = await createLote(produtoComMovimento)
+    await Estoque.create({
+      lote_produto_id: loteComMovimento.id,
+      produto_id: produtoComMovimento.id,
+      quantidade: 5,
+      tipo_movimentacao: 'entrada',
+      motivo: 'compra',
+      registrado_por: user.id,
+      pos_id: pos.id,
+    } as any)
+
+    const produtoSemMovimento = await createProduto(empresa, { nome: `SemMovimentoNome ${Date.now()}` })
+    await createLote(produtoSemMovimento)
+
+    const repo = new CatalogoPublicoRepository()
+    const resultado = await repo.paginateProdutos(1, 20, { pos_nome: pos.nome.slice(0, 5) })
     const ids = resultado.all().map((r) => r.id)
 
     assert.include(ids, produtoComMovimento.id)

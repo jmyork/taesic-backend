@@ -700,7 +700,17 @@ middleware genérico já cobre):
     limit, filter?: CatalogoProdutosFilterDTO)`, e a forma da resposta mudou de colunas
     aliased à mão (`produto_id`, `produto_nome`, `preco_a_partir_de`) para o produto
     Lucid inteiro com as características preloaded).
-  - Suite completa após esta funcionalidade: 426 testes, zero erros novos de
+  - **Adição posterior, a pedido**: cada produto passou a incluir `postos` — a lista de
+    POS (`id`/`nome`/`localizacao`, sem dados de auditoria) onde há pelo menos uma
+    movimentação de `estoque` registada, calculada numa query à parte (`buscarPostos
+    PorProduto()`, agrupada em memória por `produto_id`) DEPOIS da paginação — não dá
+    para vir de `.preload()` porque não há relação directa produto↔pos no schema, só
+    via `estoque`. Estes dados entram no mesmo `serializeExtras` que já achata os
+    agregados de preço/stock (ver acima). Também aceita pesquisar por `pos_nome`
+    (parcial, `LIKE`) além do `pos_id` exacto já existente — junta `pos` a `estoque`
+    só quando `pos_nome` vem preenchido, para não sobrecarregar a query nos casos em
+    que só `pos_id` é usado.
+  - Suite completa após esta funcionalidade: 427 testes, zero erros novos de
     `tsc --noEmit` (36, sem alteração). Seeder corrido de novo em BD de teste (`NODE_ENV=
     test node ace db:fresh:seed`) para aplicar `domain_produtos.catalogo`.
 

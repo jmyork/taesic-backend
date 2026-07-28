@@ -1,4 +1,5 @@
 import produtos from '#models/faturacao/produtos'
+import db from '@adonisjs/lucid/services/db'
 import { CatalogoProdutosFilterDTO } from '#dtos/catalogo_produtos_dto'
 import { applyRange } from './query_filters.js'
 
@@ -58,8 +59,14 @@ function buildCatalogoProdutosQuery(filter?: CatalogoProdutosFilterDTO, companyA
       .where('categorias_produtos.produto_categoria_id', filter.produto_categoria_id)
   }
 
-  if (filter?.pos_id) {
-    query = query.join('estoque', 'estoque.produto_id', 'produtos.id').where('estoque.pos_id', filter.pos_id)
+  if (filter?.pos_id || filter?.pos_nome) {
+    query = query.join('estoque', 'estoque.produto_id', 'produtos.id')
+    if (filter.pos_id) query = query.where('estoque.pos_id', filter.pos_id)
+    if (filter.pos_nome) {
+      query = query
+        .join('pos', 'pos.id', 'estoque.pos_id')
+        .where('pos.nome', 'like', `%${filter.pos_nome}%`)
+    }
   }
 
   applyRange(query, 'lote_produto.preco_compra', filter?.preco_compra_start, filter?.preco_compra_end)
@@ -120,11 +127,36 @@ function buildCatalogoProdutosQuery(filter?: CatalogoProdutosFilterDTO, companyA
 }
 
 /**
+ * Os POS onde um produto teve pelo menos uma movimentação de estoque — não há relação
+ * directa produto↔pos no schema, só via `estoque` (que regista em que POS cada
+ * movimentação aconteceu). Devolve só id/nome/localizacao (sem dados de auditoria).
+ */
+async function buscarPostosPorProduto(produtoIds: string[]) {
+  const mapa = new Map<string, { id: string; nome: string; localizacao: string }[]>()
+  if (produtoIds.length === 0) return mapa
+
+  const linhas = await db
+    .from('estoque')
+    .join('pos', 'pos.id', 'estoque.pos_id')
+    .whereIn('estoque.produto_id', produtoIds)
+    .distinct('estoque.produto_id', 'pos.id', 'pos.nome', 'pos.localizacao')
+
+  for (const linha of linhas) {
+    const lista = mapa.get(linha.produto_id) ?? []
+    lista.push({ id: linha.id, nome: linha.nome, localizacao: linha.localizacao })
+    mapa.set(linha.produto_id, lista)
+  }
+
+  return mapa
+}
+
+/**
  * Pagina o catálogo e achata os agregados (`quantidade_em_estoque`, `preco_venda_min/max`,
- * `preco_compra_min/max`) para o nível de topo de cada produto serializado — por omissão,
- * Lucid só serializa `$extras` (o que uma query com `.sum()/.min()/.max()` produz) se
- * `serializeExtras` estiver definido; sem isto, os agregados desapareciam silenciosamente
- * do JSON de resposta (nunca lançava erro, só faltavam os campos).
+ * `preco_compra_min/max`) mais os `postos` (POS onde há movimentação) para o nível de topo
+ * de cada produto serializado — por omissão, Lucid só serializa `$extras` (o que uma query
+ * com `.sum()/.min()/.max()` produz) se `serializeExtras` estiver definido; sem isto, os
+ * agregados desapareciam silenciosamente do JSON de resposta (nunca lançava erro, só
+ * faltavam os campos).
  */
 export async function paginateCatalogoProdutos(
   page: number,
@@ -134,8 +166,11 @@ export async function paginateCatalogoProdutos(
 ) {
   const paginator = await buildCatalogoProdutosQuery(filter, companyAlias).paginate(page, limit)
 
+  const postosPorProduto = await buscarPostosPorProduto(paginator.all().map((produto) => produto.id))
+
   for (const produto of paginator.all()) {
-    ;(produto as any).serializeExtras = () => produto.$extras
+    const extras = { ...produto.$extras, postos: postosPorProduto.get(produto.id) ?? [] }
+    ;(produto as any).serializeExtras = () => extras
   }
 
   return paginator
