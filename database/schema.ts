@@ -373,7 +373,7 @@ export class MarcaSchema extends BaseModel {
 }
 
 export class MetodopagamentoSchema extends BaseModel {
-  static $columns = ['createdAt', 'deletedAt', 'descricao', 'id', 'nome', 'updatedAt'] as const
+  static $columns = ['createdAt', 'deletedAt', 'descricao', 'empresaId', 'id', 'nome', 'updatedAt'] as const
   $columns = MetodopagamentoSchema.$columns
   @column.dateTime({ autoCreate: true })
   declare createdAt: DateTime
@@ -381,6 +381,8 @@ export class MetodopagamentoSchema extends BaseModel {
   declare deletedAt: DateTime | null
   @column()
   declare descricao: string | null
+  @column()
+  declare empresaId: string | null
   @column({ isPrimary: true })
   declare id: string
   @column()
@@ -686,7 +688,7 @@ export class ProdutoRecomendacoeSchema extends BaseModel {
 }
 
 export class ProdutoSchema extends BaseModel {
-  static $columns = ['createdAt', 'deletedAt', 'descricao', 'empresaId', 'fabricanteId', 'formatoId', 'fornecedorId', 'id', 'isService', 'marcaId', 'nome', 'updatedAt'] as const
+  static $columns = ['createdAt', 'deletedAt', 'descricao', 'disponivel', 'empresaId', 'fabricanteId', 'formatoId', 'fornecedorId', 'id', 'isService', 'marcaId', 'nome', 'updatedAt'] as const
   $columns = ProdutoSchema.$columns
   @column.dateTime({ autoCreate: true })
   declare createdAt: DateTime
@@ -694,6 +696,8 @@ export class ProdutoSchema extends BaseModel {
   declare deletedAt: DateTime | null
   @column()
   declare descricao: string | null
+  @column()
+  declare disponivel: boolean | null
   @column()
   declare empresaId: string | null
   @column()
@@ -904,6 +908,32 @@ export class PromotorOtpSchema extends BaseModel {
   declare updatedAt: DateTime
   @column.dateTime()
   declare usedAt: DateTime | null
+}
+
+export class RateLimitSchema extends BaseModel {
+  static $columns = ['expire', 'key', 'points'] as const
+  $columns = RateLimitSchema.$columns
+  @column()
+  declare expire: bigint | number | null
+  @column({ isPrimary: true })
+  declare key: string
+  @column()
+  declare points: number
+}
+
+export class SecurityLogSchema extends BaseModel {
+  static $columns = ['createdAt', 'details', 'event', 'id', 'ip'] as const
+  $columns = SecurityLogSchema.$columns
+  @column.dateTime({ autoCreate: true })
+  declare createdAt: DateTime
+  @column()
+  declare details: string | null
+  @column()
+  declare event: string
+  @column({ isPrimary: true })
+  declare id: string
+  @column()
+  declare ip: string | null
 }
 
 export class SubscricaoSchema extends BaseModel {

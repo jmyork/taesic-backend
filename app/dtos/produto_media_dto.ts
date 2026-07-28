@@ -15,7 +15,7 @@ export interface ProdutoImagemQueryDTO {
 }
 export interface Createproduto_mediaDTO {
   enabled?: boolean
-  media: MultipartFile[]
+  media: MultipartFile | MultipartFile[]
   produto_id: string
   company_alias?: string
   empresa_id?: string

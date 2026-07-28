@@ -7,6 +7,8 @@ import Lote from '#models/faturacao/lote'
 import Caixa from '#models/caixa'
 import Vendas from '#models/faturacao/vendas'
 import VendaItens from '#models/faturacao/venda_itens'
+import MetodoPagamento from '#models/metodopagamento'
+import Vendapagamento from '#models/vendapagamento'
 import { giveRoleToUser } from '../../app/helpers/Utils.js'
 
 /**
@@ -58,12 +60,16 @@ export async function createPos(empresa: Empresa, overrides: Partial<{ nome: str
   })
 }
 
-export async function createProduto(empresa: Empresa, overrides: Partial<{ nome: string; is_service: boolean }> = {}) {
+export async function createProduto(
+  empresa: Empresa,
+  overrides: Partial<{ nome: string; is_service: boolean; disponivel: boolean }> = {}
+) {
   const suffix = randomUUID().slice(0, 8)
   return Produtos.create({
     nome: overrides.nome ?? `Produto ${suffix}`,
     descricao: 'Produto de teste',
     is_service: overrides.is_service ?? false,
+    disponivel: overrides.disponivel ?? true,
     empresa_id: empresa.id,
   })
 }
@@ -133,4 +139,34 @@ export async function createTenant(roles: string[] = ['Admin']) {
   const user = await createUser(empresa, roles)
   const pos = await createPos(empresa)
   return { empresa, user, pos }
+}
+
+/** `metodopagamento` é isolado por empresa (tenant) — precisa sempre de uma `Empresa`. */
+export async function createMetodoPagamento(empresa: Empresa, overrides: Partial<{ nome: string }> = {}) {
+  const suffix = randomUUID().slice(0, 8)
+  return MetodoPagamento.create({
+    nome: overrides.nome ?? `Numerário ${suffix}`,
+    descricao: 'Método de pagamento de teste',
+    empresa_id: empresa.id,
+  })
+}
+
+/**
+ * `vendas_repository.close()` exige pelo menos um pagamento registado cujo total bata
+ * certo com o total da venda (já com desconto de cupão aplicado, se houver) — sem isto,
+ * `close()` rejeita com `VendaSemPagamentoException`/`VendaPagamentoIncompletoException`.
+ * Cria um `MetodoPagamento` novo (na empresa dona da caixa da venda, via
+ * venda->caixa->pos->empresa) e um único pagamento no valor exacto indicado — assinatura
+ * inalterada de propósito, para não obrigar a tocar em todos os call-sites existentes.
+ */
+export async function pagarVenda(venda: Vendas, valor: number) {
+  const caixa = await Caixa.findOrFail(venda.caixa_id!)
+  const pos = await Pos.findOrFail(caixa.pos_id)
+  const empresa = await Empresa.findOrFail(pos.empresa_id)
+  const metodo = await createMetodoPagamento(empresa)
+  return Vendapagamento.create({
+    venda_id: venda.id,
+    metodo_pagamento_id: metodo.id,
+    valor,
+  })
 }

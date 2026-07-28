@@ -11,6 +11,7 @@ import {
   createCaixa,
   createVenda,
   createVendaItem,
+  pagarVenda,
 } from '../helpers/fixtures.js'
 
 /**
@@ -39,6 +40,10 @@ test.group('vendas_repository.close() - atomicidade da transação', (group) => 
     await createVendaItem(venda, loteA, { quantidade: 5, preco_unitario: 1000 })
     // item 2: pede 10 de apenas 3 disponíveis (força a falha a meio do fecho)
     await createVendaItem(venda, loteB, { quantidade: 10, preco_unitario: 2000 })
+
+    // Pagamento pelo total "teórico" (5*1000 + 10*2000) — não é isto que se testa aqui;
+    // sem ele, close() rejeitaria por falta de pagamento antes sequer de chegar ao stock.
+    await pagarVenda(venda, 5 * 1000 + 10 * 2000)
 
     const repo = new VendasRepository()
 
@@ -77,6 +82,7 @@ test.group('vendas_repository.close() - atomicidade da transação', (group) => 
 
     await createVendaItem(venda, loteA, { quantidade: 3, preco_unitario: 1000 })
     await createVendaItem(venda, loteB, { quantidade: 2, preco_unitario: 1500 })
+    await pagarVenda(venda, 3 * 1000 + 2 * 1500)
 
     const repo = new VendasRepository()
     await repo.close({ id: venda.id, user_id: user.id, company_alias: empresa.company_alias })

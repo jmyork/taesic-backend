@@ -4,13 +4,19 @@ import mail from '@adonisjs/mail/services/main'
 import PromotorRepository from '#repositories/promotor_repository'
 import PromotorAuthRepository from '#repositories/promotor_auth_repository'
 import PromotorOtp from '#models/promotor_otp'
+import PromotorOtpMail from '#mails/promotor_otp_mail'
 
-/** Extrai o código OTP de 6 dígitos da última mensagem capturada pelo mail.fake() —
- * `message.contentViews.html.data` é exatamente o objeto passado a `.htmlView(view, data)`. */
+/**
+ * Extrai o código OTP de 6 dígitos do último email capturado pelo mail.fake(). Desde que
+ * `pedirOtp` passou a enviar via `PromotorOtpMail` (Mailable), o fake mailer já não regista
+ * isto em `fakeMailer.messages` (só usado para o estilo `mail.send((message) => ...)`) —
+ * instâncias de `BaseMail` ficam em `fakeMailer.mails`, e o `Message` real (com
+ * `contentViews`) fica um nível abaixo, em `mail.message`.
+ */
 function extrairCodigoDoUltimoEmail(): string {
-  const enviadas = fakeMailer.messages.sent()
+  const enviadas = fakeMailer.mails.sent()
   const ultima = enviadas.at(-1) as any
-  const codigo = ultima?.contentViews?.html?.data?.codigo
+  const codigo = ultima?.message?.contentViews?.html?.data?.codigo
   if (!codigo) throw new Error('Nenhum código OTP encontrado na última mensagem capturada')
   return codigo
 }
@@ -38,7 +44,7 @@ test.group('promotor_auth_repository', (group) => {
     const codigoReal = extrairCodigoDoUltimoEmail()
     assert.notInclude(otp.codigo_hash, codigoReal)
 
-    fakeMailer.messages.assertSent((message: any) => message.hasTo(promotor.email))
+    fakeMailer.mails.assertSent(PromotorOtpMail, (mail: any) => mail.message.hasTo(promotor.email))
   })
 
   test('confirmarOtp com o código certo autentica e devolve um token', async ({ assert }) => {
@@ -118,6 +124,6 @@ test.group('promotor_auth_repository', (group) => {
   test('pedirOtp para um email desconhecido não lança erro nem envia email (não revela existência)', async ({ assert }) => {
     const authRepo = new PromotorAuthRepository()
     await authRepo.pedirOtp('ninguem-registado@example.com')
-    fakeMailer.messages.assertNoneSent()
+    fakeMailer.mails.assertNoneSent()
   })
 })

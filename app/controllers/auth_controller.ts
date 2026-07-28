@@ -9,18 +9,25 @@ import {
 } from '#validators/auth_validator'
 import User from '#models/user'
 import InvalidTokenException from '#exceptions/invalid_token_exception'
+import { logSecurityEvent } from '../helpers/security_logger.js'
 
 export default class AuthController {
   private service = new authService()
 
-  async login({ request, response }: HttpContext) {
+  async login(ctx: HttpContext) {
+    const { request, response } = ctx
     try {
       const data = await request.validateUsing(UserLoginValidator)
       const loginData = await this.service.login(data)
+      logSecurityEvent('login_succeeded', { uid: data.uid, company_alias: data.company_alias }, ctx)
       return response.ok({ data: loginData, message: 'Login realizado com sucesso' })
     } catch (error: any) {
-      //console.log(error.message)
       if (error.message === 'Credenciais inválidas') {
+        logSecurityEvent(
+          'login_failed',
+          { uid: request.input('uid'), company_alias: request.input('company_alias') },
+          ctx
+        )
         return response.unauthorized({ message: 'Credenciais inválidas' })
       }
 

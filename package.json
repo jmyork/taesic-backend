@@ -31,7 +31,8 @@
     "#start/*": "./start/*.js",
     "#config/*": "./config/*.js",
     "#dtos/*": "./app/dtos/*.js",
-    "#repositories/*": "./app/repositories/*.js"
+    "#repositories/*": "./app/repositories/*.js",
+    "#generated/*": "./app/generated/*.js"
   },
   "devDependencies": {
     "@adonisjs/assembler": "^8.0.0",
@@ -58,6 +59,7 @@
     "@adonisjs/cors": "^3.0.0",
     "@adonisjs/drive": "^4.0.0",
     "@adonisjs/inertia": "^4.2.0",
+    "@adonisjs/limiter": "^3.0.1",
     "@adonisjs/lucid": "^22.4.2",
     "@adonisjs/mail": "^10.3.0",
     "@adonisjs/session": "^8.1.0",

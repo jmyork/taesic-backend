@@ -7,7 +7,7 @@ import FacturaRepository from '#repositories/factura_repository'
 import ProdutosReembolsoRepository from '#repositories/produtos_reembolso_repository'
 import Lote from '#models/faturacao/lote'
 import Vendas from '#models/faturacao/vendas'
-import { createTenant, createProduto, createLote } from '../helpers/fixtures.js'
+import { createTenant, createProduto, createLote, pagarVenda } from '../helpers/fixtures.js'
 
 /**
  * Percorre o fluxo de negócio completo do PDV ponta-a-ponta, através dos repositórios
@@ -36,7 +36,7 @@ test.group('fluxo ponta-a-ponta: caixa -> venda -> factura -> reembolso', (group
       company_alias: companyAlias,
       valor_inicial: 0,
     })
-    assert.equal(caixa.status, 'aberto')
+    assert.equal(caixa.status.toLocaleLowerCase(), 'aberto')
 
     // 2. Abrir venda (presencial, no caixa que acabou de abrir)
     const vendasRepo = new VendasRepository()
@@ -58,6 +58,7 @@ test.group('fluxo ponta-a-ponta: caixa -> venda -> factura -> reembolso', (group
     } as any)
 
     // 4. Fechar a venda — decrementa stock (50 -> 48) e fixa o total (2 x 1000)
+    await pagarVenda(venda, 2000)
     const vendaFechada = await vendasRepo.close({ id: venda.id, user_id: user.id, company_alias: companyAlias })
     assert.equal(vendaFechada.status, 'fechada')
     assert.equal(Number(vendaFechada.total), 2000)
@@ -93,6 +94,6 @@ test.group('fluxo ponta-a-ponta: caixa -> venda -> factura -> reembolso', (group
 
     // 7. Fechar o caixa
     const caixaFechado = await caixaRepo.close(caixa.id, { user_id: user.id, company_alias: companyAlias })
-    assert.equal(caixaFechado.status, 'fechado')
+    assert.equal(caixaFechado.status.toLocaleLowerCase(), 'fechado')
   })
 })

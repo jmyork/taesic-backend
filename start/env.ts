@@ -47,4 +47,11 @@ export default await Env.create(new URL('../', import.meta.url), {
   R2_BUCKET: Env.schema.string(),
   R2_ENDPOINT: Env.schema.string(),
   R2_DEV_SHOW_ENDPOINT: Env.schema.string(),
+
+  /*
+  |----------------------------------------------------------
+  | Variables for configuring the limiter package
+  |----------------------------------------------------------
+  */
+  LIMITER_STORE: Env.schema.enum(['database', 'memory'] as const),
 })

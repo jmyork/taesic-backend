@@ -51,6 +51,12 @@ export default class produtos extends BaseModel {
   @column()
   declare is_service: boolean
 
+  /** Só relevante quando `is_service` — serviços não têm stock (quantidade_em_estoque do lote
+   * é sempre 0), por isso a sua disponibilidade para venda é decidida por esta flag, não por
+   * stock. Produtos com stock continuam a ser controlados por `lote.quantidade_em_estoque`. */
+  @column()
+  declare disponivel: boolean
+
   @column()
   declare fabricante_id: string | null
 

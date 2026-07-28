@@ -340,7 +340,10 @@ ${lines.map((l) => '      ' + l).join('\n')}
   private vineRule(f: Field): string {
     if (f.isRelation) {
       //console.log('passing throught relation')
-      return `vine.string().trim().escape().exists(async (db,value,__)=>{ const exists = await db.from('${f.relationModel!.toLowerCase()}').where('id', value).first(); return exists !== undefined; })`
+      // .first() devolve `null` (não `undefined`) quando não há linha — comparar com
+      // `!== undefined` seria sempre verdadeiro e a verificação de existência nunca rejeitaria
+      // nada. Ver CLAUDE.md secção 7 para o alcance deste bug nos validators já gerados.
+      return `vine.string().trim().escape().exists(async (db,value,__)=>{ const exists = await db.from('${f.relationModel!.toLowerCase()}').where('id', value).first(); return !!exists; })`
     }
 
     switch (f.type) {

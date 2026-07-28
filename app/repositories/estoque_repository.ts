@@ -3,13 +3,28 @@ import { CreateestoqueDTO, EstoqueQueryDTO } from '#dtos/estoque_dto'
 import Empresa from '#models/empresa'
 import loteRepository from './lote_repository.js'
 import Lote from '#models/faturacao/lote'
+import produtos from '#models/faturacao/produtos'
 import db from '@adonisjs/lucid/services/db'
 import type { TransactionClientContract } from '@adonisjs/lucid/types/database'
 import env from '#start/env'
 import emitter from '@adonisjs/core/services/emitter'
 import EstoqueCritico from '#events/estoque_critico'
 import EstoqueInsuficienteException from '#exceptions/estoque_insuficiente_exception'
+import ServicoIndisponivelException from '#exceptions/servico_indisponivel_exception'
 import TipoMovimentacaoInvalidoException from '#exceptions/tipo_movimentacao_invalido_exception'
+import { applyCommonFilters, FieldSpec } from '../helpers/query_filters.js'
+
+const ESTOQUE_FILTER_FIELDS: FieldSpec[] = [
+  { kind: 'exact', column: 'estoque.pos_id', key: 'pos_id' },
+  { kind: 'exact', column: 'estoque.registrado_por', key: 'registrado_por' },
+  { kind: 'exact', column: 'estoque.tipo_movimentacao', key: 'tipo_movimentacao' },
+  { kind: 'exact', column: 'estoque.lote_produto_id', key: 'lote_produto_id' },
+  { kind: 'exact', column: 'estoque.produto_id', key: 'produto_id' },
+  { kind: 'range', column: 'estoque.quantidade', startKey: 'quantidade_start', endKey: 'quantidade_end', exactKey: 'quantidade' },
+  // era 'estoque.motivo_retirada' — coluna inexistente (a real chama-se `motivo`); o filtro
+  // rebentava sempre com "Unknown column" em vez de simplesmente não combinar nada.
+  { kind: 'like', column: 'estoque.motivo', key: 'motivo' },
+]
 
 export default class estoqueRepository {
   baseQuery() {
@@ -17,62 +32,10 @@ export default class estoqueRepository {
   }
 
   async paginate(page = 1, limit = 20, filter?: EstoqueQueryDTO) {
-    let query = this.baseQuery()
-
-    // Deleted filter
-    if (filter?.deleted === 'deleted') {
-      query.whereNotNull('estoque.deleted_at')
-    } else if (filter?.deleted !== 'all') {
-      query.whereNull('estoque.deleted_at')
-    }
-
-    // Helper genérico (datas e números)
-    const applyRange = (field: string, start?: number | Date, end?: number | Date) => {
-      if (start != null && end != null) {
-        query.whereBetween(field, [start, end])
-      } else if (start != null) {
-        query.where(field, '>=', start)
-      } else if (end != null) {
-        query.where(field, '<=', end)
-      }
-    }
-
-    // Audit dates (ranges)
-    applyRange('estoque.created_at', filter?.createdDtStart, filter?.createdDtEnd)
-    applyRange('estoque.updated_at', filter?.updatedDtStart, filter?.updatedDtEnd)
-
-    // Filtros exatos
-    if (filter?.pos_id) {
-      query.where('estoque.pos_id', filter.pos_id)
-    }
-
-    if (filter?.registrado_por) {
-      query.where('estoque.registrado_por', filter.registrado_por)
-    }
-
-    if (filter?.tipo_movimentacao) {
-      query.where('estoque.tipo_movimentacao', filter.tipo_movimentacao)
-    }
-
-    if (filter?.lote_produto_id) {
-      query.where('estoque.lote_produto_id', filter.lote_produto_id)
-    }
-
-    if (filter?.produto_id) {
-      query.where('estoque.produto_id', filter.produto_id)
-    }
-
-    // Quantidade (exata ou range)
-    if (filter?.quantidade !== undefined) {
-      query.where('estoque.quantidade', filter.quantidade)
-    } else {
-      applyRange('estoque.quantidade', filter?.quantidade_start, filter?.quantidade_end)
-    }
-
-    // Motivo (busca parcial)
-    if (filter?.motivo) {
-      query.where('estoque.motivo_retirada', 'like', `%${filter.motivo}%`)
-    }
+    let query = applyCommonFilters(this.baseQuery(), filter, {
+      table: 'estoque',
+      fields: ESTOQUE_FILTER_FIELDS,
+    })
 
     // Empresa/Company (evita joins duplicados)
     let needsJoin = false
@@ -136,10 +99,30 @@ export default class estoqueRepository {
     // é a que corre dentro da transação, com a linha do lote bloqueada.
     const loteRepo = new loteRepository()
     const lotePreCheck = await loteRepo.findOrFail(estoqueData.lote_produto_id, company_alias)
+
+    // Serviços não têm stock real (quantidade_em_estoque do lote é sempre 0) — "stock
+    // insuficiente" nunca se aplica a eles. A disponibilidade de um serviço é decidida por
+    // `produtos.disponivel`, não pela quantidade em stock.
+    const produtoDoLote = await produtos
+      .query()
+      .where('id', lotePreCheck.produto_id)
+      .select('is_service', 'disponivel')
+      .first()
+    const ehServico = produtoDoLote?.is_service ?? false
+
     if (movimentacoesSaida.includes(tipo_movimentacao)) {
-      const disponivel = lotePreCheck.quantidade_em_estoque || 0
-      if (disponivel < estoqueData.quantidade!) {
-        throw new EstoqueInsuficienteException(disponivel, estoqueData.quantidade!)
+      if (ehServico) {
+        // MySQL devolve boolean como 0/1 via mysql2, não `true`/`false` — comparação estrita
+        // (`=== false`) nunca combinava com `0`. Usar falsy, mesmo padrão que `is_service` já
+        // usa em `produtos_repository.ts`/`lote_repository.ts` (`if (produto.is_service)`).
+        if (!produtoDoLote?.disponivel) {
+          throw new ServicoIndisponivelException()
+        }
+      } else {
+        const disponivel = lotePreCheck.quantidade_em_estoque || 0
+        if (disponivel < estoqueData.quantidade!) {
+          throw new EstoqueInsuficienteException(disponivel, estoqueData.quantidade!)
+        }
       }
     }
 
@@ -153,7 +136,11 @@ export default class estoqueRepository {
 
       const quantidadeAtual = lote.quantidade_em_estoque || 0
 
-      if (movimentacoesSaida.includes(tipo_movimentacao) && quantidadeAtual < estoqueData.quantidade!) {
+      if (
+        movimentacoesSaida.includes(tipo_movimentacao) &&
+        !ehServico &&
+        quantidadeAtual < estoqueData.quantidade!
+      ) {
         throw new EstoqueInsuficienteException(quantidadeAtual, estoqueData.quantidade!)
       }
 
@@ -167,14 +154,19 @@ export default class estoqueRepository {
         { client }
       )
 
-      if (movimentacoesEntrada.includes(tipo_movimentacao)) {
-        lote.quantidade_em_estoque = quantidadeAtual + estoqueData.quantidade!
-      } else {
-        lote.quantidade_em_estoque = quantidadeAtual - estoqueData.quantidade!
-      }
+      // Serviços mantêm o registo de movimentação (auditoria), mas nunca mexem em
+      // quantidade_em_estoque — não há stock real a somar/subtrair, e decrementar deixaria
+      // o valor permanentemente negativo a cada venda.
+      if (!ehServico) {
+        if (movimentacoesEntrada.includes(tipo_movimentacao)) {
+          lote.quantidade_em_estoque = quantidadeAtual + estoqueData.quantidade!
+        } else {
+          lote.quantidade_em_estoque = quantidadeAtual - estoqueData.quantidade!
+        }
 
-      lote.useTransaction(client)
-      await lote.save()
+        lote.useTransaction(client)
+        await lote.save()
+      }
 
       return { est, quantidadeRestante: lote.quantidade_em_estoque }
     }
@@ -185,7 +177,9 @@ export default class estoqueRepository {
     const resultado = trx ? await runInTransaction(trx) : await db.transaction(runInTransaction)
 
     // Só depois da transação confirmar — nunca atrasa nem arrisca a movimentação em si.
-    if (movimentacoesSaida.includes(tipo_movimentacao)) {
+    // Serviços ficam sempre com quantidade_em_estoque = 0 — alertar "stock crítico" a cada
+    // venda de serviço não tem sentido nenhum (não é stock a esgotar-se).
+    if (movimentacoesSaida.includes(tipo_movimentacao) && !ehServico) {
       await this.avisarSeEstoqueCritico(estoqueData.lote_produto_id, resultado.quantidadeRestante, company_alias)
     }
 

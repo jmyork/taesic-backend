@@ -30,7 +30,7 @@ export const createvenda_itensValidator = vine.compile(
           .where('empresa.company_alias', field.data.params.company_alias)
           .where('lote_produto.id', value)
           .whereNull('lote_produto.deleted_at')
-          .where('produtos.is_service', false)
+          // .where('produtos.is_service', false)
           .first()
         return !!exists
       }),
@@ -59,7 +59,6 @@ export const VendaItensQueryValidator = vine.compile(
       .uuid().optional(),
   })
 )
-
 
 export const VendaItemCreateValidator = vine.compile(
   vine.object({

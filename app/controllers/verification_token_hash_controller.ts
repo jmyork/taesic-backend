@@ -4,32 +4,6 @@ import VerificationTokenHashService from '#services/verification_token_hash_serv
 export default class VerificationTokenHashController {
   private service = new VerificationTokenHashService()
 
-  // ==================== VERIFICAR TOKEN ====================
-  /**
-   * Verifica se um token é válido
-   * POST /verification-token/verify
-   * Body: { token: "xxxxx" }
-   */
-  async verify({ params, response }: HttpContext) {
-    try {
-      await this.service.verifyToken(params.token)
-      return response.ok({
-        data: null,
-        message: 'Activação da conta realizada com sucesso',
-        status: 200,
-      })
-    } catch (error: any) {
-      const statusCode = error.message?.includes('expirado') ? 410 : 400
-
-      console.error('Erro ao verificar token:', error)
-      return response.notFound({
-        data: { valid: false },
-        message: 'Token Não encontrado, expirado ou já verificado',
-        status: statusCode,
-      })
-    }
-  }
-
   // ==================== ATIVAR VERIFICAÇÃO ====================
   /**
    * Marca o token como verificado/usado

@@ -15,6 +15,7 @@ import {
   createVendaItem,
   createPos,
   createUser,
+  pagarVenda,
 } from '../helpers/fixtures.js'
 
 test.group('metricas_repository', (group) => {
@@ -32,6 +33,7 @@ test.group('metricas_repository', (group) => {
     const vendaFechada = await createVenda(caixa)
     await createVendaItem(vendaFechada, lote, { quantidade: 2, preco_unitario: 1000 })
     const vendasRepo = new VendasRepository()
+    await pagarVenda(vendaFechada, 2000)
     await vendasRepo.close({ id: vendaFechada.id, user_id: user.id, company_alias: empresa.company_alias })
 
     // uma venda ainda aberta — não deve contar para a receita
@@ -84,6 +86,7 @@ test.group('metricas_repository', (group) => {
     const vendaA = await createVenda(caixaA)
     await createVendaItem(vendaA, loteA, { quantidade: 1, preco_unitario: 5000 })
     const vendasRepo = new VendasRepository()
+    await pagarVenda(vendaA, 5000)
     await vendasRepo.close({ id: vendaA.id, user_id: tenantA.user.id, company_alias: tenantA.empresa.company_alias })
 
     const metricas = new MetricasRepository()
@@ -106,6 +109,7 @@ test.group('metricas_repository', (group) => {
     const venda = await createVenda(caixa)
     await createVendaItem(venda, lote, { quantidade: 2, preco_unitario: 1500 })
     const vendasRepo = new VendasRepository()
+    await pagarVenda(venda, 3000)
     await vendasRepo.close({ id: venda.id, user_id: user.id, company_alias: empresa.company_alias })
 
     const metricas = new MetricasRepository()
@@ -133,6 +137,7 @@ test.group('metricas_repository', (group) => {
     const vendaA = await createVenda(caixaA)
     await createVendaItem(vendaA, loteA, { quantidade: 1, preco_unitario: 4000 })
     const vendasRepo = new VendasRepository()
+    await pagarVenda(vendaA, 4000)
     await vendasRepo.close({ id: vendaA.id, user_id: vendedorA.id, company_alias: empresa.company_alias })
 
     const metricas = new MetricasRepository()
@@ -279,15 +284,18 @@ test.group('metricas_repository', (group) => {
 
     const vendaA = await createVenda(caixa)
     await createVendaItem(vendaA, lote, { quantidade: 2, preco_unitario: 1000 }) // subtotal 2000
+    await pagarVenda(vendaA, 1800)
     await vendasRepo.close({ id: vendaA.id, user_id: user.id, company_alias: empresa.company_alias, cupom_codigo: cupomA.codigo })
 
     const vendaB = await createVenda(caixa)
     await createVendaItem(vendaB, lote, { quantidade: 1, preco_unitario: 1000 }) // subtotal 1000
+    await pagarVenda(vendaB, 800)
     await vendasRepo.close({ id: vendaB.id, user_id: user.id, company_alias: empresa.company_alias, cupom_codigo: cupomB.codigo })
 
     // venda sem cupão nenhum — não deve entrar nas contas de promotores
     const vendaSemCupom = await createVenda(caixa)
     await createVendaItem(vendaSemCupom, lote, { quantidade: 5, preco_unitario: 1000 })
+    await pagarVenda(vendaSemCupom, 5000)
     await vendasRepo.close({ id: vendaSemCupom.id, user_id: user.id, company_alias: empresa.company_alias })
 
     const leadRepo = new LeadRepository()
@@ -330,6 +338,7 @@ test.group('metricas_repository', (group) => {
     const vendasRepo = new VendasRepository()
     const venda = await createVenda(caixa)
     await createVendaItem(venda, lote, { quantidade: 3, preco_unitario: 1000 })
+    await pagarVenda(venda, 3000)
     await vendasRepo.close({ id: venda.id, user_id: user.id, company_alias: empresa.company_alias, cupom_codigo: cupomTop.codigo })
 
     const metricas = new MetricasRepository()
@@ -361,6 +370,7 @@ test.group('metricas_repository', (group) => {
     const vendasRepo = new VendasRepository()
     const venda = await createVenda(caixa)
     await createVendaItem(venda, lote, { quantidade: 4, preco_unitario: 1000 })
+    await pagarVenda(venda, 4000)
     await vendasRepo.close({ id: venda.id, user_id: user.id, company_alias: empresa.company_alias, cupom_codigo: cupom.codigo })
 
     const metricas = new MetricasRepository()

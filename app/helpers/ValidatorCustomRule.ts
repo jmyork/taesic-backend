@@ -122,15 +122,25 @@ export const EstoqueDisponivelCheck = vine.createRule(
 
 
     try {
-      // Busca o lote
+      // Busca o lote junto com o produto — serviços não têm stock real (quantidade_em_estoque
+      // do lote é sempre 0), por isso a disponibilidade deles depende de `produtos.disponivel`,
+      // não da quantidade em stock.
       const lote = await db
         .from('lote_produto')
-        .where('id', lote_produto_id)
-        .select('quantidade_em_estoque')
+        .join('produtos', 'produtos.id', 'lote_produto.produto_id')
+        .where('lote_produto.id', lote_produto_id)
+        .select('lote_produto.quantidade_em_estoque', 'produtos.is_service', 'produtos.disponivel')
         .first()
 
       if (!lote) {
         return // Será tratado pela validação de exists
+      }
+
+      if (lote.is_service) {
+        if (lote.disponivel === false || lote.disponivel === 0) {
+          field.report('This service is not currently available', 'servicoIndisponivel', field)
+        }
+        return
       }
 
       const estoqueDisponivel = lote.quantidade_em_estoque || 0

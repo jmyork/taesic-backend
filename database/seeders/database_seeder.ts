@@ -81,7 +81,14 @@ export default class extends BaseSeeder {
         nome: 'AdminUserVisualizador',
         descricao: 'Visualizador de usuários do domínio',
       },
-
+      {
+        nome: 'Gerente',
+        descricao: 'Gerente do domínio/empresa',
+      },
+      {
+        nome: 'Supervisor',
+        descricao: 'Supervisor do domínio/empresa',
+      },
       // ===== PLATAFORMA (Global) =====
       {
         nome: 'Platform_Admin',
@@ -454,12 +461,12 @@ export default class extends BaseSeeder {
       { nome: 'platform_plano.update', descricao: 'Editar plano' },
       { nome: 'platform_plano.destroy', descricao: 'Remover/Recuperar plano' },
 
-      // ==================== METODO-PAGAMENTO ====================
-      { nome: 'platform_metodo_pagamento.index', descricao: 'Listar métodos de pagamento' },
-      { nome: 'platform_metodo_pagamento.show', descricao: 'Ver método de pagamento específico' },
-      { nome: 'platform_metodo_pagamento.store', descricao: 'Criar método de pagamento' },
-      { nome: 'platform_metodo_pagamento.update', descricao: 'Editar método de pagamento' },
-      { nome: 'platform_metodo_pagamento.destroy', descricao: 'Remover/Recuperar método de pagamento' },
+      // ==================== METODO-PAGAMENTO (DOMAIN — isolado por empresa) ====================
+      { nome: 'domain_metodo_pagamento.index', descricao: 'Listar métodos de pagamento da empresa' },
+      { nome: 'domain_metodo_pagamento.show', descricao: 'Ver método de pagamento específico' },
+      { nome: 'domain_metodo_pagamento.store', descricao: 'Criar método de pagamento' },
+      { nome: 'domain_metodo_pagamento.update', descricao: 'Editar método de pagamento' },
+      { nome: 'domain_metodo_pagamento.destroy', descricao: 'Remover/Recuperar método de pagamento' },
 
       // ==================== CLIENTE ====================
       { nome: 'domain_cliente.index', descricao: 'Listar clientes' },
@@ -696,6 +703,12 @@ export default class extends BaseSeeder {
       'domain_vendapagamento.store',
       'domain_vendapagamento.update',
       'domain_vendapagamento.destroy',
+      // metodo-pagamento (só Admin cria/edita/apaga métodos de pagamento)
+      'domain_metodo_pagamento.index',
+      'domain_metodo_pagamento.show',
+      'domain_metodo_pagamento.store',
+      'domain_metodo_pagamento.update',
+      'domain_metodo_pagamento.destroy',
       // subscricao
       'domain_subscricao.index',
       'domain_subscricao.show',
@@ -822,6 +835,10 @@ export default class extends BaseSeeder {
       // venda itens
       'domain_vendas_itens.index',
       'domain_vendas_itens.show',
+
+      // metodo-pagamento (leitura — precisa de saber que métodos existem)
+      'domain_metodo_pagamento.index',
+      'domain_metodo_pagamento.show',
     ])
 
     // ===== ESTOQUISTA VISUALIZADOR (Read-only Produtos) =====
@@ -987,6 +1004,10 @@ export default class extends BaseSeeder {
       'domain_vendas_itens.update',
       'domain_vendas_itens.destroy',
 
+      // metodo-pagamento (leitura — precisa de saber que métodos existem)
+      'domain_metodo_pagamento.index',
+      'domain_metodo_pagamento.show',
+
       // facturas (emitir, nunca anular — só o Admin anula)
       'domain_facturas.index',
       'domain_facturas.show',
@@ -1070,6 +1091,236 @@ export default class extends BaseSeeder {
       // venda itens
       'domain_vendas_itens.index',
       'domain_vendas_itens.show',
+    ])
+
+    // ===== GERENTE (mesmo acesso operacional do Vendedor, mais leitura de métricas) =====
+    // Gerente/Supervisor não tinham NENHUMA permissão atribuída (bug: bloqueados em todas as
+    // rotas de domínio por permission_middleware), apesar de já haver lógica de autorização a
+    // tratá-los como "gestão" (ex.: caixa_repository.close/reopen/destroy permite a um
+    // Admin/Gerente/Supervisor agir sobre a caixa de outro utilizador). Recebem o mesmo
+    // conjunto do Vendedor — o suficiente para essas rotas — mais visibilidade de desempenho
+    // da loja (métricas de vendas, não as de promotores/marketing).
+    await givePermissionsToRole('Gerente', [
+      // Produto-Marcas (read only)
+      'domain_produto_marcas.index',
+      'domain_produto_marcas.show',
+
+      // Produto-Formatos (read only)
+      'domain_produto_formatos.index',
+      'domain_produto_formatos.show',
+
+      // Produto-Categorias (read only)
+      'domain_produto_categorias.index',
+      'domain_produto_categorias.show',
+
+      // Produto-Fabricantes (read only)
+      'domain_produto_fabricantes.index',
+      'domain_produto_fabricantes.show',
+
+      // Produto-Fornecedores (read only)
+      'domain_produto_fornecedores.index',
+      'domain_produto_fornecedores.show',
+
+      // Produtos (read only)
+      'domain_produtos.index',
+      'domain_produtos.show',
+
+      // Produto-Descrições (read only)
+      'domain_produto_descricoes.index',
+      'domain_produto_descricoes.show',
+
+      // Produto-Imagens (read only)
+      'domain_produto_media.show',
+      'domain_produto_media.index',
+
+      // Categorias-Produtos (read only)
+      'domain_categorias_produtos.index',
+      'domain_categorias_produtos.show',
+
+      // Produto-Contraindicações (read only)
+      'domain_produto_contraindicacoes.index',
+      'domain_produto_contraindicacoes.show',
+
+      // Produto-Recomendações (read only)
+      'domain_produto_recomendacoes.index',
+      'domain_produto_recomendacoes.show',
+
+      // Auth
+      'domain_auth.me',
+      'domain_auth.list',
+      'domain_auth.show',
+      'domain_reset.password',
+      'domain_forgot.password',
+
+      // caixa
+      'domain_caixas.index',
+      'domain_caixas.show',
+      'domain_caixas.store',
+      'domain_caixas.destroy',
+      'domain_caixa.my',
+
+      // pos
+      'domain_pos.index',
+      'domain_pos.show',
+      'domain_pos.store',
+      'domain_pos.update',
+      'domain_pos.destroy',
+
+      // lote
+      'domain_lote_produto.index',
+      'domain_lote_produto.show',
+
+      // estoque
+      'domain_estoque.index',
+      'domain_estoque.show',
+
+      // vendas
+      'domain_vendas.index',
+      'domain_vendas.show',
+      'domain_vendas.store',
+      'domain_vendas.update',
+      'domain_vendas.destroy',
+      'domain_vendas.anular',
+
+      // reembolso
+      'domain_reembolso_total',
+      'domain_reembolso_parcial',
+      'domain_reembolso_consultar',
+      'domain_reembolso_consultar_id',
+
+      // venda itens
+      'domain_vendas_itens.index',
+      'domain_vendas_itens.show',
+      'domain_vendas_itens.store',
+      'domain_vendas_itens.update',
+      'domain_vendas_itens.destroy',
+
+      // metodo-pagamento (leitura — precisa de saber que métodos existem)
+      'domain_metodo_pagamento.index',
+      'domain_metodo_pagamento.show',
+
+      // facturas (emitir, nunca anular — só o Admin anula)
+      'domain_facturas.index',
+      'domain_facturas.show',
+      'domain_facturas.store',
+
+      // métricas de desempenho da loja (não as de promotores/marketing)
+      'domain_metricas.resumo',
+      'domain_metricas.postos',
+      'domain_metricas.vendedores',
+      'domain_metricas.por_dia',
+    ])
+
+    // ===== SUPERVISOR (mesmo conjunto do Gerente — ver comentário acima) =====
+    await givePermissionsToRole('Supervisor', [
+      // Produto-Marcas (read only)
+      'domain_produto_marcas.index',
+      'domain_produto_marcas.show',
+
+      // Produto-Formatos (read only)
+      'domain_produto_formatos.index',
+      'domain_produto_formatos.show',
+
+      // Produto-Categorias (read only)
+      'domain_produto_categorias.index',
+      'domain_produto_categorias.show',
+
+      // Produto-Fabricantes (read only)
+      'domain_produto_fabricantes.index',
+      'domain_produto_fabricantes.show',
+
+      // Produto-Fornecedores (read only)
+      'domain_produto_fornecedores.index',
+      'domain_produto_fornecedores.show',
+
+      // Produtos (read only)
+      'domain_produtos.index',
+      'domain_produtos.show',
+
+      // Produto-Descrições (read only)
+      'domain_produto_descricoes.index',
+      'domain_produto_descricoes.show',
+
+      // Produto-Imagens (read only)
+      'domain_produto_media.show',
+      'domain_produto_media.index',
+
+      // Categorias-Produtos (read only)
+      'domain_categorias_produtos.index',
+      'domain_categorias_produtos.show',
+
+      // Produto-Contraindicações (read only)
+      'domain_produto_contraindicacoes.index',
+      'domain_produto_contraindicacoes.show',
+
+      // Produto-Recomendações (read only)
+      'domain_produto_recomendacoes.index',
+      'domain_produto_recomendacoes.show',
+
+      // Auth
+      'domain_auth.me',
+      'domain_auth.list',
+      'domain_auth.show',
+      'domain_reset.password',
+      'domain_forgot.password',
+
+      // caixa
+      'domain_caixas.index',
+      'domain_caixas.show',
+      'domain_caixas.store',
+      'domain_caixas.destroy',
+      'domain_caixa.my',
+
+      // pos
+      'domain_pos.index',
+      'domain_pos.show',
+      'domain_pos.store',
+      'domain_pos.update',
+      'domain_pos.destroy',
+
+      // lote
+      'domain_lote_produto.index',
+      'domain_lote_produto.show',
+
+      // estoque
+      'domain_estoque.index',
+      'domain_estoque.show',
+
+      // vendas
+      'domain_vendas.index',
+      'domain_vendas.show',
+      'domain_vendas.store',
+      'domain_vendas.update',
+      'domain_vendas.destroy',
+      'domain_vendas.anular',
+
+      // reembolso
+      'domain_reembolso_total',
+      'domain_reembolso_parcial',
+      'domain_reembolso_consultar',
+      'domain_reembolso_consultar_id',
+
+      // venda itens
+      'domain_vendas_itens.index',
+      'domain_vendas_itens.show',
+      'domain_vendas_itens.store',
+      'domain_vendas_itens.update',
+      'domain_vendas_itens.destroy',
+
+      // metodo-pagamento (leitura — precisa de saber que métodos existem)
+      'domain_metodo_pagamento.index',
+      'domain_metodo_pagamento.show',
+
+      // facturas (emitir, nunca anular — só o Admin anula)
+      'domain_facturas.index',
+      'domain_facturas.show',
+      'domain_facturas.store',
+
+      // métricas de desempenho da loja (não as de promotores/marketing)
+      'domain_metricas.resumo',
+      'domain_metricas.postos',
+      'domain_metricas.vendedores',
+      'domain_metricas.por_dia',
     ])
 
     // ===== ADMIN VISUALIZADOR (Read-only geral) =====

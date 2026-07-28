@@ -20,6 +20,8 @@ import {
   giveRoleToUser,
 } from '../helpers/Utils.js'
 import mail from '@adonisjs/mail/services/main'
+import PasswordDefinitionMail from '#mails/password_definition_mail'
+import ForgotPasswordMail from '#mails/forgot_password_mail'
 import { Exception } from '@adonisjs/core/exceptions'
 import db from '@adonisjs/lucid/services/db'
 import VerificationTokenHash from '#models/verification_token_hash'
@@ -104,22 +106,15 @@ export default class authRepository {
       try {
         const password_definition_url = await buildPasswordDefinitionUrl(company_alias, user.id)
 
-        await mail.send((message) => {
-          message
-            .to(user.email!)
-            .from('noreply.alaragest@bknkv.com')
-            .subject('Sua conta foi criada — Defina sua senha')
-            .htmlView('emails/password_definition', {
-              user: {
-                email: user.email,
-                username: user.username,
-              },
-              company: {
-                name: empresa.nome || empresa.company_alias,
-              },
-              resetUrl: password_definition_url,
-            })
-        })
+        await mail.send(
+          new PasswordDefinitionMail(
+            user.email!,
+            user.username!,
+            empresa.nome || empresa.company_alias,
+            temporaryPassword,
+            password_definition_url
+          )
+        )
       } catch (emailErr) {
         throw new Exception('Erro ao criar conta')
       }
@@ -193,17 +188,7 @@ export default class authRepository {
       empresa?.company_alias!,
       user?.id!
     )
-    await mail.send((message) => {
-      message
-        .to(user?.email!)
-        .from('noreply.alaragest@bknkv.com')
-        .subject('Redefina sua senha')
-        .htmlView('emails/password_definition', {
-          resetUrl: password_definition_url,
-          user: user!,
-          company: empresa,
-        })
-    })
+    await mail.send(new ForgotPasswordMail(user?.email!, user?.username!, password_definition_url))
 
     await VerificationTokenHash.create({
       user_id: user?.id!,

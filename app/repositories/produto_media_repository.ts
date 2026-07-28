@@ -9,6 +9,12 @@ import Empresa from '#models/empresa'
 import { randomUUID } from 'crypto'
 import env from '#start/env'
 import drive from '@adonisjs/drive/services/main'
+import db from '@adonisjs/lucid/services/db'
+import ProdutoMediaLimiteAtingidoException from '#exceptions/produto_media_limite_atingido_exception'
+import ProdutoMediaLimiteExcedidoException from '#exceptions/produto_media_limite_excedido_exception'
+
+/** Máximo de imagens (não-apagadas) que um produto pode ter registadas em simultâneo. */
+const LIMITE_IMAGENS_POR_PRODUTO = 30
 
 export default class produto_mediaRepository {
   baseQuery() {
@@ -109,6 +115,24 @@ export default class produto_mediaRepository {
     const { empresa_id, company_alias, ...produtoImagemData } = data
 
     const mediaArray = Array.isArray(data.media) ? data.media : [data.media]
+
+    // Verificar o limite ANTES de subir qualquer ficheiro para o disco/R2 — falhar cedo
+    // evita uploads que de qualquer forma seriam rejeitados.
+    const quantidadeRegistada = await db
+      .from('produto_media')
+      .where('produto_id', data.produto_id)
+      .whereNull('deleted_at')
+      .count('* as total')
+      .first()
+    const totalRegistado = Number(quantidadeRegistada?.total ?? 0)
+
+    if (totalRegistado >= LIMITE_IMAGENS_POR_PRODUTO) {
+      throw new ProdutoMediaLimiteAtingidoException(LIMITE_IMAGENS_POR_PRODUTO)
+    }
+
+    if (totalRegistado + mediaArray.length > LIMITE_IMAGENS_POR_PRODUTO) {
+      throw new ProdutoMediaLimiteExcedidoException(LIMITE_IMAGENS_POR_PRODUTO - totalRegistado)
+    }
 
     const records = await Promise.all(
       mediaArray.map(async (file) => {

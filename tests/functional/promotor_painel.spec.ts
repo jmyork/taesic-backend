@@ -12,6 +12,7 @@ import {
   createCaixa,
   createVenda,
   createVendaItem,
+  pagarVenda,
 } from '../helpers/fixtures.js'
 
 test.group('promotor_painel_repository', (group) => {
@@ -36,11 +37,13 @@ test.group('promotor_painel_repository', (group) => {
     const venda1 = await createVenda(caixa)
     await createVendaItem(venda1, lote, { quantidade: 2, preco_unitario: 1000 })
     const vendasRepo = new VendasRepository()
+    await pagarVenda(venda1, 1800)
     await vendasRepo.close({ id: venda1.id, user_id: user.id, company_alias: empresa.company_alias, cupom_codigo: cupom.codigo })
 
     // venda 2: fechada, SEM cupão nenhum — não deve entrar nas contas do promotor
     const venda2 = await createVenda(caixa)
     await createVendaItem(venda2, lote, { quantidade: 5, preco_unitario: 1000 })
+    await pagarVenda(venda2, 5000)
     await vendasRepo.close({ id: venda2.id, user_id: user.id, company_alias: empresa.company_alias })
 
     const painelRepo = new PromotorPainelRepository()
@@ -108,6 +111,7 @@ test.group('promotor_painel_repository', (group) => {
     const caixaA = await createCaixa(tenantA.user, tenantA.pos)
     const vendaA = await createVenda(caixaA)
     await createVendaItem(vendaA, loteA, { quantidade: 1, preco_unitario: 1000 })
+    await pagarVenda(vendaA, 950)
     await vendasRepo.close({
       id: vendaA.id,
       user_id: tenantA.user.id,
@@ -120,6 +124,7 @@ test.group('promotor_painel_repository', (group) => {
     const caixaB = await createCaixa(tenantB.user, tenantB.pos)
     const vendaB = await createVenda(caixaB)
     await createVendaItem(vendaB, loteB, { quantidade: 1, preco_unitario: 2000 })
+    await pagarVenda(vendaB, 1900)
     await vendasRepo.close({
       id: vendaB.id,
       user_id: tenantB.user.id,

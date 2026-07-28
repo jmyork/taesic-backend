@@ -2,6 +2,7 @@ import { DateTime } from 'luxon'
 import { createHash, randomBytes, randomInt } from 'node:crypto'
 import hash from '@adonisjs/core/services/hash'
 import mail from '@adonisjs/mail/services/main'
+import PromotorOtpMail from '#mails/promotor_otp_mail'
 import Promotor from '#models/promotor'
 import PromotorOtp from '#models/promotor_otp'
 import PromotorAccessToken from '#models/promotor_access_token'
@@ -36,13 +37,7 @@ export default class PromotorAuthRepository {
       used_at: null,
     })
 
-    await mail.send((message) => {
-      message
-        .to(promotor.email)
-        .from('noreply.alaragest@bknkv.com')
-        .subject('O seu código de acesso — Alaragest')
-        .htmlView('emails/promotor_otp', { nome: promotor.nome, codigo })
-    })
+    await mail.send(new PromotorOtpMail(promotor.email, promotor.nome, codigo))
   }
 
   /** Devolve o token de acesso em claro (só existe este momento) ou `null` se o OTP for inválido/expirado/usado. */
