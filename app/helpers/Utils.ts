@@ -241,13 +241,18 @@ export const generateSecurePassword = (): string => {
  * Idealmente, deveria incluir um token de reset seguro em vez da senha
  */
 export const buildPasswordDefinitionUrl = async (companyAlias: string, userId: string) => {
-  const baseUrl =
+  const frontendBaseUrl =
     process.env.APP_PASSWORD_DEFINITION_URL ||
-    `http://localhost:3333/api/companyAlias/auth/reset-password/:token`
+    `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password/:token`
 
   const resetToken = await generateResetToken(userId)
 
-  return baseUrl.replace('companyAlias', companyAlias).replace(':token', resetToken)
+  const resetUrl = frontendBaseUrl.replace(':token', resetToken)
+
+  // Preserve tenant context for frontend -> backend reset POST flow.
+  return resetUrl.includes('?')
+    ? `${resetUrl}&company_alias=${encodeURIComponent(companyAlias)}`
+    : `${resetUrl}?company_alias=${encodeURIComponent(companyAlias)}`
 }
 
 /**
