@@ -197,8 +197,35 @@ export class CupomSchema extends BaseModel {
   declare validade: DateTime | null
 }
 
+export class DespesaSchema extends BaseModel {
+  static $columns = ['categoria', 'createdAt', 'dataDespesa', 'deletedAt', 'descricao', 'empresaId', 'id', 'posId', 'registradoPor', 'updatedAt', 'valor'] as const
+  $columns = DespesaSchema.$columns
+  @column()
+  declare categoria: string
+  @column.dateTime({ autoCreate: true })
+  declare createdAt: DateTime
+  @column.date()
+  declare dataDespesa: DateTime
+  @column.dateTime()
+  declare deletedAt: DateTime | null
+  @column()
+  declare descricao: string | null
+  @column()
+  declare empresaId: string
+  @column({ isPrimary: true })
+  declare id: string
+  @column()
+  declare posId: string | null
+  @column()
+  declare registradoPor: string
+  @column.dateTime({ autoCreate: true, autoUpdate: true })
+  declare updatedAt: DateTime
+  @column()
+  declare valor: string
+}
+
 export class EmpresaSchema extends BaseModel {
-  static $columns = ['companyAlias', 'contacto', 'createdAt', 'deletedAt', 'id', 'inadiplente', 'localizacao', 'nif', 'nome', 'regimeIva', 'status', 'tamanho', 'updatedAt', 'userId', 'verified'] as const
+  static $columns = ['companyAlias', 'contacto', 'createdAt', 'deletedAt', 'id', 'inadiplente', 'localizacao', 'nif', 'nome', 'regimeIva', 'status', 'tamanho', 'taxaIvaId', 'updatedAt', 'userId', 'verified'] as const
   $columns = EmpresaSchema.$columns
   @column()
   declare companyAlias: string | null
@@ -224,6 +251,8 @@ export class EmpresaSchema extends BaseModel {
   declare status: boolean | null
   @column()
   declare tamanho: string | null
+  @column()
+  declare taxaIvaId: string | null
   @column.dateTime({ autoCreate: true, autoUpdate: true })
   declare updatedAt: DateTime
   @column()
@@ -959,6 +988,25 @@ export class SubscricaoSchema extends BaseModel {
   declare renova: boolean | null
   @column()
   declare status: string | null
+  @column.dateTime({ autoCreate: true, autoUpdate: true })
+  declare updatedAt: DateTime
+}
+
+export class TaxaIvaSchema extends BaseModel {
+  static $columns = ['ativo', 'createdAt', 'deletedAt', 'id', 'nome', 'percentual', 'updatedAt'] as const
+  $columns = TaxaIvaSchema.$columns
+  @column()
+  declare ativo: boolean
+  @column.dateTime({ autoCreate: true })
+  declare createdAt: DateTime
+  @column.dateTime()
+  declare deletedAt: DateTime | null
+  @column({ isPrimary: true })
+  declare id: string
+  @column()
+  declare nome: string
+  @column()
+  declare percentual: string
   @column.dateTime({ autoCreate: true, autoUpdate: true })
   declare updatedAt: DateTime
 }

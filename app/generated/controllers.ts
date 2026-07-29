@@ -5,6 +5,7 @@ import categorias_produtossController from '#controllers/categorias_produtos_con
 import clientesController from '#controllers/cliente_controller'
 import cobrancasController from '#controllers/cobranca_controller'
 import cupomsController from '#controllers/cupom_controller'
+import despesasController from '#controllers/despesas_controller'
 import DomainUserPapelController from '#controllers/domain_user_papel_controller'
 import empresasController from '#controllers/empresa_controller'
 import estoquesController from '#controllers/estoque_controller'
@@ -32,7 +33,10 @@ import produtos_reembolsosController from '#controllers/produtos_reembolso_contr
 import PromotorAuthController from '#controllers/promotor_auth_controller'
 import PromotorController from '#controllers/promotor_controller'
 import PromotorPainelController from '#controllers/promotor_painel_controller'
+import RelatoriosController from '#controllers/relatorios_controller'
+import RelatoriosPlataformaController from '#controllers/relatorios_plataforma_controller'
 import subscricaosController from '#controllers/subscricao_controller'
+import taxaIvasController from '#controllers/taxa_iva_controller'
 import user_papelsController from '#controllers/user_papel_controller'
 import userpossController from '#controllers/userpos_controller'
 import venda_itenssController from '#controllers/venda_itens_controller'
@@ -58,6 +62,7 @@ export const controllers = {
   Cliente: clientesController,
   Cobranca: cobrancasController,
   Cupom: cupomsController,
+  Despesas: despesasController,
   DomainUserPapel: DomainUserPapelController,
   Empresa: empresasController,
   Estoque: estoquesController,
@@ -85,7 +90,10 @@ export const controllers = {
   PromotorAuth: PromotorAuthController,
   Promotor: PromotorController,
   PromotorPainel: PromotorPainelController,
+  Relatorios: RelatoriosController,
+  RelatoriosPlataforma: RelatoriosPlataformaController,
   Subscricao: subscricaosController,
+  TaxaIva: taxaIvasController,
   UserPapel: user_papelsController,
   UserPos: userpossController,
   VendaItens: venda_itenssController,

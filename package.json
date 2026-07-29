@@ -71,6 +71,7 @@
     "@poppinss/ts-exec": "^1.4.4",
     "@vinejs/vine": "^4.4.0",
     "@vue/server-renderer": "^3.5.28",
+    "adonis-autoswagger": "^3.73.0",
     "edge.js": "^6.2.1",
     "luxon": "^3.7.2",
     "mysql2": "^3.17.4",

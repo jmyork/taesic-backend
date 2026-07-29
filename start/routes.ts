@@ -1,4 +1,8 @@
 import router from '@adonisjs/core/services/router'
+
+// auto swagger
+import AutoSwagger from "adonis-autoswagger";
+import swagger from "#config/swagger";
 // TEM de ser importado antes de `./companydomainroutes.js` — ver o comentário em
 // public_platform_routes.ts para a explicação completa da colisão de rotas que isto evita.
 import './public_platform_routes.js'
@@ -85,7 +89,35 @@ router
       .apiOnly()
       .as('platform_plano')
 
+    router
+      .resource('taxa-iva', controllers.TaxaIva)
+      .apiOnly()
+      .as('platform_taxa_iva')
+
+    // Relatórios do proprietário da plataforma — cross-tenant, só leitura (ver
+    // relatorios_plataforma_repository.ts).
+    router.get('relatorios-plataforma/contas-receber', [controllers.RelatoriosPlataforma, 'contasReceber']).as('platform_relatorios.contas_receber')
+    router.get('relatorios-plataforma/receita', [controllers.RelatoriosPlataforma, 'receitaPlataforma']).as('platform_relatorios.receita')
+    router.get('relatorios-plataforma/empresas-resumo', [controllers.RelatoriosPlataforma, 'empresasResumo']).as('platform_relatorios.empresas_resumo')
+    router.get('relatorios-plataforma/uso', [controllers.RelatoriosPlataforma, 'usoPlataforma']).as('platform_relatorios.uso')
+    router.get('relatorios-plataforma/auditoria', [controllers.RelatoriosPlataforma, 'auditoria']).as('platform_relatorios.auditoria')
+
   })
   .prefix('api')
   .use(middleware.auth({ guards: ['api'] }))
   .use(middleware.adminOnly())
+
+
+
+
+// returns swagger in YAML
+router.get("/swagger", async () => {
+  return AutoSwagger.default.docs(router.toJSON(), swagger);
+});
+
+// Renders Swagger-UI and passes YAML-output of /swagger
+router.get("/docs", async () => {
+  return AutoSwagger.default.ui("/swagger", swagger);
+  // return AutoSwagger.default.scalar("/swagger"); to use Scalar instead. If you want, you can pass proxy url as second argument here.
+  // return AutoSwagger.default.rapidoc("/swagger", "view"); to use RapiDoc instead (pass "view" default, or "read" to change the render-style)
+});

@@ -1,6 +1,8 @@
 import { DateTime } from 'luxon'
-import { BaseModel, column, beforeCreate } from '@adonisjs/lucid/orm'
+import { BaseModel, column, beforeCreate, belongsTo } from '@adonisjs/lucid/orm'
 import { randomUUID } from 'node:crypto'
+import type { BelongsTo } from '@adonisjs/lucid/types/relations'
+import taxa_iva from './taxa_iva.js'
 
 export default class Empresa extends BaseModel {
   static table = 'empresa'
@@ -45,6 +47,14 @@ export default class Empresa extends BaseModel {
 
   @column()
   declare regime_iva: boolean
+
+  /** Só relevante quando `regime_iva` — decide a taxa usada no cálculo de "IVA
+   * liquidado" nos relatórios (`relatorios_repository.ts`). */
+  @column()
+  declare taxa_iva_id: string | null
+
+  @belongsTo(() => taxa_iva, { foreignKey: 'taxa_iva_id' })
+  declare taxaIva: BelongsTo<typeof taxa_iva>
 
   @column()
   declare company_alias: string

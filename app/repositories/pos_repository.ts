@@ -74,6 +74,30 @@ export default class posRepository {
     return await query.select('pos.*').orderBy('created_at', 'desc').paginate(page, limit)
   }
 
+  /** Todos os pos associados ao user (via `userpos`), independentemente da empresa. */
+  async listByUser(user_id: string, filter?: PosQueryDTO) {
+    let query = this.baseQuery()
+      .join('userpos', 'userpos.pos_id', 'pos.id')
+      .where('userpos.user_id', user_id)
+      .whereNull('userpos.deleted_at')
+
+    // deleted at filter
+    if (filter?.deleted === 'deleted') {
+      query = query.whereNotNull('pos.deleted_at')
+    } else if (filter?.deleted === 'all') {
+      query = query
+    } else {
+      query = query.whereNull('pos.deleted_at')
+    }
+
+    // nome filter
+    if (filter?.nome) {
+      query = query.where('pos.nome', 'like', `%${filter.nome}%`)
+    }
+
+    return await query.select('pos.*').orderBy('pos.created_at', 'desc').paginate(filter?.page ?? 1, filter?.limit ?? 20)
+  }
+
   async findOrFail(id: string, company_alias?: string) {
     return await this.baseQuery()
       .join('empresa', 'empresa.id', 'pos.empresa_id')

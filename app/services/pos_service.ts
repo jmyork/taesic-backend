@@ -8,6 +8,10 @@ export default class posService {
     return this.repo.paginate(page, limit, filter)
   }
 
+  listByUser(user_id: string, filter?: PosQueryDTO) {
+    return this.repo.listByUser(user_id, filter)
+  }
+
   create(data: CreateposDTO) {
     return this.repo.create(data)
   }

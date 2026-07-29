@@ -14,6 +14,9 @@ export interface PosQueryDTO {
   contacto?: string
   localizacao?: string
   nome?: string
+
+  page?: number
+  limit?: number
 }
 
 export interface CreateposDTO {

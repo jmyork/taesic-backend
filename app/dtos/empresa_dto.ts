@@ -47,6 +47,7 @@ export interface UpdateempresaDTO {
   localizacao: string
   contacto: string
   company_alias: string
+  taxa_iva_id?: string
 }
 
 export interface ResendCompanyActivationEmailDTO{

@@ -73,6 +73,11 @@ router
             .apiOnly()
             .as('domain_produto_recomendacoes') //(v)
 
+        // Tem de ser registada antes de `.resource('pos', ...)` — caso contrário a rota
+        // genérica `GET pos/:id` do resource intercepta `pos/meu` (mesmo problema já
+        // documentado para `caixas/meu` e `produtos/catalogo` acima).
+        router.get('pos/meu', [controllers.Pos, 'meusPos']).as('domain_pos.meu')
+
         router
             .resource('pos', controllers.Pos)
             .apiOnly()
@@ -190,6 +195,41 @@ router
         router.get('metricas/promotores/resumo', [controllers.Metricas, 'promotoresResumo']).as('domain_metricas.promotores_resumo')
         router.get('metricas/promotores/por-promotor', [controllers.Metricas, 'promotoresPorPromotor']).as('domain_metricas.promotores_por_promotor')
         router.get('metricas/promotores/por-produto', [controllers.Metricas, 'promotoresPorProduto']).as('domain_metricas.promotores_por_produto')
+
+        // Despesas — registo manual de gastos da empresa (renda, salários, serviços, etc.),
+        // usado pelo Relatório de Despesas e pelo Fluxo de Caixa.
+        router.resource('despesas', controllers.Despesas)
+            .apiOnly()
+            .as('domain_despesas')
+
+        // Relatórios — dashboard executivo, evolução de vendas, tops e os relatórios
+        // detalhados pedidos (vendas, clientes, método de pagamento, produtos, stock,
+        // compras, lucro, impostos, utilizadores, descontos, documentos anulados, notas de
+        // crédito, rentabilidade, comparativos, fluxo de caixa). Só leitura — nenhuma destas
+        // rotas cria/edita/apaga nada, por isso todas são GET.
+        router.get('relatorios/dashboard-executivo', [controllers.Relatorios, 'dashboardExecutivo']).as('domain_relatorios.dashboard_executivo')
+        router.get('relatorios/kpis-gerais', [controllers.Relatorios, 'kpisGerais']).as('domain_relatorios.kpis_gerais')
+        router.get('relatorios/faturacao-por-periodo', [controllers.Relatorios, 'faturacaoPorPeriodo']).as('domain_relatorios.faturacao_por_periodo')
+        router.get('relatorios/evolucao-vendas', [controllers.Relatorios, 'evolucaoVendas']).as('domain_relatorios.evolucao_vendas')
+        router.get('relatorios/top-produtos', [controllers.Relatorios, 'topProdutos']).as('domain_relatorios.top_produtos')
+        router.get('relatorios/top-categorias', [controllers.Relatorios, 'topCategorias']).as('domain_relatorios.top_categorias')
+        router.get('relatorios/top-clientes', [controllers.Relatorios, 'topClientes']).as('domain_relatorios.top_clientes')
+        router.get('relatorios/top-vendedores', [controllers.Relatorios, 'topVendedores']).as('domain_relatorios.top_vendedores')
+        router.get('relatorios/vendas', [controllers.Relatorios, 'relatorioVendas']).as('domain_relatorios.vendas')
+        router.get('relatorios/clientes', [controllers.Relatorios, 'relatorioClientes']).as('domain_relatorios.clientes')
+        router.get('relatorios/metodo-pagamento', [controllers.Relatorios, 'relatorioMetodoPagamento']).as('domain_relatorios.metodo_pagamento')
+        router.get('relatorios/produtos', [controllers.Relatorios, 'relatorioProdutos']).as('domain_relatorios.produtos')
+        router.get('relatorios/stock', [controllers.Relatorios, 'relatorioStock']).as('domain_relatorios.stock')
+        router.get('relatorios/compras', [controllers.Relatorios, 'relatorioCompras']).as('domain_relatorios.compras')
+        router.get('relatorios/lucro', [controllers.Relatorios, 'relatorioLucro']).as('domain_relatorios.lucro')
+        router.get('relatorios/impostos', [controllers.Relatorios, 'relatorioImpostos']).as('domain_relatorios.impostos')
+        router.get('relatorios/utilizadores', [controllers.Relatorios, 'relatorioUtilizadores']).as('domain_relatorios.utilizadores')
+        router.get('relatorios/descontos', [controllers.Relatorios, 'relatorioDescontos']).as('domain_relatorios.descontos')
+        router.get('relatorios/documentos-anulados', [controllers.Relatorios, 'relatorioDocumentosAnulados']).as('domain_relatorios.documentos_anulados')
+        router.get('relatorios/notas-credito', [controllers.Relatorios, 'relatorioNotasCredito']).as('domain_relatorios.notas_credito')
+        router.get('relatorios/rentabilidade', [controllers.Relatorios, 'relatorioRentabilidade']).as('domain_relatorios.rentabilidade')
+        router.get('relatorios/comparativo', [controllers.Relatorios, 'comparativo']).as('domain_relatorios.comparativo')
+        router.get('relatorios/fluxo-caixa', [controllers.Relatorios, 'fluxoCaixa']).as('domain_relatorios.fluxo_caixa')
 
         // Facturas: emissão a partir de uma venda fechada, numeração sequencial por empresa.
         // Não existia nenhuma funcionalidade de facturação na API antes desta.

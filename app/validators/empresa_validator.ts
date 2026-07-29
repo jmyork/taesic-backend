@@ -26,6 +26,17 @@ export const createempresaValidator = vine.compile(
 export const updateempresaValidator = vine.compile(
   vine.object({
     nome: vine.string().trim().maxLength(255).optional(),
+    // Só relevante quando `regime_iva` — decide a taxa usada no cálculo de "IVA
+    // liquidado" nos relatórios (relatorios_repository.ts).
+    taxa_iva_id: vine
+      .string()
+      .trim()
+      .uuid()
+      .exists(async (db, value, __) => {
+        const exists = await db.from('taxa_iva').where('id', value).whereNull('deleted_at').first()
+        return !!exists
+      })
+      .optional(),
   })
 )
 

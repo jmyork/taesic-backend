@@ -147,6 +147,13 @@ export default class possController {
       })
     }
   }
+  // ==================== MEU (pos do user logado) ====================
+  async meusPos({ auth, request }: HttpContext) {
+    const filter = await PosQueryValidator.validate(request.qs())
+    const data = await this.service.listByUser(auth.user?.id!, filter)
+    return { data, message: 'Listagem realizada com sucesso', status: 200 }
+  }
+
   // ==================== DESTROY ====================
   async destroy({ params, response }: HttpContext) {
     try {

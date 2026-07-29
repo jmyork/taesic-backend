@@ -232,6 +232,7 @@ export default class extends BaseSeeder {
       { nome: 'domain_pos.store', descricao: 'Criar pos' },
       { nome: 'domain_pos.update', descricao: 'Editar pos' },
       { nome: 'domain_pos.destroy', descricao: 'Remover/Recuperar pos' },
+      { nome: 'domain_pos.meu', descricao: 'Listar os meus pos' },
 
       // User-Pos (associar utilizadores a pontos de venda)
       { nome: 'domain_user_pos.index', descricao: 'Listar associações user-pos' },
@@ -260,6 +261,36 @@ export default class extends BaseSeeder {
       { nome: 'domain_metricas.promotores_resumo', descricao: 'Ver o impacto agregado dos promotores nesta empresa' },
       { nome: 'domain_metricas.promotores_por_promotor', descricao: 'Ver desempenho por promotor' },
       { nome: 'domain_metricas.promotores_por_produto', descricao: 'Ver produtos mais vendidos via promotores' },
+      // ==================== DESPESAS DOMAIN ====================
+      { nome: 'domain_despesas.index', descricao: 'Listar despesas da empresa' },
+      { nome: 'domain_despesas.show', descricao: 'Ver despesa específica' },
+      { nome: 'domain_despesas.store', descricao: 'Registar despesa' },
+      { nome: 'domain_despesas.update', descricao: 'Editar despesa' },
+      { nome: 'domain_despesas.destroy', descricao: 'Remover/Recuperar despesa' },
+      // ==================== RELATORIOS DOMAIN ====================
+      { nome: 'domain_relatorios.dashboard_executivo', descricao: 'Ver o dashboard executivo' },
+      { nome: 'domain_relatorios.kpis_gerais', descricao: 'Ver os KPIs gerais' },
+      { nome: 'domain_relatorios.faturacao_por_periodo', descricao: 'Ver a faturação num período' },
+      { nome: 'domain_relatorios.evolucao_vendas', descricao: 'Ver a evolução das vendas' },
+      { nome: 'domain_relatorios.top_produtos', descricao: 'Ver os produtos mais vendidos' },
+      { nome: 'domain_relatorios.top_categorias', descricao: 'Ver as categorias mais vendidas' },
+      { nome: 'domain_relatorios.top_clientes', descricao: 'Ver os clientes que mais compraram' },
+      { nome: 'domain_relatorios.top_vendedores', descricao: 'Ver os vendedores com melhor desempenho' },
+      { nome: 'domain_relatorios.vendas', descricao: 'Ver o relatório de vendas' },
+      { nome: 'domain_relatorios.clientes', descricao: 'Ver o relatório de clientes' },
+      { nome: 'domain_relatorios.metodo_pagamento', descricao: 'Ver o relatório por método de pagamento' },
+      { nome: 'domain_relatorios.produtos', descricao: 'Ver o relatório de produtos' },
+      { nome: 'domain_relatorios.stock', descricao: 'Ver o relatório de stock' },
+      { nome: 'domain_relatorios.compras', descricao: 'Ver o relatório de compras' },
+      { nome: 'domain_relatorios.lucro', descricao: 'Ver o relatório de lucro' },
+      { nome: 'domain_relatorios.impostos', descricao: 'Ver o relatório de impostos' },
+      { nome: 'domain_relatorios.utilizadores', descricao: 'Ver o relatório de utilizadores' },
+      { nome: 'domain_relatorios.descontos', descricao: 'Ver o relatório de descontos' },
+      { nome: 'domain_relatorios.documentos_anulados', descricao: 'Ver o relatório de documentos anulados' },
+      { nome: 'domain_relatorios.notas_credito', descricao: 'Ver o relatório de notas de crédito' },
+      { nome: 'domain_relatorios.rentabilidade', descricao: 'Ver o relatório de rentabilidade' },
+      { nome: 'domain_relatorios.comparativo', descricao: 'Ver os relatórios comparativos' },
+      { nome: 'domain_relatorios.fluxo_caixa', descricao: 'Ver o fluxo de caixa' },
       // ==================== FACTURAS DOMAIN ====================
       { nome: 'domain_facturas.index', descricao: 'Listar facturas' },
       { nome: 'domain_facturas.show', descricao: 'Ver factura específica' },
@@ -465,6 +496,20 @@ export default class extends BaseSeeder {
       { nome: 'platform_plano.update', descricao: 'Editar plano' },
       { nome: 'platform_plano.destroy', descricao: 'Remover/Recuperar plano' },
 
+      // ==================== TAXA-IVA (PLATAFORMA) ====================
+      { nome: 'platform_taxa_iva.index', descricao: 'Listar taxas de IVA' },
+      { nome: 'platform_taxa_iva.show', descricao: 'Ver taxa de IVA específica' },
+      { nome: 'platform_taxa_iva.store', descricao: 'Criar taxa de IVA' },
+      { nome: 'platform_taxa_iva.update', descricao: 'Editar taxa de IVA' },
+      { nome: 'platform_taxa_iva.destroy', descricao: 'Remover/Recuperar taxa de IVA' },
+
+      // ==================== RELATORIOS DA PLATAFORMA (cross-tenant) ====================
+      { nome: 'platform_relatorios.contas_receber', descricao: 'Ver as contas a receber da plataforma (cobranças de subscrição)' },
+      { nome: 'platform_relatorios.receita', descricao: 'Ver a receita da plataforma' },
+      { nome: 'platform_relatorios.empresas_resumo', descricao: 'Ver o resumo das empresas clientes' },
+      { nome: 'platform_relatorios.uso', descricao: 'Ver o uso agregado da plataforma' },
+      { nome: 'platform_relatorios.auditoria', descricao: 'Ver o relatório de auditoria (eventos de segurança)' },
+
       // ==================== METODO-PAGAMENTO (DOMAIN — isolado por empresa) ====================
       { nome: 'domain_metodo_pagamento.index', descricao: 'Listar métodos de pagamento da empresa' },
       { nome: 'domain_metodo_pagamento.show', descricao: 'Ver método de pagamento específico' },
@@ -607,6 +652,38 @@ export default class extends BaseSeeder {
       'domain_metricas.promotores_por_promotor',
       'domain_metricas.promotores_por_produto',
 
+      // Despesas (5 perms)
+      'domain_despesas.index',
+      'domain_despesas.show',
+      'domain_despesas.store',
+      'domain_despesas.update',
+      'domain_despesas.destroy',
+
+      // Relatórios (23 perms)
+      'domain_relatorios.dashboard_executivo',
+      'domain_relatorios.kpis_gerais',
+      'domain_relatorios.faturacao_por_periodo',
+      'domain_relatorios.evolucao_vendas',
+      'domain_relatorios.top_produtos',
+      'domain_relatorios.top_categorias',
+      'domain_relatorios.top_clientes',
+      'domain_relatorios.top_vendedores',
+      'domain_relatorios.vendas',
+      'domain_relatorios.clientes',
+      'domain_relatorios.metodo_pagamento',
+      'domain_relatorios.produtos',
+      'domain_relatorios.stock',
+      'domain_relatorios.compras',
+      'domain_relatorios.lucro',
+      'domain_relatorios.impostos',
+      'domain_relatorios.utilizadores',
+      'domain_relatorios.descontos',
+      'domain_relatorios.documentos_anulados',
+      'domain_relatorios.notas_credito',
+      'domain_relatorios.rentabilidade',
+      'domain_relatorios.comparativo',
+      'domain_relatorios.fluxo_caixa',
+
       // Facturas (4 perms)
       'domain_facturas.index',
       'domain_facturas.show',
@@ -649,6 +726,7 @@ export default class extends BaseSeeder {
       'domain_pos.store',
       'domain_pos.update',
       'domain_pos.destroy',
+      'domain_pos.meu',
 
       // user-pos
       'domain_user_pos.index',
@@ -982,6 +1060,7 @@ export default class extends BaseSeeder {
       'domain_pos.store',
       'domain_pos.update',
       'domain_pos.destroy',
+      'domain_pos.meu',
 
       // -------
       // lote
@@ -1175,6 +1254,7 @@ export default class extends BaseSeeder {
       'domain_pos.store',
       'domain_pos.update',
       'domain_pos.destroy',
+      'domain_pos.meu',
 
       // lote
       'domain_lote_produto.index',
@@ -1219,6 +1299,37 @@ export default class extends BaseSeeder {
       'domain_metricas.postos',
       'domain_metricas.vendedores',
       'domain_metricas.por_dia',
+
+      // despesas (sem destroy — não apagam despesas já registadas, só o Admin apaga)
+      'domain_despesas.index',
+      'domain_despesas.show',
+      'domain_despesas.store',
+      'domain_despesas.update',
+
+      // relatórios — acesso completo, é exactamente o que este papel de gestão precisa
+      'domain_relatorios.dashboard_executivo',
+      'domain_relatorios.kpis_gerais',
+      'domain_relatorios.faturacao_por_periodo',
+      'domain_relatorios.evolucao_vendas',
+      'domain_relatorios.top_produtos',
+      'domain_relatorios.top_categorias',
+      'domain_relatorios.top_clientes',
+      'domain_relatorios.top_vendedores',
+      'domain_relatorios.vendas',
+      'domain_relatorios.clientes',
+      'domain_relatorios.metodo_pagamento',
+      'domain_relatorios.produtos',
+      'domain_relatorios.stock',
+      'domain_relatorios.compras',
+      'domain_relatorios.lucro',
+      'domain_relatorios.impostos',
+      'domain_relatorios.utilizadores',
+      'domain_relatorios.descontos',
+      'domain_relatorios.documentos_anulados',
+      'domain_relatorios.notas_credito',
+      'domain_relatorios.rentabilidade',
+      'domain_relatorios.comparativo',
+      'domain_relatorios.fluxo_caixa',
     ])
 
     // ===== SUPERVISOR (mesmo conjunto do Gerente — ver comentário acima) =====
@@ -1288,6 +1399,7 @@ export default class extends BaseSeeder {
       'domain_pos.store',
       'domain_pos.update',
       'domain_pos.destroy',
+      'domain_pos.meu',
 
       // lote
       'domain_lote_produto.index',
@@ -1332,6 +1444,37 @@ export default class extends BaseSeeder {
       'domain_metricas.postos',
       'domain_metricas.vendedores',
       'domain_metricas.por_dia',
+
+      // despesas (sem destroy — não apagam despesas já registadas, só o Admin apaga)
+      'domain_despesas.index',
+      'domain_despesas.show',
+      'domain_despesas.store',
+      'domain_despesas.update',
+
+      // relatórios — acesso completo, é exactamente o que este papel de gestão precisa
+      'domain_relatorios.dashboard_executivo',
+      'domain_relatorios.kpis_gerais',
+      'domain_relatorios.faturacao_por_periodo',
+      'domain_relatorios.evolucao_vendas',
+      'domain_relatorios.top_produtos',
+      'domain_relatorios.top_categorias',
+      'domain_relatorios.top_clientes',
+      'domain_relatorios.top_vendedores',
+      'domain_relatorios.vendas',
+      'domain_relatorios.clientes',
+      'domain_relatorios.metodo_pagamento',
+      'domain_relatorios.produtos',
+      'domain_relatorios.stock',
+      'domain_relatorios.compras',
+      'domain_relatorios.lucro',
+      'domain_relatorios.impostos',
+      'domain_relatorios.utilizadores',
+      'domain_relatorios.descontos',
+      'domain_relatorios.documentos_anulados',
+      'domain_relatorios.notas_credito',
+      'domain_relatorios.rentabilidade',
+      'domain_relatorios.comparativo',
+      'domain_relatorios.fluxo_caixa',
     ])
 
     // ===== ADMIN VISUALIZADOR (Read-only geral) =====
@@ -1444,6 +1587,35 @@ export default class extends BaseSeeder {
       // venda itens
       'domain_vendas_itens.index',
       'domain_vendas_itens.show',
+
+      // despesas (read-only)
+      'domain_despesas.index',
+      'domain_despesas.show',
+
+      // relatórios (read-only por natureza — todas as rotas de relatórios são GET)
+      'domain_relatorios.dashboard_executivo',
+      'domain_relatorios.kpis_gerais',
+      'domain_relatorios.faturacao_por_periodo',
+      'domain_relatorios.evolucao_vendas',
+      'domain_relatorios.top_produtos',
+      'domain_relatorios.top_categorias',
+      'domain_relatorios.top_clientes',
+      'domain_relatorios.top_vendedores',
+      'domain_relatorios.vendas',
+      'domain_relatorios.clientes',
+      'domain_relatorios.metodo_pagamento',
+      'domain_relatorios.produtos',
+      'domain_relatorios.stock',
+      'domain_relatorios.compras',
+      'domain_relatorios.lucro',
+      'domain_relatorios.impostos',
+      'domain_relatorios.utilizadores',
+      'domain_relatorios.descontos',
+      'domain_relatorios.documentos_anulados',
+      'domain_relatorios.notas_credito',
+      'domain_relatorios.rentabilidade',
+      'domain_relatorios.comparativo',
+      'domain_relatorios.fluxo_caixa',
     ])
 
     // ===== ADMIN USER MANAGER (Gestão de Usuários e Papéis) =====
