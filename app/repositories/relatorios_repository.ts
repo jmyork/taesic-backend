@@ -605,7 +605,10 @@ export default class RelatoriosRepository {
     const empresa = await Empresa.query().where('company_alias', filtro.company_alias).preload('taxaIva').firstOrFail()
 
     if (!empresa.regime_iva || !empresa.taxaIva) {
-      return { regime_iva: empresa.regime_iva, taxa_percentual: null, periodos: [] }
+      // `empresa.regime_iva` vem do mysql2 como 0/1 (TINYINT), não true/false — sem o
+      // cast, este ramo devolvia um número em vez de boolean (o ramo "com regime" abaixo
+      // já devolve um `true` literal, por isso só este lado tinha o problema).
+      return { regime_iva: Boolean(empresa.regime_iva), taxa_percentual: null, periodos: [] }
     }
 
     const formatos: Record<string, string> = {

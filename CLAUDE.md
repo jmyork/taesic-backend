@@ -861,16 +861,25 @@ middleware genérico já cobre):
   atribuída exactamente aos mesmos papéis que já tinham `domain_caixa.my` (Admin,
   Vendedor, Gerente, Supervisor) — nenhum papel novo, só replicado o critério já
   usado para "recursos do utilizador logado".
-  - **Achado**: `userpos` (a tabela de associação user↔pos) tem `user_id` e `pos_id`
-    cada um com a sua própria constraint `unique()` (migration
+  - **Achado e corrigido**: `userpos` (a tabela de associação user↔pos) tinha
+    `user_id` e `pos_id` cada um com a sua própria constraint `unique()` (migration
     `1779132357685_alter_userpos.ts`) — apesar do nome sugerir uma tabela de junção
-    N:N, o schema actual só permite **uma** associação por utilizador (e uma por
-    pos), para sempre — não é "uma activa de cada vez", é ao nível da BD, mesmo com
-    soft delete (recriar a linha para o mesmo `user_id` viola a constraint). `
-    listByUser()` foi escrito de forma genérica (devolve sempre um array) para não
-    depender desse limite, mas hoje devolve sempre 0 ou 1 registo. Não alterado —
-    schema existente, fora do âmbito do pedido; a decidir numa sessão futura se faz
-    sentido remover a unicidade e permitir de facto vários pos por utilizador.
+    N:N, o schema só permitia **uma** associação por utilizador (e uma por pos),
+    para sempre — não "uma activa de cada vez", era ao nível da BD, mesmo com soft
+    delete (recriar a linha para o mesmo `user_id` violava a constraint).
+    Corrigido em `1784662475779_alter_userpos_permitir_multiplos.ts` (mesmo
+    tratamento já dado a `pos.nome` em `1779500000001_alter_pos_nome_unique_per_
+    empresa.ts`): substituídas as duas uniques simples por uma unique composta
+    (`user_id` + `pos_id`), que só impede duplicar exactamente a mesma associação,
+    nunca um utilizador com vários pos (ou um pos com vários utilizadores). Migration
+    em dois passos — o MySQL/InnoDB recusa apagar um índice que ainda sirva de
+    suporte a uma foreign key, por isso a unique composta (cobre `user_id`) e um
+    índice simples para `pos_id` são criados **antes** de apagar os dois índices
+    antigos. Corrida em dev e teste; `listByUser()` já estava escrito de forma
+    genérica (devolve sempre um array), não precisou de nenhuma alteração — só o
+    schema estava a mais restringir do que o código já esperava. `pos_repository_
+    meu.spec.ts` ganhou 2 testes a confirmar o cenário N:N (vários pos por
+    utilizador, o mesmo pos partilhado por vários utilizadores).
   - `PosQueryDTO` não declarava `page`/`limit` (só `PosQueryValidator` os validava) —
     o `paginate()` já existente contornava isto recebendo-os como parâmetros
     próprios, não do filtro; `listByUser()`, ao reutilizar o mesmo filtro para
@@ -890,19 +899,22 @@ middleware genérico já cobre):
   - `relatorios_plataforma_repository.spec.ts` +2 testes: `receitaPlataforma`,
     `usoPlataforma` (asserções por delta, não por valor absoluto — a BD de teste já
     tem utilizadores seedados fora da transacção de cada teste).
-  - `tests/functional/pos_repository_meu.spec.ts` (5 testes): `listByUser` (filtra
-    por user via `userpos`, ignora associação com soft delete, filtra por nome) +
-    RBAC de `domain_pos.meu`.
-  - **Achado (mesma classe de bug já documentada para `is_service`, secção 7.7)**:
-    `relatorioImpostos()` devolve `regime_iva: empresa.regime_iva` sem cast no ramo
-    "sem regime" — mysql2 devolve isto como `0`/`1` (TINYINT), não `false`/`true`. O
-    ramo "com regime" já devolve um `true` literal (não vem do model), por isso só
-    o outro ramo apanhava o problema. Não corrigido no repositório (comportamento
-    pré-existente, fora do âmbito do pedido), só ajustada a asserção do teste
-    (`isNotOk` em vez de `isFalse`).
-- Suite completa: 491 testes (era 471 no fim da sessão anterior), zero erros novos de
+  - `tests/functional/pos_repository_meu.spec.ts` (7 testes): `listByUser` (filtra
+    por user via `userpos`, ignora associação com soft delete, filtra por nome,
+    devolve vários pos do mesmo utilizador, o mesmo pos partilhado por vários
+    utilizadores) + RBAC de `domain_pos.meu`.
+  - **Achado e corrigido (mesma classe de bug já documentada para `is_service`,
+    secção 7.7)**: `relatorioImpostos()` devolvia `regime_iva: empresa.regime_iva`
+    sem cast no ramo "sem regime" — mysql2 devolve isto como `0`/`1` (TINYINT), não
+    `false`/`true`. O ramo "com regime" já devolvia um `true` literal (não vem do
+    model), por isso só o outro ramo tinha o problema. Corrigido com
+    `Boolean(empresa.regime_iva)` nesse ramo (repositório, não só o teste); teste
+    actualizado para a asserção estrita (`isFalse`, já não precisa do `isNotOk` de
+    contorno).
+- Suite completa: 493 testes (era 471 no fim da sessão anterior), zero erros novos de
   `tsc --noEmit` (36, sem alteração). Seeder corrido em teste (permissão
-  `domain_pos.meu` nova).
+  `domain_pos.meu` nova); migrations corridas em dev e teste (`domain_pos.meu` +
+  `userpos` unique composta).
 
 ### 7.9 Backlog conhecido, não tocado (propositadamente — ver secção 2)
 

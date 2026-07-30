@@ -11,7 +11,7 @@ import { createEmpresa, createUser } from '../helpers/fixtures.js'
  * administradores da plataforma.
  */
 test.group('admin_only_middleware', (group) => {
-  group.each.setup(() => testUtils.db().withGlobalTransaction())
+  group.each.setup(() => testUtils.db().wrapInGlobalTransaction())
 
   test('bloqueia um utilizador sem papel Platform_*', async ({ assert }) => {
     const empresa = await createEmpresa()

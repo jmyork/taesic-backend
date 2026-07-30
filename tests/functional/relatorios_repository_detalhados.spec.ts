@@ -215,9 +215,9 @@ test.group('relatorios_repository - métodos detalhados sem teste próprio', (gr
     const repo = new RelatoriosRepository()
     const resultado = await repo.relatorioImpostos({ company_alias: empresa.company_alias })
 
-    // `regime_iva` vem directo do mysql2 como 0/1 (TINYINT), não true/false — mesmo
-    // comportamento já documentado em estoque_repository.ts para `is_service`.
-    assert.isNotOk(resultado.regime_iva)
+    // `empresa.regime_iva` vem do mysql2 como 0/1 (TINYINT) — `relatorioImpostos()`
+    // faz `Boolean(...)` neste ramo para nunca devolver o valor em bruto ao cliente.
+    assert.isFalse(resultado.regime_iva)
     assert.isNull(resultado.taxa_percentual)
     assert.lengthOf(resultado.periodos, 0)
   })

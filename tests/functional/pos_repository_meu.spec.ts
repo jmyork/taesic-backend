@@ -11,11 +11,12 @@ import { createTenant, createUser, createPos } from '../helpers/fixtures.js'
  * `caixa_repository_filtros.spec.ts`), mas a associação user↔pos passa pela tabela
  * `userpos` (não há `pos.user_id` directo), daí o join em vez de um simples `where`.
  *
- * `userpos` tem `user_id` e `pos_id` cada um com constraint `unique()` própria (ver
- * migration `1779132357685_alter_userpos.ts`) — ou seja, apesar do nome sugerir uma
- * tabela de junção N:N, o schema actual só permite UMA associação por utilizador (e por
- * pos), sempre. `listByUser` foi escrito de forma genérica (devolve um array) para não
- * assumir esse limite, mas os testes abaixo respeitam-no.
+ * `userpos.user_id`/`userpos.pos_id` tinham cada um a sua própria constraint
+ * `unique()` (migration `1779132357685_alter_userpos.ts`), impedindo de facto um
+ * utilizador de ter mais do que um pos — bug corrigido em
+ * `1784662475779_alter_userpos_permitir_multiplos.ts` (substituída por uma unique
+ * composta, que só impede duplicar a mesma associação). Os testes abaixo cobrem o
+ * cenário real de N:N que essa correcção veio destravar.
  */
 test.group('pos_repository.listByUser() — "os meus pos"', (group) => {
   group.each.setup(() => testUtils.db().withGlobalTransaction())
@@ -33,6 +34,42 @@ test.group('pos_repository.listByUser() — "os meus pos"', (group) => {
 
     assert.lengthOf(meus, 1)
     assert.equal(meus[0].id, posDoUser.id)
+  })
+
+  test('devolve todos os pos do utilizador quando associado a mais do que um', async ({ assert }) => {
+    const { empresa, user, pos: posA } = await createTenant()
+    const posB = await createPos(empresa)
+    const posC = await createPos(empresa)
+
+    await UserPos.create({ user_id: user.id, pos_id: posA.id })
+    await UserPos.create({ user_id: user.id, pos_id: posB.id })
+    await UserPos.create({ user_id: user.id, pos_id: posC.id })
+
+    const repo = new PosRepository()
+    const meus = await repo.listByUser(user.id)
+
+    assert.lengthOf(meus, 3)
+    assert.sameMembers(
+      meus.map((p: any) => p.id),
+      [posA.id, posB.id, posC.id]
+    )
+  })
+
+  test('o mesmo pos pode ser partilhado por vários utilizadores', async ({ assert }) => {
+    const { empresa, user: userA, pos: posPartilhado } = await createTenant()
+    const userB = await createUser(empresa)
+
+    await UserPos.create({ user_id: userA.id, pos_id: posPartilhado.id })
+    await UserPos.create({ user_id: userB.id, pos_id: posPartilhado.id })
+
+    const repo = new PosRepository()
+    const meusA = await repo.listByUser(userA.id)
+    const meusB = await repo.listByUser(userB.id)
+
+    assert.lengthOf(meusA, 1)
+    assert.lengthOf(meusB, 1)
+    assert.equal(meusA[0].id, posPartilhado.id)
+    assert.equal(meusB[0].id, posPartilhado.id)
   })
 
   test('ignora associações userpos removidas (soft delete)', async ({ assert }) => {
