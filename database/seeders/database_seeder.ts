@@ -1099,6 +1099,15 @@ export default class extends BaseSeeder {
       'domain_facturas.index',
       'domain_facturas.show',
       'domain_facturas.store',
+      // cupom (leitura — precisa de saber que cupons existem)
+      'domain_cupom.index',
+      'domain_cupom.show',
+      // registrar clientes
+      'domain_cliente.index',
+      'domain_cliente.show',
+      'domain_cliente.store',
+      'domain_cliente.update',
+      'domain_cliente.destroy',
     ])
 
     // ===== VENDEDOR VISUALIZADOR (Read-only Produtos) =====
@@ -1179,6 +1188,18 @@ export default class extends BaseSeeder {
       // venda itens
       'domain_vendas_itens.index',
       'domain_vendas_itens.show',
+      // metodo-pagamento (leitura — precisa de saber que métodos existem)
+      'domain_metodo_pagamento.index',
+      'domain_metodo_pagamento.show',
+      // facturas (emitir, nunca anular — só o Admin anula)
+      'domain_facturas.index',
+      'domain_facturas.show',
+      // cupom (leitura — precisa de saber que cupons existem)
+      'domain_cupom.index',
+      'domain_cupom.show',
+      // ver dados de clientes
+      'domain_cliente.index',
+      'domain_cliente.show',
     ])
 
     // ===== GERENTE (mesmo acesso operacional do Vendedor, mais leitura de métricas) =====
