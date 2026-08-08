@@ -13,7 +13,7 @@ import ProdutoMedia from '#models/faturacao/produto_media'
 import ProdutoCategorias from '#models/faturacao/produto_categorias'
 import CategoriasProdutos from '#models/faturacao/categorias_produtos'
 import Estoque from '#models/faturacao/estoque'
-import { createTenant, createProduto, createLote, createUser } from '../helpers/fixtures.js'
+import { createTenant, createProduto, createLote, createPos, createUser } from '../helpers/fixtures.js'
 import { userHasPermission } from '../../app/helpers/Utils.js'
 
 /**
@@ -206,6 +206,53 @@ test.group('catálogo de produtos — características, pesquisa e filtros', (gr
 
     assert.include(ids, produtoComMovimento.id)
     assert.notInclude(ids, produtoSemMovimento.id)
+  })
+
+  test('serviços aparecem em TODOS os POS da empresa, mesmo sem nenhuma movimentação de estoque', async ({
+    assert,
+  }) => {
+    const { empresa, pos: posA } = await createTenant()
+    const posB = await createPos(empresa)
+
+    const servico = await createProduto(empresa, { nome: `Servico ${Date.now()}`, is_service: true })
+    await createLote(servico, { quantidade_em_estoque: 0 })
+
+    const repo = new CatalogoPublicoRepository()
+    const resultado = await repo.paginateProdutos(1, 20, { is_service: true })
+    const linha = resultado.all().find((r) => r.id === servico.id)!.toJSON() as any
+
+    const postosIds = linha.postos.map((p: any) => p.id)
+    assert.include(postosIds, posA.id)
+    assert.include(postosIds, posB.id)
+  })
+
+  test('filtra por pos_id: um serviço aparece mesmo num POS sem nenhuma movimentação, um produto físico não', async ({
+    assert,
+  }) => {
+    const { empresa, user, pos: posA } = await createTenant()
+    const posB = await createPos(empresa)
+
+    const produtoFisico = await createProduto(empresa, { nome: `Fisico ${Date.now()}` })
+    const loteFisico = await createLote(produtoFisico)
+    await Estoque.create({
+      lote_produto_id: loteFisico.id,
+      produto_id: produtoFisico.id,
+      quantidade: 5,
+      tipo_movimentacao: 'entrada',
+      motivo: 'compra',
+      registrado_por: user.id,
+      pos_id: posA.id,
+    } as any)
+
+    const servico = await createProduto(empresa, { nome: `ServicoPosB ${Date.now()}`, is_service: true })
+    await createLote(servico, { quantidade_em_estoque: 0 })
+
+    const repo = new CatalogoPublicoRepository()
+    const resultado = await repo.paginateProdutos(1, 20, { pos_id: posB.id })
+    const ids = resultado.all().map((r) => r.id)
+
+    assert.include(ids, servico.id)
+    assert.notInclude(ids, produtoFisico.id)
   })
 })
 

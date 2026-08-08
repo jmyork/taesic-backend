@@ -24,7 +24,6 @@ const VENDAS_FILTER_FIELDS: FieldSpec[] = [
   { kind: 'range', column: 'vendas.total', startKey: 'total_start', endKey: 'total_end', exactKey: 'total' },
   { kind: 'exact', column: 'vendas.venda_tipo', key: 'venda_tipo' },
   { kind: 'exact', column: 'vendas.caixa_id', key: 'caixa_id' },
-  { kind: 'exact', column: 'vendas.user_id', key: 'user_id' },
   { kind: 'exact', column: 'vendas.cliente_online_id', key: 'cliente_online_id' },
   { kind: 'exact', column: 'vendas.cliente_presencial_id', key: 'cliente_presencial_id' },
 ]

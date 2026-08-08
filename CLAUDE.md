@@ -461,8 +461,25 @@ middleware genérico já cobre):
   `NODE_ENV=test`.
 - Suite completa verificada em 383 testes (era 381 antes desta sessão: +3 desta
   feature, -1 do unit test movido para functional = +2 líquido), zero erros novos de
-  `tsc --noEmit` (os 37 já existentes, listados na secção 7.6, não têm relação com
+  `tsc --noEmit` (os já existentes, listados na secção do backlog, não têm relação com
   nada tocado aqui).
+- **Serviços (`is_service = true`) devem aparecer em TODOS os POS da empresa**, não só
+  nos que por acaso têm uma movimentação de `estoque` registada — um serviço nunca tem
+  estoque físico (`produtos_repository`/`lote_repository`, ao criar um serviço, criam
+  um lote com quantidade zero e sem `pos_id`; a linha de `estoque` correspondente fica
+  com `pos_id`/`produto_id` a `NULL`), por isso nunca batia certo com nenhum filtro por
+  POS. Corrigido em `app/helpers/catalogo_produtos_query.ts`:
+  - `buscarPostosPorProduto()` passou a receber `{id, is_service, empresa_id}` em vez de
+    só o `id` — para um serviço, devolve a lista COMPLETA de POS da empresa (nova query
+    a `pos` por `empresa_id`) em vez da lista (sempre vazia) derivada de `estoque`.
+  - O filtro `pos_id`/`pos_nome` mudou de inner `join` para `leftJoin` com
+    `OR produtos.is_service` na condição — sem isto, filtrar o catálogo por um POS
+    específico excluía sempre todos os serviços (nunca haveria uma linha de `estoque` a
+    bater com esse `pos_id`).
+  - Testado em `tests/functional/catalogo_produtos.spec.ts` (2 testes novos): um
+    serviço aparece nos `postos` de AMBOS os POS de uma empresa com 2 POS, e continua a
+    aparecer ao filtrar por um POS onde nunca teve nenhuma movimentação, enquanto um
+    produto físico sem movimentação nesse POS é excluído correctamente.
 
 ### 7.5 Quinta sessão — fluxo de abertura/fecho/reabertura de caixa
 
