@@ -9,7 +9,6 @@ export const createclienteValidator = vine.compile(
     // fotos e um cliente_pai_id apontando para um cliente já existente só para criar o primeiro.
     tipo: vine.enum(['Pessoa Física', 'Pessoa Jurídica']),
     nome: vine.string().trim().escape(),
-    nome_fantasia: vine.string().trim().escape().optional(),
     razao_social: vine.string().trim().escape().optional(),
     email: vine.string().trim().email().optional(),
     telefone: vine.string().trim().escape().optional(),
