@@ -27,6 +27,43 @@ export interface CreateclienteDTO {
   nome?: string
   tipo: string
 }
+export interface ClienteQueryDTO {
+  // Pesquisa livre — procura em nome/nome_fantasia/razao_social/email/telefone/nif ao
+  // mesmo tempo (para uma caixa de pesquisa única no frontend).
+  q?: string
+
+  // Filtros por campo (correspondência parcial) — para pesquisas mais precisas/combinadas.
+  nome?: string
+  nome_fantasia?: string
+  razao_social?: string
+  email?: string
+  telefone?: string
+  telefone_secundario?: string
+  nif?: string
+  numero_registro?: string
+  cidade?: string
+  provincia?: string
+  pais?: string
+
+  // Filtros exactos
+  tipo?: string
+  ativo?: boolean
+  cliente_pai_id?: string
+
+  // Datas de auditoria
+  createdDtStart?: Date
+  createdDtEnd?: Date
+  updatedDtStart?: Date
+  updatedDtEnd?: Date
+  deleted?: 'deleted' | 'all' | null
+
+  empresa_id?: string
+  company_alias?: string
+
+  page?: number
+  limit?: number
+}
+
 export interface UpdateclienteDTO {
   cliente_pai_id?: string
   foto?: string

@@ -480,6 +480,31 @@ middleware genérico já cobre):
     serviço aparece nos `postos` de AMBOS os POS de uma empresa com 2 POS, e continua a
     aparecer ao filtrar por um POS onde nunca teve nenhuma movimentação, enquanto um
     produto físico sem movimentação nesse POS é excluído correctamente.
+- **`cliente` não tinha NENHUMA pesquisa/filtro** — `index()` só paginava (`page`/
+  `limit`/`deleted`), tornando impossível encontrar um cliente pelos seus próprios
+  detalhes numa base com muitos registos. `clienteRepository` estendia `BaseRepository`
+  (só dá paginação genérica, sem filtros — ver secção 2/3), por isso deixou de estender
+  e passou a repositório próprio (mesmo padrão de `caixa_repository.ts`/`pos_repository.ts`),
+  com `paginate(page, limit, filter?: ClienteQueryDTO)` reusando `applyCommonFilters`/
+  `FieldSpec`. Suporta os dois estilos pedidos: pesquisa livre `q` (OR-LIKE em nome/
+  nome_fantasia/razao_social/email/telefone/telefone_secundario/nif, para uma caixa de
+  pesquisa única) e filtros por campo individuais (nome/email/telefone/nif/cidade/
+  provincia/pais em LIKE; tipo/ativo/cliente_pai_id exactos) — ambos sempre dentro do
+  isolamento por tenant (`scopeToTenant` inline, igual ao que já existia).
+  - **Bug real encontrado ao testar**: o model `cliente.ts` declara a coluna
+    `nome_fantasia` (usada por `UpdateclienteDTO`/`updateclienteValidator`), mas
+    NENHUMA migration a chegou a criar na BD — só ninguém tinha reparado porque nada
+    a lia/escrevia a sério antes da pesquisa `q` a incluir. Corrigido com a migration
+    `1784662475780_alter_cliente_add_nome_fantasia` (correr nos dois bancos, como
+    sempre — ver aviso na sessão do log de segurança acima).
+  - Assinatura de `clienteRepository.paginate()` mudou de `(page, limit, deleted,
+    companyAlias)` para `(page, limit, filter?)` — `filter.deleted`/`filter.company_alias`
+    substituem os antigos parâmetros posicionais. Actualizado o único sítio que ainda
+    chamava a forma antiga (`tests/functional/tenant_isolation.spec.ts`).
+  - Testado em `tests/functional/cliente_repository.spec.ts` (4 testes novos): `q` por
+    nome/email/telefone/nif, filtros por campo (nome/email/telefone/nif/cidade em LIKE,
+    tipo/ativo exactos), e que nem `q` nem os filtros por campo atravessam o isolamento
+    por tenant (dois clientes com o mesmo nome/nif em empresas diferentes).
 
 ### 7.5 Quinta sessão — fluxo de abertura/fecho/reabertura de caixa
 

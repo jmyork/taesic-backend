@@ -79,7 +79,7 @@ export class CategoriasProdutoSchema extends BaseModel {
 }
 
 export class ClienteSchema extends BaseModel {
-  static $columns = ['ativo', 'bairro', 'cidade', 'clientePaiId', 'codigoPostal', 'createdAt', 'dataNascimento', 'deletedAt', 'email', 'empresaId', 'endereco', 'estadoCivil', 'foto', 'genero', 'id', 'limiteCredito', 'logo', 'nif', 'nome', 'numeroRegistro', 'observacao', 'pais', 'profissao', 'provincia', 'razaoSocial', 'saldo', 'telefone', 'telefoneSecundario', 'tipo', 'updatedAt', 'website'] as const
+  static $columns = ['ativo', 'bairro', 'cidade', 'clientePaiId', 'codigoPostal', 'createdAt', 'dataNascimento', 'deletedAt', 'email', 'empresaId', 'endereco', 'estadoCivil', 'foto', 'genero', 'id', 'limiteCredito', 'logo', 'nif', 'nome', 'nomeFantasia', 'numeroRegistro', 'observacao', 'pais', 'profissao', 'provincia', 'razaoSocial', 'saldo', 'telefone', 'telefoneSecundario', 'tipo', 'updatedAt', 'website'] as const
   $columns = ClienteSchema.$columns
   @column()
   declare ativo: boolean | null
@@ -119,6 +119,8 @@ export class ClienteSchema extends BaseModel {
   declare nif: string | null
   @column()
   declare nome: string | null
+  @column()
+  declare nomeFantasia: string | null
   @column()
   declare numeroRegistro: string | null
   @column()

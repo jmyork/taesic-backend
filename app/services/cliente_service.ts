@@ -1,12 +1,11 @@
 import clienteRepository from '#repositories/cliente_repository'
-import { CreateclienteDTO, UpdateclienteDTO } from '#dtos/cliente_dto'
-import { DeletedValue } from '../helpers/Types.js'
+import { ClienteQueryDTO, CreateclienteDTO, UpdateclienteDTO } from '#dtos/cliente_dto'
 
 export default class clienteService {
   repo = new clienteRepository()
 
-  list(page?: number, limit?: number, deleted?: DeletedValue, company_alias?: string) {
-    return this.repo.paginate(page, limit, deleted, company_alias)
+  list(page?: number, limit?: number, filter?: ClienteQueryDTO) {
+    return this.repo.paginate(page, limit, filter)
   }
 
   create(data: CreateclienteDTO & { company_alias?: string }) {

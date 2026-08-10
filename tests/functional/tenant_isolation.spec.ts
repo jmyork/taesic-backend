@@ -23,7 +23,7 @@ test.group('Isolamento multi-tenant', (group) => {
     const clienteA = await repo.create({ nome: 'Cliente A', company_alias: empresaA.company_alias } as any)
     await repo.create({ nome: 'Cliente B', company_alias: empresaB.company_alias } as any)
 
-    const listaA = await repo.paginate(1, 20, null, empresaA.company_alias)
+    const listaA = await repo.paginate(1, 20, { company_alias: empresaA.company_alias })
     assert.lengthOf(listaA, 1, 'a empresa A só deve ver o seu próprio cliente')
     assert.equal(listaA[0].nome, 'Cliente A')
 
@@ -31,7 +31,7 @@ test.group('Isolamento multi-tenant', (group) => {
     await assert.rejects(() => repo.findOrFail(clienteA.id, empresaB.company_alias))
 
     // sem company_alias (uso interno/plataforma) continua a ver tudo — não é o caminho tenant-scoped
-    const listaSemFiltro = await repo.paginate(1, 20, null, undefined)
+    const listaSemFiltro = await repo.paginate(1, 20)
     assert.isAtLeast(listaSemFiltro.length, 2)
   })
 

@@ -1,6 +1,11 @@
 import type { HttpContext } from '@adonisjs/core/http'
 import clienteService from '#services/cliente_service'
-import { createclienteValidator, updateclienteValidator } from '#validators/cliente_validator'
+import {
+  ClienteQueryValidator,
+  createclienteValidator,
+  updateclienteValidator,
+} from '#validators/cliente_validator'
+import { ClienteQueryDTO } from '#dtos/cliente_dto'
 
 export default class clientesController {
   private service = new clienteService()
@@ -8,16 +13,30 @@ export default class clientesController {
   // ==================== INDEX ====================
   async index({ request, params, response }: HttpContext) {
     try {
-      const page = request.input('page', 1)
-      const limit = request.input('limit', 20)
-      const deleted = request.input('deleted', null)
-      const data = await this.service.list(page, limit, deleted, params.company_alias)
+      const querySanitizado = await ClienteQueryValidator.validate(request.qs())
+      const { page, limit, ...sanitizado } = querySanitizado
+
+      const filter: ClienteQueryDTO = {
+        ...sanitizado,
+        empresa_id: params.company_alias ? undefined : request.input('empresa_id'),
+        company_alias: params.company_alias,
+      }
+      const data = await this.service.list(page ?? 1, limit ?? 20, filter)
       return response.ok({
         data,
         message: 'Listagem realizada com sucesso',
         status: 200,
       })
-    } catch (error) {
+    } catch (error: any) {
+      if (error.messages) {
+        return response.badRequest({
+          data: null,
+          message: 'Dados inválidos',
+          errors: error.messages,
+          status: 400,
+        })
+      }
+
       console.error('Erro ao listar cliente:', error)
       return response.internalServerError({
         data: null,

@@ -1,21 +1,79 @@
+import { DateTime } from 'luxon'
 import cliente from '#models/cliente'
 import Empresa from '#models/empresa'
-import { CreateclienteDTO, UpdateclienteDTO } from '#dtos/cliente_dto'
-import BaseRepository from './base_repository.js'
+import { ClienteQueryDTO, CreateclienteDTO, UpdateclienteDTO } from '#dtos/cliente_dto'
+import { applyCommonFilters, FieldSpec } from '../helpers/query_filters.js'
 
-export default class clienteRepository extends BaseRepository<
-  InstanceType<typeof cliente>,
-  CreateclienteDTO & { company_alias?: string },
-  UpdateclienteDTO
-> {
-  constructor() {
-    super(cliente, 'cliente')
+const CLIENTE_FILTER_FIELDS: FieldSpec[] = [
+  { kind: 'like', column: 'cliente.nome', key: 'nome' },
+  { kind: 'like', column: 'cliente.nome_fantasia', key: 'nome_fantasia' },
+  { kind: 'like', column: 'cliente.razao_social', key: 'razao_social' },
+  { kind: 'like', column: 'cliente.email', key: 'email' },
+  { kind: 'like', column: 'cliente.telefone', key: 'telefone' },
+  { kind: 'like', column: 'cliente.telefone_secundario', key: 'telefone_secundario' },
+  { kind: 'like', column: 'cliente.nif', key: 'nif' },
+  { kind: 'like', column: 'cliente.numero_registro', key: 'numero_registro' },
+  { kind: 'like', column: 'cliente.cidade', key: 'cidade' },
+  { kind: 'like', column: 'cliente.provincia', key: 'provincia' },
+  { kind: 'like', column: 'cliente.pais', key: 'pais' },
+  { kind: 'exact', column: 'cliente.tipo', key: 'tipo' },
+  { kind: 'exact', column: 'cliente.ativo', key: 'ativo' },
+  { kind: 'exact', column: 'cliente.cliente_pai_id', key: 'cliente_pai_id' },
+]
+
+/** Campos varridos pela pesquisa livre (`q`) — os mesmos "detalhes do cliente" pesquisáveis
+ * individualmente acima, só que todos ao mesmo tempo com OR (para uma caixa de pesquisa
+ * única no frontend, em vez de vários filtros separados). */
+const CLIENTE_Q_COLUMNS = [
+  'cliente.nome',
+  'cliente.nome_fantasia',
+  'cliente.razao_social',
+  'cliente.email',
+  'cliente.telefone',
+  'cliente.telefone_secundario',
+  'cliente.nif',
+]
+
+export default class clienteRepository {
+  baseQuery() {
+    return cliente.query()
   }
 
   protected scopeToTenant(query: any, companyAlias: string) {
     return query
       .join('empresa', 'empresa.id', 'cliente.empresa_id')
       .where('empresa.company_alias', companyAlias)
+  }
+
+  paginate(page = 1, limit = 20, filter?: ClienteQueryDTO) {
+    let query = applyCommonFilters(this.baseQuery(), filter, {
+      table: 'cliente',
+      fields: CLIENTE_FILTER_FIELDS,
+    })
+
+    if (filter?.q) {
+      query = query.where((sub: any) => {
+        for (const column of CLIENTE_Q_COLUMNS) {
+          sub.orWhere(column, 'like', `%${filter.q}%`)
+        }
+      })
+    }
+
+    if (filter?.company_alias) {
+      query = this.scopeToTenant(query, filter.company_alias)
+    } else if (filter?.empresa_id) {
+      query = query.where('cliente.empresa_id', filter.empresa_id)
+    }
+
+    return query.select('cliente.*').orderBy('cliente.created_at', 'desc').paginate(page, limit)
+  }
+
+  findOrFail(id: string, companyAlias?: string) {
+    let query = this.baseQuery().where('cliente.id', id)
+    if (companyAlias) {
+      query = this.scopeToTenant(query, companyAlias)
+    }
+    return query.select('cliente.*').firstOrFail()
   }
 
   async create(data: CreateclienteDTO & { company_alias?: string }) {
@@ -25,5 +83,19 @@ export default class clienteRepository extends BaseRepository<
       return cliente.create({ ...clienteData, empresa_id: empresa.id })
     }
     return cliente.create(clienteData)
+  }
+
+  async update(id: string, data: UpdateclienteDTO, companyAlias?: string) {
+    const r = await this.findOrFail(id, companyAlias)
+    r.merge(data)
+    await r.save()
+    return r
+  }
+
+  async softDelete(id: string, companyAlias?: string) {
+    const r = await this.findOrFail(id, companyAlias)
+    if (r.deletedAt) r.deletedAt = null
+    else r.deletedAt = DateTime.now()
+    await r.save()
   }
 }

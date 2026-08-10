@@ -1,5 +1,6 @@
 import vine from '@vinejs/vine'
 import { randomUUID } from 'crypto'
+import { commonQueryFields } from './common_query_fields.js'
 
 export const createclienteValidator = vine.compile(
   vine.object({
@@ -57,6 +58,32 @@ export const createclienteValidator = vine.compile(
       .optional(),
   })
 )
+
+export const ClienteQueryValidator = vine.compile(
+  vine.object({
+    ...commonQueryFields,
+
+    // Pesquisa livre — nome/nome_fantasia/razao_social/email/telefone/nif ao mesmo tempo.
+    q: vine.string().trim().escape().optional(),
+
+    // Filtros por campo específicos de cliente.
+    nome: vine.string().trim().escape().optional(),
+    nome_fantasia: vine.string().trim().escape().optional(),
+    razao_social: vine.string().trim().escape().optional(),
+    email: vine.string().trim().escape().optional(),
+    telefone: vine.string().trim().escape().optional(),
+    telefone_secundario: vine.string().trim().escape().optional(),
+    nif: vine.string().trim().escape().optional(),
+    numero_registro: vine.string().trim().escape().optional(),
+    cidade: vine.string().trim().escape().optional(),
+    provincia: vine.string().trim().escape().optional(),
+    pais: vine.string().trim().escape().optional(),
+    tipo: vine.enum(['Pessoa Física', 'Pessoa Jurídica']).optional(),
+    ativo: vine.boolean().optional(),
+    cliente_pai_id: vine.string().trim().escape().optional(),
+  })
+)
+
 export const updateclienteValidator = vine.compile(
   vine.object({
     tipo: vine.enum(['Pessoa Física', 'Pessoa Jurídica']).optional(),
