@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto'
 import type { BelongsTo } from '@adonisjs/lucid/types/relations'
 import User from './user.js'
 import pos from './faturacao/pos.js'
+import Empresa from './empresa.js'
 
 export default class caixa extends BaseModel {
   static table = 'caixa'
@@ -54,4 +55,19 @@ export default class caixa extends BaseModel {
   declare observacoes: string
   @column()
   declare total_caixa: number
+
+  /** Resolvido via `user.empresa_id` (a cadeia já tratada como autoritativa neste
+   * repositório) — null para utilizadores sem empresa (ex.: Platform_Admin). */
+  @column()
+  declare empresa_id: string | null
+
+  @belongsTo(() => Empresa, {
+    foreignKey: 'empresa_id',
+  })
+  declare empresa: BelongsTo<typeof Empresa>
+
+  /** Número sequencial por empresa (nunca global) — nº do registo, distinto do `id`
+   * (UUID). Null quando não há empresa associada. */
+  @column()
+  declare numero: number | null
 }

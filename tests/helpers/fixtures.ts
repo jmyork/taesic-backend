@@ -65,12 +65,18 @@ export async function createProduto(
   overrides: Partial<{ nome: string; is_service: boolean; disponivel: boolean }> = {}
 ) {
   const suffix = randomUUID().slice(0, 8)
+  // produtos.numero é notNullable + unique(empresa_id, numero) — este fixture não
+  // precisa do lock aplicativo de produtos_repository.create() (testes correm
+  // sequencialmente dentro da mesma transacção global), só de nunca reutilizar um
+  // número já usado por esta empresa.
+  const ultimo = await Produtos.query().where('empresa_id', empresa.id).orderBy('numero', 'desc').first()
   return Produtos.create({
     nome: overrides.nome ?? `Produto ${suffix}`,
     descricao: 'Produto de teste',
     is_service: overrides.is_service ?? false,
     disponivel: overrides.disponivel ?? true,
     empresa_id: empresa.id,
+    numero: (ultimo?.numero ?? 0) + 1,
   })
 }
 

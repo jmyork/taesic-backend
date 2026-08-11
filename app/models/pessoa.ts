@@ -80,4 +80,9 @@ export default class pessoa extends BaseModel {
     foreignKey:"empresa_id"
   })
   declare empresa: BelongsTo<typeof Empresa>
+
+  /** Número sequencial por empresa (nunca global) — nº do registo, distinto do `id`
+   * (UUID). Null quando não há empresa associada (ver pessoa_repository.create()). */
+  @column()
+  declare numero: number | null
 }

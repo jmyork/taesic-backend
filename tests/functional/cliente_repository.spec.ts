@@ -129,4 +129,40 @@ test.group('cliente_repository — pesquisa e filtros', (group) => {
     })
     assert.deepEqual(resultado.all().map((r: any) => r.id), [clienteB.id])
   })
+
+  /**
+   * A busca de cliente no frontend não pode ser pelo `id` (UUID) — precisa de filtrar
+   * pela numeração sequencial por-empresa (`numero`), mesmo problema já corrigido em
+   * `vendas` (ver `vendas_repository_filtros.spec.ts`).
+   */
+  test('numero filtra pela numeração sequencial do cliente, isolado por tenant', async ({ assert }) => {
+    const tenantA = await createTenant()
+    const tenantB = await createTenant()
+    const repo = new ClienteRepository()
+
+    const clienteA1 = await repo.create({
+      tipo: 'Pessoa Física',
+      nome: 'Cliente A1',
+      company_alias: tenantA.empresa.company_alias,
+    } as any)
+    await repo.create({
+      tipo: 'Pessoa Física',
+      nome: 'Cliente A2',
+      company_alias: tenantA.empresa.company_alias,
+    } as any)
+    const clienteB1 = await repo.create({
+      tipo: 'Pessoa Física',
+      nome: 'Cliente B1',
+      company_alias: tenantB.empresa.company_alias,
+    } as any)
+
+    assert.equal(clienteA1.numero, 1)
+    assert.equal(clienteB1.numero, 1)
+
+    const resultadoA = await repo.paginate(1, 20, { numero: 1, company_alias: tenantA.empresa.company_alias })
+    assert.deepEqual(resultadoA.all().map((r: any) => r.id), [clienteA1.id])
+
+    const resultadoB = await repo.paginate(1, 20, { numero: 1, company_alias: tenantB.empresa.company_alias })
+    assert.deepEqual(resultadoB.all().map((r: any) => r.id), [clienteB1.id])
+  })
 })

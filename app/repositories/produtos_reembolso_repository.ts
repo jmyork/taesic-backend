@@ -62,6 +62,7 @@ export default class produtos_reembolsoRepository {
       .select(
         'produtos_reembolso.*',
         'vendas.id as venda_id',
+        'vendas.numero as venda_numero',
         'produtos.nome as produto_nome',
         'user.username as operador_nome',
         'venda_itens.preco_unitario as preco_unitario'

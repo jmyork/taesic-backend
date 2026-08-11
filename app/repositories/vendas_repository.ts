@@ -19,8 +19,10 @@ import env from '#start/env'
 import emitter from '@adonisjs/core/services/emitter'
 import VendaCanceladaAltoValor from '#events/venda_cancelada_alto_valor'
 import { applyCommonFilters, FieldSpec } from '../helpers/query_filters.js'
+import { proximoNumeroPorEmpresa } from '../helpers/sequencial_numero.js'
 
 const VENDAS_FILTER_FIELDS: FieldSpec[] = [
+  { kind: 'exact', column: 'vendas.numero', key: 'numero' },
   { kind: 'range', column: 'vendas.total', startKey: 'total_start', endKey: 'total_end', exactKey: 'total' },
   { kind: 'exact', column: 'vendas.venda_tipo', key: 'venda_tipo' },
   { kind: 'exact', column: 'vendas.caixa_id', key: 'caixa_id' },
@@ -167,12 +169,35 @@ export default class vendasRepository {
     // itens — 0 até lá, de propósito. Uma proforma nunca passa por close(), por isso é
     // a única altura em que o total (já conhecido do carrinho no momento da criação)
     // pode ser gravado.
-    return vendas.create({
-      cliente_presencial_id: vendaData.cliente_presencial_id,
-      venda_tipo: 'presencial',
-      caixa_id: Caixa.id,
-      total: data.proforma ? (total ?? 0) : 0,
-      status: data.proforma ? 'proforma' : 'aberta',
+    //
+    // empresa_id vem de Caixa.empresa_id (já resolvido acima, sem query extra) — essa
+    // caixa já existe e está aberta, por isso empresa_id só é null se o utilizador
+    // responsável não tiver empresa associada (ver caixa.ts), caso em que a venda
+    // também fica sem numero.
+    if (!Caixa.empresa_id) {
+      return vendas.create({
+        cliente_presencial_id: vendaData.cliente_presencial_id,
+        venda_tipo: 'presencial',
+        caixa_id: Caixa.id,
+        total: data.proforma ? (total ?? 0) : 0,
+        status: data.proforma ? 'proforma' : 'aberta',
+      })
+    }
+
+    return db.transaction(async (trx) => {
+      const numero = await proximoNumeroPorEmpresa(trx, Caixa.empresa_id!, vendas)
+      return vendas.create(
+        {
+          cliente_presencial_id: vendaData.cliente_presencial_id,
+          venda_tipo: 'presencial',
+          caixa_id: Caixa.id,
+          total: data.proforma ? (total ?? 0) : 0,
+          status: data.proforma ? 'proforma' : 'aberta',
+          empresa_id: Caixa.empresa_id,
+          numero,
+        },
+        { client: trx }
+      )
     })
   }
 

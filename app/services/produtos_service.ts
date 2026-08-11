@@ -37,4 +37,8 @@ export default class produtosService {
   catalogo(page: number, limit: number, filter: CatalogoProdutosFilterDTO, company_alias: string) {
     return this.repo.catalogo(page, limit, filter, company_alias)
   }
+
+  alertas(company_alias: string, filter?: { tipo?: 'estoque' | 'validade' | 'todos'; page?: number; limit?: number }) {
+    return this.repo.alertas(company_alias, filter)
+  }
 }

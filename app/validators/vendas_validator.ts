@@ -9,6 +9,7 @@ export const VendasQueryValidator = vine.compile(
     updatedDtStart: vine.date({ formats: ['iso8601'] }).optional(),
     updatedDtEnd: vine.date({ formats: ['iso8601'] }).optional(),
 
+    numero: vine.number().positive().withoutDecimals().optional(),
     venda_tipo: vine.enum(['presencial', 'online', 'online_loja']).optional(),
     status: vine.enum(['aberta', 'fechada', 'cancelada', 'reembolsada', 'proforma']).optional(),
     fechado: vine.boolean().optional(),

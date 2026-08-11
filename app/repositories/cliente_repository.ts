@@ -1,10 +1,13 @@
 import { DateTime } from 'luxon'
+import db from '@adonisjs/lucid/services/db'
 import cliente from '#models/cliente'
 import Empresa from '#models/empresa'
 import { ClienteQueryDTO, CreateclienteDTO, UpdateclienteDTO } from '#dtos/cliente_dto'
 import { applyCommonFilters, FieldSpec } from '../helpers/query_filters.js'
+import { proximoNumeroPorEmpresa } from '../helpers/sequencial_numero.js'
 
 const CLIENTE_FILTER_FIELDS: FieldSpec[] = [
+  { kind: 'exact', column: 'cliente.numero', key: 'numero' },
   { kind: 'like', column: 'cliente.nome', key: 'nome' },
   { kind: 'like', column: 'cliente.nome_fantasia', key: 'nome_fantasia' },
   { kind: 'like', column: 'cliente.razao_social', key: 'razao_social' },
@@ -80,7 +83,10 @@ export default class clienteRepository {
     const { company_alias, ...clienteData } = data
     if (company_alias) {
       const empresa = await Empresa.findByOrFail('company_alias', company_alias)
-      return cliente.create({ ...clienteData, empresa_id: empresa.id })
+      return db.transaction(async (trx) => {
+        const numero = await proximoNumeroPorEmpresa(trx, empresa.id, cliente)
+        return cliente.create({ ...clienteData, empresa_id: empresa.id, numero }, { client: trx })
+      })
     }
     return cliente.create(clienteData)
   }

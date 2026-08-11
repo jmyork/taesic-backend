@@ -10,7 +10,7 @@ export default class extends BaseSchema {
       // Tabela de referência de plataforma (partilhada por todas as empresas, como
       // `plano`) — as taxas de IVA são definidas por lei, não por cada tenant.
       table.string('nome').notNullable()
-      table.decimal('percentual', 5, 2).notNullable()
+      table.decimal('percentual', 22, 2).notNullable()
       table.boolean('ativo').notNullable().defaultTo(true)
 
       table.timestamps(true, true)

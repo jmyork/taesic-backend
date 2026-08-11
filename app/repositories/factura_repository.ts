@@ -4,6 +4,7 @@ import Factura from '#models/faturacao/factura'
 import Vendas from '#models/faturacao/vendas'
 import Cliente from '#models/cliente'
 import Empresa from '#models/empresa'
+import { proximoNumeroPorEmpresa } from '../helpers/sequencial_numero.js'
 import { AnularFacturaDTO, EmitirFacturaDTO, FacturaQueryDTO, ShowFacturaDTO } from '#dtos/factura_dto'
 import VendaNaoFechadaException from '#exceptions/venda_nao_fechada_exception'
 import FacturaJaAnuladaException from '#exceptions/factura_ja_anulada_exception'
@@ -77,13 +78,7 @@ export default class FacturaRepository {
     }
 
     return db.transaction(async (trx) => {
-      await Empresa.query({ client: trx }).where('id', empresa.id).forUpdate().firstOrFail()
-
-      const ultima = await Factura.query({ client: trx })
-        .where('empresa_id', empresa.id)
-        .orderBy('numero', 'desc')
-        .first()
-      const proximoNumero = (ultima?.numero ?? 0) + 1
+      const proximoNumero = await proximoNumeroPorEmpresa(trx, empresa.id, Factura)
 
       return Factura.create(
         {

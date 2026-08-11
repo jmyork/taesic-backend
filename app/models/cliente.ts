@@ -90,4 +90,10 @@ export default class cliente extends BaseModel {
     foreignKey: 'empresa_id',
   })
   declare empresa: BelongsTo<typeof Empresa>
+
+  /** Número sequencial por empresa (nunca global) — nº do registo, distinto do `id`
+   * (UUID) e de `numero_registro` (esse é um número de registo externo, fornecido
+   * pelo próprio cliente — ver validators). Null quando não há empresa associada. */
+  @column()
+  declare numero: number | null
 }

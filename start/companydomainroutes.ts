@@ -37,6 +37,12 @@ router
             .get('produtos/catalogo', [controllers.Produtos, 'catalogo'])
             .as('domain_produtos.catalogo')
 
+        // Mesmo motivo — antes de `.resource('produtos', ...)`, senão `GET produtos/:id`
+        // intercepta `produtos/alertas`.
+        router
+            .get('produtos/alertas', [controllers.Produtos, 'alertas'])
+            .as('domain_produtos.alertas')
+
         router
             .resource('produtos', controllers.Produtos)
             .apiOnly()

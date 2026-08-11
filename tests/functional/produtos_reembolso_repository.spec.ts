@@ -174,4 +174,42 @@ test.group('produtos_reembolso_repository', (group) => {
     assert.lengthOf(reembolsos, 1)
     assert.equal(reembolsos[0].venda_item_id, itemA.id)
   })
+
+  /**
+   * O ecrã de histórico de reembolsos (`rembolso/page.tsx`) só tinha `venda_id` (UUID)
+   * disponível para identificar a factura de cada linha — inutilizável para um operador
+   * humano, mesmo problema já corrigido na busca (ver `vendas_repository_filtros.spec.ts`,
+   * filtro `numero`). `paginate()` precisa de expor também `venda_numero`.
+   */
+  test('paginate() expõe venda_numero (numeração sequencial), não só o venda_id (UUID)', async ({ assert }) => {
+    const { empresa, user, pos } = await createTenant()
+    const produtoA = await createProduto(empresa)
+    const loteA = await createLote(produtoA, { quantidade_em_estoque: 10 })
+
+    const caixa = await createCaixa(user, pos)
+    const venda = await createVenda(caixa)
+    venda.empresa_id = empresa.id
+    venda.numero = 7
+    await venda.save()
+    const itemA = await createVendaItem(venda, loteA, { quantidade: 5, preco_unitario: 1000 })
+
+    const vendasRepo = new VendasRepository()
+    await pagarVenda(venda, 5000)
+    await vendasRepo.close({ id: venda.id, user_id: user.id, company_alias: empresa.company_alias })
+
+    const reembolsoRepo = new ProdutosReembolsoRepository()
+    await reembolsoRepo.reembolsar_parcial({
+      venda_id: venda.id,
+      venda_item_id: itemA.id,
+      user_id: user.id,
+      company_alias: empresa.company_alias,
+      quantidade: 2,
+    })
+
+    const paginador = await reembolsoRepo.paginate(1, 20, { company_alias: empresa.company_alias })
+    const linha = paginador.all()[0].toJSON() as any
+
+    assert.equal(linha.venda_id, venda.id)
+    assert.equal(linha.venda_numero, 7)
+  })
 })

@@ -5,7 +5,7 @@ export default class extends BaseSchema {
 
   async up() {
     this.schema.alterTable(this.tableName, (table) => {
-      table.decimal('total_caixa', 10, 2)
+      table.decimal('total_caixa', 22, 2)
       table.uuid('pos_id')
       table.foreign('pos_id').references('id').inTable('pos').onDelete('SET NULL')
     })

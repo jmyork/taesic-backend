@@ -293,3 +293,11 @@ export const ProdutoQueryValidator = vine.compile(
     disponivel: vine.boolean().optional(),
   })
 )
+
+export const ProdutosAlertasQueryValidator = vine.compile(
+  vine.object({
+    tipo: vine.enum(['estoque', 'validade', 'todos']).optional(),
+    page: vine.number().positive().optional(),
+    limit: vine.number().positive().max(100).optional(),
+  })
+)

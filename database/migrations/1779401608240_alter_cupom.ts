@@ -7,7 +7,7 @@ export default class extends BaseSchema {
     this.schema.alterTable(this.tableName, (table) => {
       table.uuid('user_id');
       table.foreign('user_id').references('id').inTable('user').onDelete('CASCADE');
-      table.decimal('desconto');
+      table.decimal('desconto',22,2);
       table.datetime('validade').nullable();
     })
   }

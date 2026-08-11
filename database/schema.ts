@@ -33,7 +33,7 @@ export class AuthAccessTokenSchema extends BaseModel {
 }
 
 export class CaixaSchema extends BaseModel {
-  static $columns = ['createdAt', 'dataFecho', 'deletedAt', 'id', 'observacoes', 'posId', 'status', 'totalCaixa', 'totalVendas', 'updatedAt', 'userId', 'valorInicial'] as const
+  static $columns = ['createdAt', 'dataFecho', 'deletedAt', 'empresaId', 'id', 'numero', 'observacoes', 'posId', 'status', 'totalCaixa', 'totalVendas', 'updatedAt', 'userId', 'valorInicial'] as const
   $columns = CaixaSchema.$columns
   @column.dateTime({ autoCreate: true })
   declare createdAt: DateTime
@@ -41,8 +41,12 @@ export class CaixaSchema extends BaseModel {
   declare dataFecho: DateTime | null
   @column.dateTime()
   declare deletedAt: DateTime | null
+  @column()
+  declare empresaId: string | null
   @column({ isPrimary: true })
   declare id: string
+  @column()
+  declare numero: number | null
   @column()
   declare observacoes: string | null
   @column()
@@ -79,7 +83,7 @@ export class CategoriasProdutoSchema extends BaseModel {
 }
 
 export class ClienteSchema extends BaseModel {
-  static $columns = ['ativo', 'bairro', 'cidade', 'clientePaiId', 'codigoPostal', 'createdAt', 'dataNascimento', 'deletedAt', 'email', 'empresaId', 'endereco', 'estadoCivil', 'foto', 'genero', 'id', 'limiteCredito', 'logo', 'nif', 'nome', 'nomeFantasia', 'numeroRegistro', 'observacao', 'pais', 'profissao', 'provincia', 'razaoSocial', 'saldo', 'telefone', 'telefoneSecundario', 'tipo', 'updatedAt', 'website'] as const
+  static $columns = ['ativo', 'bairro', 'cidade', 'clientePaiId', 'codigoPostal', 'createdAt', 'dataNascimento', 'deletedAt', 'email', 'empresaId', 'endereco', 'estadoCivil', 'foto', 'genero', 'id', 'limiteCredito', 'logo', 'nif', 'nome', 'nomeFantasia', 'numero', 'numeroRegistro', 'observacao', 'pais', 'profissao', 'provincia', 'razaoSocial', 'saldo', 'telefone', 'telefoneSecundario', 'tipo', 'updatedAt', 'website'] as const
   $columns = ClienteSchema.$columns
   @column()
   declare ativo: boolean | null
@@ -121,6 +125,8 @@ export class ClienteSchema extends BaseModel {
   declare nome: string | null
   @column()
   declare nomeFantasia: string | null
+  @column()
+  declare numero: number | null
   @column()
   declare numeroRegistro: string | null
   @column()
@@ -175,7 +181,7 @@ export class CobrancaSchema extends BaseModel {
 }
 
 export class CupomSchema extends BaseModel {
-  static $columns = ['codigo', 'createdAt', 'deletedAt', 'desconto', 'empresaId', 'id', 'promotorId', 'updatedAt', 'userId', 'validade'] as const
+  static $columns = ['codigo', 'createdAt', 'deletedAt', 'desconto', 'empresaId', 'id', 'numero', 'promotorId', 'updatedAt', 'userId', 'validade'] as const
   $columns = CupomSchema.$columns
   @column()
   declare codigo: string
@@ -190,6 +196,8 @@ export class CupomSchema extends BaseModel {
   @column({ isPrimary: true })
   declare id: string
   @column()
+  declare numero: number
+  @column()
   declare promotorId: string
   @column.dateTime({ autoCreate: true, autoUpdate: true })
   declare updatedAt: DateTime
@@ -200,7 +208,7 @@ export class CupomSchema extends BaseModel {
 }
 
 export class DespesaSchema extends BaseModel {
-  static $columns = ['categoria', 'createdAt', 'dataDespesa', 'deletedAt', 'descricao', 'empresaId', 'id', 'posId', 'registradoPor', 'updatedAt', 'valor'] as const
+  static $columns = ['categoria', 'createdAt', 'dataDespesa', 'deletedAt', 'descricao', 'empresaId', 'id', 'numero', 'posId', 'registradoPor', 'updatedAt', 'valor'] as const
   $columns = DespesaSchema.$columns
   @column()
   declare categoria: string
@@ -216,6 +224,8 @@ export class DespesaSchema extends BaseModel {
   declare empresaId: string
   @column({ isPrimary: true })
   declare id: string
+  @column()
+  declare numero: number
   @column()
   declare posId: string | null
   @column()
@@ -474,7 +484,7 @@ export class PermissaoSchema extends BaseModel {
 }
 
 export class PessoaSchema extends BaseModel {
-  static $columns = ['cidade', 'createdAt', 'dataNascimento', 'deletedAt', 'email', 'empresaId', 'endereco', 'genero', 'id', 'imgUrl', 'nif', 'nome', 'pais', 'sobrenome', 'telefone', 'tipo', 'updatedAt', 'userId'] as const
+  static $columns = ['cidade', 'createdAt', 'dataNascimento', 'deletedAt', 'email', 'empresaId', 'endereco', 'genero', 'id', 'imgUrl', 'nif', 'nome', 'numero', 'pais', 'sobrenome', 'telefone', 'tipo', 'updatedAt', 'userId'] as const
   $columns = PessoaSchema.$columns
   @column()
   declare cidade: string | null
@@ -500,6 +510,8 @@ export class PessoaSchema extends BaseModel {
   declare nif: string | null
   @column()
   declare nome: string | null
+  @column()
+  declare numero: number | null
   @column()
   declare pais: string | null
   @column()
@@ -719,7 +731,7 @@ export class ProdutoRecomendacoeSchema extends BaseModel {
 }
 
 export class ProdutoSchema extends BaseModel {
-  static $columns = ['createdAt', 'deletedAt', 'descricao', 'disponivel', 'empresaId', 'fabricanteId', 'formatoId', 'fornecedorId', 'id', 'isService', 'marcaId', 'nome', 'updatedAt'] as const
+  static $columns = ['createdAt', 'deletedAt', 'descricao', 'disponivel', 'empresaId', 'fabricanteId', 'formatoId', 'fornecedorId', 'id', 'isService', 'marcaId', 'nome', 'numero', 'updatedAt'] as const
   $columns = ProdutoSchema.$columns
   @column.dateTime({ autoCreate: true })
   declare createdAt: DateTime
@@ -745,6 +757,8 @@ export class ProdutoSchema extends BaseModel {
   declare marcaId: string | null
   @column()
   declare nome: string | null
+  @column()
+  declare numero: number
   @column.dateTime({ autoCreate: true, autoUpdate: true })
   declare updatedAt: DateTime
 }
@@ -1111,13 +1125,13 @@ export class VendapagamentoSchema extends BaseModel {
   @column.dateTime({ autoCreate: true, autoUpdate: true })
   declare updatedAt: DateTime
   @column()
-  declare valor: string | null
+  declare valor: string
   @column()
   declare vendaId: string | null
 }
 
 export class VendaSchema extends BaseModel {
-  static $columns = ['caixaId', 'clienteOnlineId', 'clientePresencialId', 'createdAt', 'cupomId', 'deletedAt', 'id', 'motivoCancelamento', 'motivoReembolso', 'status', 'total', 'updatedAt', 'valorDesconto', 'vendaTipo'] as const
+  static $columns = ['caixaId', 'clienteOnlineId', 'clientePresencialId', 'createdAt', 'cupomId', 'deletedAt', 'empresaId', 'id', 'motivoCancelamento', 'motivoReembolso', 'numero', 'status', 'total', 'updatedAt', 'valorDesconto', 'vendaTipo'] as const
   $columns = VendaSchema.$columns
   @column()
   declare caixaId: string | null
@@ -1131,12 +1145,16 @@ export class VendaSchema extends BaseModel {
   declare cupomId: string | null
   @column.dateTime()
   declare deletedAt: DateTime | null
+  @column()
+  declare empresaId: string | null
   @column({ isPrimary: true })
   declare id: string
   @column()
   declare motivoCancelamento: string | null
   @column()
   declare motivoReembolso: string | null
+  @column()
+  declare numero: number | null
   @column()
   declare status: string
   @column()

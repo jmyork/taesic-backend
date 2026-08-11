@@ -17,7 +17,7 @@ export default class extends BaseSchema {
 
       table.string('categoria').notNullable()
       table.string('descricao').nullable()
-      table.decimal('valor', 12, 2).notNullable()
+      table.decimal('valor', 22, 2).notNullable()
       table.date('data_despesa').notNullable()
 
       table.uuid('registrado_por').notNullable()

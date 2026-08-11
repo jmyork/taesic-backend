@@ -7,11 +7,11 @@ export default class extends BaseSchema {
     this.schema.alterTable(this.tableName, (table) => {
       table.string('nome')
       table.string('descricao').nullable()
-      table.decimal('preco')
+      table.decimal('preco',22,2)
       table.string('moeda')
       table.string('periodo')
       table.boolean('ativo')
-      table.decimal('limite_uso').nullable()
+      table.decimal('limite_uso',22,2).nullable()
     })
   }
 

@@ -1,7 +1,10 @@
 import { DateTime } from 'luxon'
 import type { TransactionClientContract } from '@adonisjs/lucid/types/database'
+import db from '@adonisjs/lucid/services/db'
 import caixa from '#models/caixa'
 import vendas from '#models/faturacao/vendas'
+import User from '#models/user'
+import { proximoNumeroPorEmpresa } from '../helpers/sequencial_numero.js'
 import { CaixaQueryDTO, CloseCaixaDTO, OpenCaixaDTO, ReOpenCaixaDTO } from '#dtos/caixa_dto'
 import CaixaAlreadyOpenException from '#exceptions/caixa_already_open_exception'
 import UnAuthorizedCaixaException from '#exceptions/un_authorized_caixa_exception'
@@ -145,7 +148,22 @@ export default class caixaRepository {
     //validar
     const { company_alias, ...caixaData } = data
 
-    return await caixa.create({ ...caixaData, status: 'Aberto' })
+    // Resolver a empresa via user.empresa_id (mesma cadeia já tratada como
+    // autoritativa neste repositório, ver caixaAberto/caixaHoje acima) para a
+    // numeração sequencial — fica null se o utilizador não tiver empresa (ex.:
+    // Platform_Admin), caso em que a caixa também fica sem numero.
+    const user = await User.findOrFail(data.user_id!)
+    if (!user.empresa_id) {
+      return await caixa.create({ ...caixaData, status: 'Aberto' })
+    }
+
+    return await db.transaction(async (trx) => {
+      const numero = await proximoNumeroPorEmpresa(trx, user.empresa_id!, caixa)
+      return caixa.create(
+        { ...caixaData, status: 'Aberto', empresa_id: user.empresa_id, numero },
+        { client: trx }
+      )
+    })
   }
 
   async close(id: string, data: CloseCaixaDTO) {

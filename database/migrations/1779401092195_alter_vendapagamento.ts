@@ -9,7 +9,7 @@ export default class extends BaseSchema {
       table.foreign('venda_id').references('id').inTable('vendas').onDelete('CASCADE');
       table.uuid('metodo_pagamento_id');
       table.foreign('metodo_pagamento_id').references('id').inTable('metodopagamento').onDelete('CASCADE');
-      table.decimal('valor');
+      table.decimal('valor', 22, 2).notNullable();
     })
   }
 

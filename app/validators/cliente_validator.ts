@@ -66,6 +66,9 @@ export const ClienteQueryValidator = vine.compile(
     // Pesquisa livre — nome/nome_fantasia/razao_social/email/telefone/nif ao mesmo tempo.
     q: vine.string().trim().escape().optional(),
 
+    // Numeração sequencial por-empresa — nº do registo, distinto do `id` (UUID).
+    numero: vine.number().positive().withoutDecimals().optional(),
+
     // Filtros por campo específicos de cliente.
     nome: vine.string().trim().escape().optional(),
     nome_fantasia: vine.string().trim().escape().optional(),

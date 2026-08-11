@@ -9,6 +9,7 @@ import {
 import db from '@adonisjs/lucid/services/db'
 import categorias_produtos from '#models/faturacao/categorias_produtos'
 import Empresa from '#models/empresa'
+import { proximoNumeroPorEmpresa } from '../helpers/sequencial_numero.js'
 import loteRepository from './lote_repository.js'
 import estoqueRepository from './estoque_repository.js'
 import venda_itensRepository from './venda_itens_repository.js'
@@ -17,6 +18,7 @@ import ProdutoComMovimentacoesException from '#exceptions/produto_com_movimentac
 import { applyCommonFilters, FieldSpec } from '../helpers/query_filters.js'
 import { paginateCatalogoProdutos } from '../helpers/catalogo_produtos_query.js'
 import { CatalogoProdutosFilterDTO } from '#dtos/catalogo_produtos_dto'
+import env from '#start/env'
 
 const PRODUTOS_FILTER_FIELDS: FieldSpec[] = [
   { kind: 'like', column: 'produtos.nome', key: 'nome' },
@@ -73,13 +75,20 @@ export default class produtosRepository {
 
     if (produtoData.is_service) {
       const { formato_id, fornecedor_id, marca_id, fabricante_id, ...servicoData } = produtoData
-      const produto = await produtos.create({
-        ...servicoData,
-        // MySQL não devolve defaults calculados pelo INSERT — sem isto o objecto em
-        // memória ficava com `disponivel: undefined` até à próxima leitura (mesma classe
-        // de bug já vista em `caixa_repository.open()`, ver CLAUDE.md secção 7.5).
-        disponivel: servicoData.disponivel ?? true,
-        empresa_id: empresa.id,
+      const produto = await db.transaction(async (trx) => {
+        const numero = await proximoNumeroPorEmpresa(trx, empresa.id, produtos)
+        return produtos.create(
+          {
+            ...servicoData,
+            // MySQL não devolve defaults calculados pelo INSERT — sem isto o objecto em
+            // memória ficava com `disponivel: undefined` até à próxima leitura (mesma classe
+            // de bug já vista em `caixa_repository.open()`, ver CLAUDE.md secção 7.5).
+            disponivel: servicoData.disponivel ?? true,
+            empresa_id: empresa.id,
+            numero,
+          },
+          { client: trx }
+        )
       })
 
       // registrar no stock e registrar o lote.
@@ -98,9 +107,16 @@ export default class produtosRepository {
       return produto
     }
 
-    return await produtos.create({
-      ...produtoData,
-      empresa_id: empresa.id,
+    return await db.transaction(async (trx) => {
+      const numero = await proximoNumeroPorEmpresa(trx, empresa.id, produtos)
+      return produtos.create(
+        {
+          ...produtoData,
+          empresa_id: empresa.id,
+          numero,
+        },
+        { client: trx }
+      )
     })
   }
 
@@ -168,7 +184,8 @@ export default class produtosRepository {
 
     const trx = await db.transaction()
     try {
-      const produto = await produtos.create({ ...produtoData, empresa_id: empresa.id }, { client: trx })
+      const numero = await proximoNumeroPorEmpresa(trx, empresa.id, produtos)
+      const produto = await produtos.create({ ...produtoData, empresa_id: empresa.id, numero }, { client: trx })
 
       if (data.detalhes?.descricoes && data.detalhes.descricoes.length > 0) {
         await produto.related('descricoes').createMany(data.detalhes.descricoes, { client: trx })
@@ -215,5 +232,97 @@ export default class produtosRepository {
    */
   async catalogo(page: number, limit: number, filter: CatalogoProdutosFilterDTO, company_alias: string) {
     return paginateCatalogoProdutos(page, limit, filter, company_alias)
+  }
+
+  /**
+   * Produtos "em alerta" desta empresa — por lote, não por produto (dois lotes do mesmo
+   * produto podem estar em estados diferentes). Mesmos limiares já usados pelas
+   * notificações por email (nunca duplicados aqui à mão):
+   * - `estoque_baixo`: `quantidade_em_estoque <= ESTOQUE_LIMIAR_CRITICO` (omissão 5) — só
+   *   produtos físicos (`is_service = false`); um serviço tem sempre stock 0 por desenho
+   *   (ver produtos_repository.create()), não é um alerta real. Inclui "esgotado" (0).
+   * - `validade_proxima`: `data_validade` dentro de `LOTE_VALIDADE_ALERTA_DIAS` (omissão
+   *   30) e ainda com stock > 0 — sem stock não há nada a vender antes de expirar,
+   *   mesmo critério de `lote_repository.avisarLotesProximosValidade()`.
+   * Um lote pode aparecer por ambos os motivos ao mesmo tempo — cada linha diz
+   * explicitamente quais se aplicam, nunca escondido num único booleano.
+   */
+  async alertas(company_alias: string, filter?: { tipo?: 'estoque' | 'validade' | 'todos'; page?: number; limit?: number }) {
+    const limiarEstoque = Number(env.get('ESTOQUE_LIMIAR_CRITICO', '5'))
+    const limiteValidade = DateTime.now().plus({ days: Number(env.get('LOTE_VALIDADE_ALERTA_DIAS', '30')) })
+
+    const tipo = filter?.tipo ?? 'todos'
+
+    let query = db
+      .from('lote_produto')
+      .join('produtos', 'produtos.id', 'lote_produto.produto_id')
+      .join('empresa', 'empresa.id', 'produtos.empresa_id')
+      .where('empresa.company_alias', company_alias)
+      .whereNull('lote_produto.deleted_at')
+      .whereNull('produtos.deleted_at')
+
+    const estoqueBaixoCond = (q: any) =>
+      q.where('produtos.is_service', false).where('lote_produto.quantidade_em_estoque', '<=', limiarEstoque)
+    const validadeProximaCond = (q: any) =>
+      q
+        .where('lote_produto.quantidade_em_estoque', '>', 0)
+        .whereNotNull('lote_produto.data_validade')
+        .where('lote_produto.data_validade', '<=', limiteValidade.toSQLDate()!)
+
+    if (tipo === 'estoque') {
+      query = query.where(estoqueBaixoCond)
+    } else if (tipo === 'validade') {
+      query = query.where(validadeProximaCond)
+    } else {
+      query = query.where((sub: any) => sub.where(estoqueBaixoCond).orWhere(validadeProximaCond))
+    }
+
+    const linhas = await query
+      .select(
+        'lote_produto.id as lote_id',
+        'lote_produto.lote',
+        'lote_produto.quantidade_em_estoque',
+        'lote_produto.data_validade',
+        'lote_produto.preco_venda',
+        'produtos.id as produto_id',
+        'produtos.nome as produto_nome',
+        'produtos.is_service'
+      )
+      .orderBy('lote_produto.data_validade', 'asc')
+
+    const hoje = DateTime.now()
+    const resultado = linhas.map((l: any) => {
+      const estoqueBaixo = !l.is_service && Number(l.quantidade_em_estoque) <= limiarEstoque
+      const dataValidade = l.data_validade ? DateTime.fromJSDate(new Date(l.data_validade)) : null
+      const validadeProxima =
+        Number(l.quantidade_em_estoque) > 0 &&
+        dataValidade !== null &&
+        dataValidade <= limiteValidade
+      return {
+        lote_id: l.lote_id,
+        lote: l.lote,
+        produto_id: l.produto_id,
+        produto_nome: l.produto_nome,
+        quantidade_em_estoque: l.quantidade_em_estoque,
+        preco_venda: l.preco_venda,
+        data_validade: l.data_validade,
+        estoque_baixo: estoqueBaixo,
+        esgotado: !l.is_service && Number(l.quantidade_em_estoque) === 0,
+        validade_proxima: validadeProxima,
+        expirado: dataValidade !== null && dataValidade < hoje,
+        dias_restantes: dataValidade !== null ? Math.ceil(dataValidade.diff(hoje, 'days').days) : null,
+      }
+    })
+
+    // Paginação em memória — o volume de lotes em alerta é sempre pequeno (nunca a
+    // tabela toda), não justifica paginar a query em si.
+    const page = filter?.page ?? 1
+    const limit = filter?.limit ?? 50
+    const total = resultado.length
+    const inicio = (page - 1) * limit
+    return {
+      meta: { total, per_page: limit, current_page: page, last_page: Math.max(1, Math.ceil(total / limit)) },
+      data: resultado.slice(inicio, inicio + limit),
+    }
   }
 }

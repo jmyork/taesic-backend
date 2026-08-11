@@ -55,4 +55,9 @@ export default class despesas extends BaseModel {
 
   @belongsTo(() => User, { foreignKey: 'registrado_por' })
   declare user: BelongsTo<typeof User>
+
+  /** Número sequencial por empresa (nunca global) — nº do registo, distinto do `id`
+   * (UUID). Atribuído em despesas_repository.create() via proximoNumeroPorEmpresa(). */
+  @column()
+  declare numero: number
 }

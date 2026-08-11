@@ -14,9 +14,9 @@ export default class extends BaseSchema {
       table.string('lote').nullable()
 
       table.integer('quantidade_em_estoque').nullable().defaultTo(0)
-      table.decimal('preco_venda')
+      table.decimal('preco_venda',22, 2).nullable().comment('preço de venda do produto ou preço de prestação de serviço')
       table
-        .decimal('preco_compra')
+        .decimal('preco_compra',22, 2)
         .nullable()
         .comment('preço de aquisição do produto ou custo de prestação de serviço')
     })

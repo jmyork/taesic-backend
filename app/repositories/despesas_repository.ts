@@ -1,8 +1,10 @@
 import { DateTime } from 'luxon'
+import db from '@adonisjs/lucid/services/db'
 import despesas from '#models/faturacao/despesas'
 import Empresa from '#models/empresa'
 import { CreatedespesasDTO, UpdatedespesasDTO, DespesasQueryDTO } from '#dtos/despesas_dto'
 import { applyCommonFilters, applyRange, FieldSpec } from '../helpers/query_filters.js'
+import { proximoNumeroPorEmpresa } from '../helpers/sequencial_numero.js'
 
 const DESPESAS_FILTER_FIELDS: FieldSpec[] = [
   { kind: 'exact', column: 'despesas.pos_id', key: 'pos_id' },
@@ -49,7 +51,10 @@ export default class despesasRepository {
   async create(data: CreatedespesasDTO) {
     const empresa = await Empresa.findByOrFail('company_alias', data.company_alias)
     const { company_alias, empresa_id, ...despesaData } = data
-    return await despesas.create({ ...despesaData, empresa_id: empresa.id })
+    return db.transaction(async (trx) => {
+      const numero = await proximoNumeroPorEmpresa(trx, empresa.id, despesas)
+      return despesas.create({ ...despesaData, empresa_id: empresa.id, numero }, { client: trx })
+    })
   }
 
   async update(id: string, data: UpdatedespesasDTO, company_alias?: string) {

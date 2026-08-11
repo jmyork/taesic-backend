@@ -4,6 +4,7 @@ import {
   createprodutosValidator,
   CreateProdutoWithDetailsValidator,
   ProdutoQueryValidator,
+  ProdutosAlertasQueryValidator,
   updateprodutosValidator,
 } from '#validators/produtos_validator'
 import { CatalogoProdutosQueryValidator } from '#validators/catalogo_produtos_validator'
@@ -96,5 +97,14 @@ export default class produtossController {
     const { page, limit, ...sanitezed } = filter
     const data = await this.service.catalogo(page ?? 1, limit ?? 20, sanitezed, params.company_alias)
     return { data, message: 'Catálogo carregado com sucesso', status: 200 }
+  }
+
+  // ==================== ALERTAS (stock baixo / validade próxima) ====================
+  // Tem de estar registada antes de `.resource('produtos', ...)` em companydomainroutes.ts
+  // — mesmo motivo já documentado para `catalogo` acima.
+  async alertas({ request, params }: HttpContext) {
+    const filter = await ProdutosAlertasQueryValidator.validate(request.qs())
+    const data = await this.service.alertas(params.company_alias, filter)
+    return { data, message: 'Alertas carregados com sucesso', status: 200 }
   }
 }

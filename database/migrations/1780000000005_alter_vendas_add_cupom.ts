@@ -11,7 +11,7 @@ export default class extends BaseSchema {
       // Snapshot do valor efetivamente descontado no momento da venda — nunca recalculado a
       // partir de `cupom.desconto` depois (o cupão pode mudar ou expirar; a venda tem de manter
       // o que realmente aconteceu, o mesmo princípio já usado no snapshot de cliente da factura).
-      table.decimal('valor_desconto', 12, 2).notNullable().defaultTo(0)
+      table.decimal('valor_desconto', 22, 2).notNullable().defaultTo(0)
     })
   }
 

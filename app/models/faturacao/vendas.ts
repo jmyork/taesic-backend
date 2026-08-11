@@ -13,6 +13,7 @@ import type { BelongsTo, HasMany } from '@adonisjs/lucid/types/relations'
 import venda_itens from './venda_itens.js'
 import cliente from '#models/cliente'
 import cupom from '#models/cupom'
+import Empresa from '#models/empresa'
 // import db from '@adonisjs/lucid/services/db'
 
 export default class vendas extends BaseModel {
@@ -81,4 +82,19 @@ export default class vendas extends BaseModel {
 
   @column()
   declare valor_desconto: number
+
+  /** Resolvido via `caixa.empresa_id` no momento da criação — null se essa caixa não
+   * tiver empresa associada (ver caixa.ts). */
+  @column()
+  declare empresa_id: string | null
+
+  @belongsTo(() => Empresa, {
+    foreignKey: 'empresa_id',
+  })
+  declare empresa: BelongsTo<typeof Empresa>
+
+  /** Número sequencial por empresa (nunca global) — nº do registo, distinto do `id`
+   * (UUID). Null quando não há empresa associada. */
+  @column()
+  declare numero: number | null
 }

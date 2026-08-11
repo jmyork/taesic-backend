@@ -28,7 +28,7 @@ export default class extends BaseSchema {
       table.string('cliente_nome').nullable()
       table.string('cliente_nif').nullable()
 
-      table.decimal('total', 12, 2).notNullable()
+      table.decimal('total', 22, 2).notNullable()
       table.timestamp('data_emissao').notNullable()
       table.text('observacoes').nullable()
 

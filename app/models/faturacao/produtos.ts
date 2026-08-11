@@ -138,4 +138,9 @@ export default class produtos extends BaseModel {
     foreignKey: 'empresa_id',
   })
   declare empresa: BelongsTo<typeof Empresa>
+
+  /** Número sequencial por empresa (nunca global) — nº do registo, distinto do `id`
+   * (UUID). Atribuído em produtos_repository.create() via proximoNumeroPorEmpresa(). */
+  @column()
+  declare numero: number
 }

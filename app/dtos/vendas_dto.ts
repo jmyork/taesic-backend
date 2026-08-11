@@ -10,6 +10,7 @@ export interface VendasQueryDTO {
   updatedDtEnd?: Date
 
   // Filtros exatos
+  numero?: number
   venda_tipo?: 'presencial' | 'online' | 'online_loja'
   status?: 'aberta' | 'fechada' | 'cancelada' | 'reembolsada' | 'proforma'
   fechado?: boolean

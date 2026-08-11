@@ -88,6 +88,7 @@ function buildCatalogoProdutosQuery(filter?: CatalogoProdutosFilterDTO, companyA
       'produtos.id',
       'produtos.nome',
       'produtos.descricao',
+      'produtos.numero',
       'produtos.is_service',
       'produtos.disponivel',
       'produtos.marca_id',
@@ -98,11 +99,13 @@ function buildCatalogoProdutosQuery(filter?: CatalogoProdutosFilterDTO, companyA
     )
     // Só as colunas de negócio de `produtos` — sem enabled/created_at/updated_at/deleted_at.
     // marca_id/formato_id/fabricante_id/fornecedor_id/empresa_id ficam porque são as FKs de
-    // que os `.preload()` abaixo precisam para resolver cada relação belongsTo.
+    // que os `.preload()` abaixo precisam para resolver cada relação belongsTo. `numero` é o
+    // nº sequencial por empresa (distinto do `id` UUID) — ver alter_produtos_add_numero.ts.
     .select(
       'produtos.id',
       'produtos.nome',
       'produtos.descricao',
+      'produtos.numero',
       'produtos.is_service',
       'produtos.disponivel',
       'produtos.marca_id',

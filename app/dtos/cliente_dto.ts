@@ -32,6 +32,9 @@ export interface ClienteQueryDTO {
   // mesmo tempo (para uma caixa de pesquisa única no frontend).
   q?: string
 
+  // Numeração sequencial por-empresa — nº do registo, distinto do `id` (UUID).
+  numero?: number
+
   // Filtros por campo (correspondência parcial) — para pesquisas mais precisas/combinadas.
   nome?: string
   nome_fantasia?: string

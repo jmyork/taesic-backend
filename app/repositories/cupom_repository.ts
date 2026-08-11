@@ -1,10 +1,12 @@
 import { DateTime } from 'luxon'
 import { randomBytes } from 'node:crypto'
+import db from '@adonisjs/lucid/services/db'
 import cupom from '#models/cupom'
 import Empresa from '#models/empresa'
 import Promotor from '#models/promotor'
 import PromotorEmpresaMismatchException from '#exceptions/promotor_empresa_mismatch_exception'
 import { CreatecupomDTO, CupomQueryDTO, UpdatecupomDTO } from '#dtos/cupom_dto'
+import { proximoNumeroPorEmpresa } from '../helpers/sequencial_numero.js'
 
 export default class cupomRepository {
   baseQuery() {
@@ -61,12 +63,19 @@ export default class cupomRepository {
     }
 
     const codigo = data.codigo ?? (await this.gerarCodigoUnico())
-    return cupom.create({
-      promotor_id: data.promotor_id,
-      codigo,
-      desconto: data.desconto,
-      validade: data.validade ? DateTime.fromJSDate(data.validade) : null,
-      empresa_id: empresa.id,
+    return db.transaction(async (trx) => {
+      const numero = await proximoNumeroPorEmpresa(trx, empresa.id, cupom)
+      return cupom.create(
+        {
+          promotor_id: data.promotor_id,
+          codigo,
+          desconto: data.desconto,
+          validade: data.validade ? DateTime.fromJSDate(data.validade) : null,
+          empresa_id: empresa.id,
+          numero,
+        },
+        { client: trx }
+      )
     })
   }
 

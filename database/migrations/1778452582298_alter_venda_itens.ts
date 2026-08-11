@@ -23,9 +23,9 @@ export default class extends BaseSchema {
 
       // Valores
       table.integer('quantidade').notNullable()
-      table.decimal('preco_unitario', 12, 2).notNullable()
-      table.decimal('desconto', 12, 2).notNullable().defaultTo(0)
-      table.decimal('total', 12, 2).notNullable()
+      table.decimal('preco_unitario', 22, 2).notNullable()
+      table.decimal('desconto', 22, 2).notNullable().defaultTo(0)
+      table.decimal('total', 22, 2).notNullable()
 
       // Campos de controle
       table.boolean('reembolsado').notNullable().defaultTo(false)

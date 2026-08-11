@@ -54,6 +54,11 @@ export default class cupom extends BaseModel {
   @belongsTo(() => Promotor, { foreignKey: 'promotor_id' })
   declare promotor: BelongsTo<typeof Promotor>
 
+  /** Número sequencial por empresa (nunca global) — nº do registo, distinto do `id`
+   * (UUID) e de `codigo` (esse é o código de redenção, partilhável com o cliente). */
+  @column()
+  declare numero: number
+
   get expirado(): boolean {
     return this.validade !== null && this.validade < DateTime.now()
   }

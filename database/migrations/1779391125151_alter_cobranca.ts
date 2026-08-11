@@ -7,7 +7,7 @@ export default class extends BaseSchema {
     this.schema.alterTable(this.tableName, (table) => {
       table.uuid('subscricao_id')
       table.foreign('subscricao_id').references('id').inTable('subscricao').onDelete('CASCADE')
-      table.decimal('valor')
+      table.decimal('valor',22,2)
       table.string('moeda')
       table.enum('status', ['PENDENTE', 'PAGA', 'FALHADA', 'ATRASADA'])
       // table.datetime('data_emissao');
