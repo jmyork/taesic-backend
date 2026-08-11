@@ -2,11 +2,17 @@ import type { HttpContext } from '@adonisjs/core/http'
 import vendasService from '#services/vendas_service'
 import { CloseVendaValidator, CreateVendaValidator, ShowVendaValidator, VendasQueryValidator } from '#validators/vendas_validator'
 import { VendasQueryDTO } from '#dtos/vendas_dto'
+import { userHasRole } from '../helpers/Utils.js'
+import posRepository from '#repositories/pos_repository'
+
+// Papéis que só podem ver/pesquisar vendas do(s) seu(s) próprio(s) posto(s) — nunca da
+// empresa toda. Admin/Gerente/Supervisor/*Visualizador de Admin continuam a ver tudo.
+const PAPEIS_RESTRITOS_A_POS = ['Vendedor', 'VendedorVisualizador', 'Estoquista', 'EstoquistaVisualizador']
 
 export default class vendassController {
     private service = new vendasService()
     // ==================== INDEX ====================
-    async index({ request, response, params }: HttpContext) {
+    async index({ request, response, params, auth }: HttpContext) {
         try {
             const querySantized = await VendasQueryValidator.validate(request.qs())
             const { page, limit, ...sanitezed } = querySantized
@@ -16,6 +22,16 @@ export default class vendassController {
                 empresa_id: params.company_alias ? null : request.input('empresa_id'),
                 company_alias: params.company_alias,
             }
+
+            // Restrição aplicada aqui (não só na UI) — não depende do frontend respeitar isto.
+            if (auth.user && (await userHasRole(auth.user, PAPEIS_RESTRITOS_A_POS))) {
+                const posRepo = new posRepository()
+                const meusPos = await posRepo.listByUser(auth.user.id, { limit: 100 })
+                const meusPosIds = meusPos.all().map((p) => p.id)
+                const posPedido = typeof filter.pos_id === 'string' ? filter.pos_id : undefined
+                filter.pos_id = posPedido && meusPosIds.includes(posPedido) ? posPedido : meusPosIds
+            }
+
             const data = await this.service.list(page ?? 1, limit ?? 10, filter)
             return response.ok({
                 data,

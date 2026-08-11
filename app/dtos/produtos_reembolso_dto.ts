@@ -41,6 +41,9 @@ export interface ReembolsoParcialDTO {
   empresa_id?: string
   user_id?: string
   quantidade: number
+  // true quando o utilizador (Vendedor/Estoquista) só pode reembolsar as suas próprias
+  // vendas — calculado no controller via userHasRole, nunca vem de um payload HTTP.
+  restrito?: boolean
 }
 
 export interface ReembolsoTotalDTO {
@@ -50,6 +53,7 @@ export interface ReembolsoTotalDTO {
   company_alias?: string
   empresa_id?: string
   user_id?: string
+  restrito?: boolean
 }
 
 

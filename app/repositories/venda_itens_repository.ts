@@ -94,10 +94,24 @@ export default class venda_itensRepository {
       query = query.where('venda_itens.empresa_id', filter.empresa_id)
     }
 
-    return await query
-      .select('venda_itens.*')
+    // Nome do produto — venda_itens só guarda lote_produto_id, sem isto o chamador
+    // (ex.: ecrã de reembolso) só teria o id do lote para mostrar ao utilizador.
+    query = query
+      .join('lote_produto', 'lote_produto.id', 'venda_itens.lote_produto_id')
+      .join('produtos', 'produtos.id', 'lote_produto.produto_id')
+
+    const paginator = await query
+      .select('venda_itens.*', 'produtos.nome as produto_nome')
       .orderBy('created_at', 'desc')
       .paginate(page, limit)
+
+    // Coluna extra vinda de join ("as produto_nome") fica em $extras — sem isto o
+    // Lucid não a serializa para JSON (mesmo padrão documentado no catálogo de produtos).
+    for (const item of paginator.all()) {
+      (item as any).serializeExtras = () => item.$extras
+    }
+
+    return paginator
   }
 
   async findOrFail(id: string, company_alias?: string) {
@@ -117,13 +131,13 @@ export default class venda_itensRepository {
     await Empresa.findByOrFail('company_alias', data.company_alias)
 
     // A venda tem de pertencer a este tenant (isolamento — `findOrFail` escopa por
-    // company_alias através de caixa->pos->empresa) e estar aberta. Sem isto, o repositório
-    // confiava inteiramente no validator HTTP para barrar um venda_id de outra empresa ou já
-    // fechada — qualquer chamador directo do repositório (outro repositório, um teste) não
-    // tinha essa proteção.
+    // company_alias através de caixa->pos->empresa) e estar aberta OU proforma. Sem isto,
+    // o repositório confiava inteiramente no validator HTTP para barrar um venda_id de
+    // outra empresa ou já fechada — qualquer chamador directo do repositório (outro
+    // repositório, um teste) não tinha essa proteção.
     const vendasRepo = new vendasRepository()
     const venda = await vendasRepo.findOrFail({ id: data.venda_id, company_alias: data.company_alias! })
-    if (venda.status !== 'aberta') {
+    if (venda.status !== 'aberta' && venda.status !== 'proforma') {
       throw new VendaIsAlreadyOpenOrCloseException()
     }
 

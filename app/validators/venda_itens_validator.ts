@@ -12,7 +12,7 @@ export const createvenda_itensValidator = vine.compile(
           .join('pos', 'pos.id', 'caixa.pos_id')
           .join('empresa', 'empresa.id', 'pos.empresa_id')
           .where('vendas.id', value)
-          .where("vendas.status", 'aberta')
+          .whereIn("vendas.status", ['aberta', 'proforma'])
           .where('empresa.company_alias', field.data.params.company_alias ?? '')
           .select('vendas.*')
           .first()

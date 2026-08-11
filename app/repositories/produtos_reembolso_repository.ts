@@ -7,6 +7,7 @@ import {
 } from '#dtos/produtos_reembolso_dto'
 import venda_itensRepository from './venda_itens_repository.js'
 import QuantidadeReembolsoExcedeVendidaException from '#exceptions/quantidade_reembolso_excede_vendida_exception'
+import UnAuthorizedReembolsoException from '#exceptions/un_authorized_reembolso_exception'
 import estoqueRepository from './estoque_repository.js'
 import vendasRepository from './vendas_repository.js'
 import posRepository from './pos_repository.js'
@@ -36,22 +37,45 @@ export default class produtos_reembolsoRepository {
       fields: REEMBOLSO_FILTER_FIELDS,
     })
 
+    // produtos_reembolso só guarda venda_item_id/user_id/quantidade — sem estes joins o
+    // chamador (ecrã de histórico de reembolsos) só teria ids em bruto para mostrar.
+    query = query
+      .join('venda_itens', "venda_itens.id", "produtos_reembolso.venda_item_id")
+      .join('lote_produto', 'lote_produto.id', 'venda_itens.lote_produto_id')
+      .join('produtos', 'produtos.id', 'lote_produto.produto_id')
+      .join('vendas', 'vendas.id', 'venda_itens.venda_id')
+      .join('user', 'user.id', 'produtos_reembolso.user_id')
+      .join('caixa', 'caixa.id', 'vendas.caixa_id')
+      .join('pos', 'pos.id', 'caixa.pos_id')
+      .join('empresa', 'empresa.id', 'pos.empresa_id')
+
     // empresa filters
     if (filter?.company_alias) {
-      query = query
-        .join('venda_itens', "venda_itens.id", "produtos_reembolso.venda_item_id")
-        .join('vendas', 'vendas.id', 'venda_itens.venda_id')
-        .join('caixa', 'caixa.id', 'vendas.caixa_id')
-        .join('pos', 'pos.id', 'caixa.pos_id')
-        .join('empresa', 'empresa.id', 'pos.empresa_id')
-        .where('empresa.company_alias', filter.company_alias)
+      query = query.where('empresa.company_alias', filter.company_alias)
     }
 
     // NOTA: filtro por `produtos_reembolso.empresa_id` foi removido — essa coluna não existe
     // nesta tabela (o isolamento de tenant é feito via `company_alias`, acima, através do
     // join até `empresa`). Filtrar por uma coluna inexistente resultava sempre em erro 500.
 
-    return await query.select('produtos_reembolso.*').orderBy('created_at', 'desc').paginate(page, limit)
+    const paginator = await query
+      .select(
+        'produtos_reembolso.*',
+        'vendas.id as venda_id',
+        'produtos.nome as produto_nome',
+        'user.username as operador_nome',
+        'venda_itens.preco_unitario as preco_unitario'
+      )
+      .orderBy('produtos_reembolso.created_at', 'desc')
+      .paginate(page, limit)
+
+    // Colunas extra vindas de join ("as X") ficam em $extras — sem isto o Lucid não as
+    // serializa para JSON (mesmo padrão documentado no catálogo de produtos).
+    for (const reembolso of paginator.all()) {
+      (reembolso as any).serializeExtras = () => reembolso.$extras
+    }
+
+    return paginator
   }
 
   /** Lista todos os reembolsos (totais e parciais) associados a uma venda. */
@@ -77,6 +101,12 @@ export default class produtos_reembolsoRepository {
     const venda = await vendaRepo.findOrFail({ id: venda_itens[0].venda_id, company_alias: data.company_alias })
     const caixaRepo = new caixaRepository()
     const caixa = await caixaRepo.findOrFail(venda.caixa_id!, data.company_alias)
+
+    // Vendedor/Estoquista só podem reembolsar as suas próprias vendas — nunca as de
+    // outro vendedor (Admin/Gerente/Supervisor continuam sem esta restrição).
+    if (data.restrito && caixa.user_id !== data.user_id) {
+      throw new UnAuthorizedReembolsoException()
+    }
 
     const posRepo = new posRepository()
     const pos = await posRepo.findOrFail(caixa.pos_id, data.company_alias)
@@ -170,6 +200,12 @@ export default class produtos_reembolsoRepository {
     const venda = await vendaRepo.findOrFail({ id: venda_item.venda_id, company_alias: data.company_alias })
     const caixaRepo = new caixaRepository()
     const caixa = await caixaRepo.findOrFail(venda.caixa_id!, data.company_alias)
+
+    // Vendedor/Estoquista só podem reembolsar as suas próprias vendas — nunca as de
+    // outro vendedor (Admin/Gerente/Supervisor continuam sem esta restrição).
+    if (data.restrito && caixa.user_id !== data.user_id) {
+      throw new UnAuthorizedReembolsoException()
+    }
 
     const posRepo = new posRepository()
     const pos = await posRepo.findOrFail(caixa.pos_id, data.company_alias)

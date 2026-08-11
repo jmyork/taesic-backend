@@ -49,38 +49,77 @@ export default class vendasRepository {
       query.where("vendas.status", "aberta")
     }
 
-    // Empresa/Company
-    if (filter?.company_alias || filter?.empresa_id) {
-      query
-        .join('caixa', 'caixa.id', 'vendas.caixa_id')
-        .join('pos', 'pos.id', 'caixa.pos_id')
-        .join('empresa', 'empresa.id', 'pos.empresa_id')
-
-      if (filter?.company_alias) {
-        query.where("empresa.company_alias", filter.company_alias)
-      }
-
-      if (filter?.empresa_id) {
-        query.where("vendas.empresa_id", filter.empresa_id)
-      }
-    }
-
-    return query
-      .select("vendas.*")
-      .orderBy("vendas.created_at", "desc")
-      .paginate(page, limit)
-  }
-
-  async findOrFail(data: VendaShowDTO) {
-    return await this.baseQuery()
+    // Junta caixa/pos/empresa/user sempre — vendas não tem FK directa a nenhum dos
+    // dois, por isso mostrar/filtrar por vendedor ou por posto de venda só é possível
+    // através deste join (caixa.user_id/caixa.pos_id).
+    query
       .join('caixa', 'caixa.id', 'vendas.caixa_id')
       .join('pos', 'pos.id', 'caixa.pos_id')
       .join('empresa', 'empresa.id', 'pos.empresa_id')
+      .join('user', 'user.id', 'caixa.user_id')
+
+    if (filter?.company_alias) {
+      query.where("empresa.company_alias", filter.company_alias)
+    }
+
+    if (filter?.empresa_id) {
+      query.where("vendas.empresa_id", filter.empresa_id)
+    }
+
+    if (filter?.user_id) {
+      query.where("caixa.user_id", filter.user_id)
+    }
+
+    if (filter?.pos_id) {
+      if (Array.isArray(filter.pos_id)) {
+        query.whereIn("caixa.pos_id", filter.pos_id)
+      } else {
+        query.where("caixa.pos_id", filter.pos_id)
+      }
+    }
+
+    const paginator = await query
+      .select(
+        "vendas.*",
+        "user.username as vendedor_nome",
+        "pos.id as pos_id",
+        "pos.nome as pos_nome"
+      )
+      .orderBy("vendas.created_at", "desc")
+      .paginate(page, limit)
+
+    // Colunas extra vindas de join (alias "as X") ficam em $extras — por omissão o
+    // Lucid não as serializa para JSON sem isto (mesmo padrão documentado para os
+    // agregados do catálogo de produtos).
+    for (const venda of paginator.all()) {
+      (venda as any).serializeExtras = () => venda.$extras
+    }
+
+    return paginator
+  }
+
+  async findOrFail(data: VendaShowDTO) {
+    const venda = await this.baseQuery()
+      .join('caixa', 'caixa.id', 'vendas.caixa_id')
+      .join('pos', 'pos.id', 'caixa.pos_id')
+      .join('empresa', 'empresa.id', 'pos.empresa_id')
+      .join('user', 'user.id', 'caixa.user_id')
       .where('empresa.company_alias', data.company_alias ?? '')
       .where('vendas.id', data.id)
       // .where('caixa.user_id', data.user_id!)
-      .select(['vendas.*'])
+      .select(
+        'vendas.*',
+        'user.username as vendedor_nome',
+        'pos.id as pos_id',
+        'pos.nome as pos_nome'
+      )
       .firstOrFail()
+
+    // Mesmo padrão de paginate() — colunas de join ("as X") só chegam ao JSON com
+    // serializeExtras definido por instância.
+    ;(venda as any).serializeExtras = () => venda.$extras
+
+    return venda
   }
 
   async create(data: CreateVendasDTO) {
@@ -101,28 +140,39 @@ export default class vendasRepository {
       throw new UserHasNoOpenCaixaException()
     }
 
-    // checar se tem venda aberta para o user
-    const ExistAnOpenVenda = await vendas.query()
-      .join('caixa', 'caixa.id', 'vendas.caixa_id')
-      .join('pos', 'pos.id', 'caixa.pos_id')
-      .join('empresa', 'empresa.id', 'pos.empresa_id')
-      // .join('vendas', 'vendas.caixa_id', 'caixa.id')
-      .where('empresa.company_alias', company_alias ?? '')
-      .where('caixa.user_id', user_id!)
-      .where('caixa.status', 'aberto')
-      .select('vendas.*')
-      .first()
+    // Uma proforma é só uma cotação — nunca bloqueia nem é bloqueada pela regra de "uma
+    // venda aberta por utilizador" (essa regra só existe para vendas reais).
+    if (!data.proforma) {
+      // checar se tem venda aberta para o user — filtro por vendas.status directamente
+      // na query (não só a checar o `.first()` depois), senão com múltiplas vendas
+      // ligadas à mesma caixa (proformas incluídas) o `.first()` podia calhar numa que
+      // não é a 'aberta' e nunca detectar a que realmente bloqueia.
+      const ExistAnOpenVenda = await vendas.query()
+        .join('caixa', 'caixa.id', 'vendas.caixa_id')
+        .join('pos', 'pos.id', 'caixa.pos_id')
+        .join('empresa', 'empresa.id', 'pos.empresa_id')
+        .where('empresa.company_alias', company_alias ?? '')
+        .where('caixa.user_id', user_id!)
+        .where('caixa.status', 'aberto')
+        .where('vendas.status', 'aberta')
+        .select('vendas.*')
+        .first()
 
-    if (ExistAnOpenVenda && ExistAnOpenVenda.status == 'aberta') {
-      throw new UserHasAnOpenVendaException()
+      if (ExistAnOpenVenda) {
+        throw new UserHasAnOpenVendaException()
+      }
     }
 
+    // Uma venda real só sabe o seu total real quando close() o calcula a partir dos
+    // itens — 0 até lá, de propósito. Uma proforma nunca passa por close(), por isso é
+    // a única altura em que o total (já conhecido do carrinho no momento da criação)
+    // pode ser gravado.
     return vendas.create({
       cliente_presencial_id: vendaData.cliente_presencial_id,
       venda_tipo: 'presencial',
       caixa_id: Caixa.id,
-      total: 0,
-      status: 'aberta',
+      total: data.proforma ? (total ?? 0) : 0,
+      status: data.proforma ? 'proforma' : 'aberta',
     })
   }
 
@@ -145,7 +195,7 @@ export default class vendasRepository {
       await venda.delete()
       return venda
     }
-    if (venda.status == 'fechada' || venda.status == 'cancelada' || venda.status == 'reembolsada') {
+    if (venda.status == 'fechada' || venda.status == 'cancelada' || venda.status == 'reembolsada' || venda.status == 'proforma') {
       throw new VendaIsAlreadyOpenOrCloseException()
     }
 
@@ -234,7 +284,7 @@ export default class vendasRepository {
   async cancel(data: VendaCloseDTO) {
     const venda = await this.findOrFail(data)
 
-    if (venda.status !== 'aberta') {
+    if (venda.status !== 'aberta' && venda.status !== 'proforma') {
       throw new VendaIsAlreadyOpenOrCloseException()
     }
 

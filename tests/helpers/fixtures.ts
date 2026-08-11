@@ -106,7 +106,7 @@ export async function createCaixa(
 
 export async function createVenda(
   caixa: Caixa,
-  overrides: Partial<{ status: 'aberta' | 'fechada' | 'cancelada' | 'reembolsada'; total: number }> = {}
+  overrides: Partial<{ status: 'aberta' | 'fechada' | 'cancelada' | 'reembolsada' | 'proforma'; total: number }> = {}
 ) {
   return Vendas.create({
     caixa_id: caixa.id,

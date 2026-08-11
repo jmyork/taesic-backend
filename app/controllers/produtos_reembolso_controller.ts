@@ -7,6 +7,11 @@ import {
   ShowProdutosReembolsoValidator
 } from '#validators/produtos_reembolso_validator'
 import { ProdutosReembolsoQueryDTO } from '#dtos/produtos_reembolso_dto'
+import { userHasRole } from '../helpers/Utils.js'
+
+// Mesmos papéis restringidos ao seu próprio posto na listagem de vendas (vendas_controller.ts)
+// — aqui também só podem reembolsar as suas próprias vendas, nunca as de outro vendedor.
+const PAPEIS_RESTRITOS_A_PROPRIA_VENDA = ['Vendedor', 'VendedorVisualizador', 'Estoquista', 'EstoquistaVisualizador']
 
 export default class produtos_reembolsosController {
   private service = new produtos_reembolsoService()
@@ -81,7 +86,13 @@ export default class produtos_reembolsosController {
   async reembolsar_total({ params, response, auth, request }: HttpContext) {
     try {
       const payload = await request.validateUsing(ReembolsoTotalValidator)
-      const data = await this.service.reembolsar_total({ ...payload, company_alias: params.company_alias, user_id: auth.user?.id! })
+      const restrito = !!(auth.user && (await userHasRole(auth.user, PAPEIS_RESTRITOS_A_PROPRIA_VENDA)))
+      const data = await this.service.reembolsar_total({
+        ...payload,
+        company_alias: params.company_alias,
+        user_id: auth.user?.id!,
+        restrito,
+      })
 
       return response.ok({
         data,
@@ -97,6 +108,9 @@ export default class produtos_reembolsosController {
           status: 400,
         })
       }
+      if (error.code === 'UNAUTHORIZED_REEMBOLSO') {
+        return response.unauthorized({ data: null, message: error.message, status: 401 })
+      }
       console.error('Erro ao realizar reembolso total:', error)
       return response.internalServerError({
         data: null,
@@ -110,7 +124,13 @@ export default class produtos_reembolsosController {
   async reembolsar_parcial({ params, response, auth, request }: HttpContext) {
     try {
       const payload = await request.validateUsing(ReembolsoParcialValidator)
-      const data = await this.service.reembolsar_parcial({ ...payload, company_alias: params.company_alias, user_id: auth.user?.id! })
+      const restrito = !!(auth.user && (await userHasRole(auth.user, PAPEIS_RESTRITOS_A_PROPRIA_VENDA)))
+      const data = await this.service.reembolsar_parcial({
+        ...payload,
+        company_alias: params.company_alias,
+        user_id: auth.user?.id!,
+        restrito,
+      })
 
       return response.ok({
         data,
@@ -133,6 +153,9 @@ export default class produtos_reembolsosController {
           message: error.message,
           status: error.code,
         })
+      }
+      if (error.code === 'UNAUTHORIZED_REEMBOLSO') {
+        return response.unauthorized({ data: null, message: error.message, status: 401 })
       }
       return response.internalServerError({
         data: null,

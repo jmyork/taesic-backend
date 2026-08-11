@@ -1138,7 +1138,7 @@ export class VendaSchema extends BaseModel {
   @column()
   declare motivoReembolso: string | null
   @column()
-  declare status: string | null
+  declare status: string
   @column()
   declare total: string
   @column.dateTime({ autoCreate: true, autoUpdate: true })

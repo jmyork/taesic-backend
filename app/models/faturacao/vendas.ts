@@ -42,7 +42,7 @@ export default class vendas extends BaseModel {
   declare total: number
 
   @column()
-  declare status: 'aberta' | 'fechada' | 'cancelada' | 'reembolsada'
+  declare status: 'aberta' | 'fechada' | 'cancelada' | 'reembolsada' | 'proforma'
 
   @hasMany(() => venda_itens, {
     foreignKey: 'venda_id',

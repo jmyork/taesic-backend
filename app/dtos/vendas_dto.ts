@@ -11,10 +11,13 @@ export interface VendasQueryDTO {
 
   // Filtros exatos
   venda_tipo?: 'presencial' | 'online' | 'online_loja'
-  status?: 'aberta' | 'fechada' | 'cancelada' | 'reembolsada'
+  status?: 'aberta' | 'fechada' | 'cancelada' | 'reembolsada' | 'proforma'
   fechado?: boolean
   caixa_id?: string
   user_id?: string
+  // string[] só é usado internamente (vendas_controller.ts) para restringir um
+  // Vendedor/Estoquista aos seus próprios postos — nunca vem assim de um query param HTTP.
+  pos_id?: string | string[]
   cliente_online_id?: string
   cliente_presencial_id?: string
   // data_venda?: Date
@@ -61,6 +64,7 @@ export interface CreateVendasDTO {
   total?: number
   fechado?: boolean
   enabled?: boolean
+  proforma?: boolean
 }
 
 export interface UpdateVendasDTO {
