@@ -8,7 +8,10 @@ import {
   resetPasswordDTO,
   ShowUserDetailsDTO,
   ShowUserDTO,
+  UpdateUserDTO,
+  DeleteUserDTO,
 } from '#dtos/auth_dto'
+import { DateTime } from 'luxon'
 import type { TransactionClientContract } from '@adonisjs/lucid/types/database'
 import hash from '@adonisjs/core/services/hash'
 import Empresa from '#models/empresa'
@@ -224,7 +227,7 @@ export default class authRepository {
     }
 
     // Executa e retorna os resultados
-    return await query
+    const paginador = await query
       .select([
         'user.id',
         'user.username',
@@ -235,6 +238,86 @@ export default class authRepository {
         'user.deleted_at',
       ])
       .paginate(data.page ?? 1, data.limit ?? 10)
+
+    // A listagem não dizia a função de cada funcionário — só id/username/email. Sem
+    // isto o ecrã de Funcionários não consegue mostrar "Vendedor"/"Estoquista"/etc.
+    // Uma query só para a página inteira, agrupada em memória.
+    const mapaPapeis = await this.rolesPorUtilizador(paginador.all().map((u) => u.id))
+    for (const u of paginador.all()) {
+      ;(u as any).$extras.papeis = mapaPapeis.get(u.id) ?? []
+      // `$extras` só chega ao JSON com `serializeExtras` definido por instância —
+      // mesmo padrão já documentado no catálogo de produtos.
+      ;(u as any).serializeExtras = () => (u as any).$extras
+    }
+
+    return paginador
+  }
+
+  /**
+   * Confirma que o utilizador existe E pertence à empresa indicada, devolvendo-o.
+   * Sem isto, bastaria adivinhar um UUID para editar/apagar um funcionário de outro
+   * tenant — `User.findOrFail(id)` sozinho não sabe nada de empresas.
+   */
+  private async findScopedOrFail(userId: string, companyAlias: string) {
+    await this.baseQuery()
+      .join('empresa', 'empresa.id', 'user.empresa_id')
+      .where('user.id', userId)
+      .where('empresa.company_alias', companyAlias)
+      .select('user.id')
+      .firstOrFail()
+
+    return User.findOrFail(userId)
+  }
+
+  /**
+   * Editar um funcionário. Não existia NENHUMA rota de edição de utilizador — os
+   * botões "Editar" do frontend nunca puderam funcionar.
+   *
+   * Só `username` e `email`: a password é definida pelo próprio (link por email) e os
+   * papéis têm o seu próprio recurso (`user-papeis`).
+   */
+  async update(data: UpdateUserDTO) {
+    const user = await this.findScopedOrFail(data.user_id, data.company_alias)
+
+    if (data.username !== undefined) user.username = data.username
+    if (data.email !== undefined) user.email = data.email
+
+    await user.save()
+    return user
+  }
+
+  /**
+   * Desactivar/reactivar um funcionário (toggle de `deleted_at`), seguindo o mesmo
+   * padrão de `destroy` já usado nos outros recursos do domínio. Nunca apaga a linha:
+   * um utilizador está ligado a caixas e vendas históricas.
+   */
+  async softDelete(data: DeleteUserDTO) {
+    const user = await this.findScopedOrFail(data.user_id, data.company_alias)
+
+    user.deletedAt = user.deletedAt ? null : DateTime.now()
+    await user.save()
+    return user
+  }
+
+  /** Papéis de cada utilizador, numa só query, agrupados por `user_id`. Usado para a
+   * listagem poder mostrar a função de cada funcionário sem um pedido por linha. */
+  async rolesPorUtilizador(userIds: string[]) {
+    if (userIds.length === 0) return new Map<string, string[]>()
+
+    const linhas = await db
+      .from('user_papel')
+      .join('papel', 'papel.id', 'user_papel.papel_id')
+      .whereIn('user_papel.user_id', userIds)
+      .whereNull('user_papel.deleted_at')
+      .select('user_papel.user_id as user_id', 'papel.nome as papel_nome')
+
+    const mapa = new Map<string, string[]>()
+    for (const l of linhas) {
+      const lista = mapa.get(l.user_id) ?? []
+      lista.push(l.papel_nome)
+      mapa.set(l.user_id, lista)
+    }
+    return mapa
   }
 
   // mostrar dados de um user

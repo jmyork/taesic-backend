@@ -56,6 +56,50 @@ export const UsersUpdateValidator = vine.compile(
   })
 )
 
+/**
+ * Edição de um funcionário no domínio da empresa (`PUT auth/:user_id`).
+ *
+ * Distinto do `UsersUpdateValidator` acima (que exige `password` e não é usado por
+ * nenhuma rota): aqui a password nunca é editável por terceiros — o próprio define-a
+ * pelo link enviado no registo. Os papéis também não entram: têm o recurso
+ * `user-papeis` para isso.
+ *
+ * A unicidade de `username`/`email` é global (como no registo), por isso o
+ * `whereNot('id', ...)` é indispensável para um utilizador poder gravar sem alterar
+ * o próprio campo.
+ */
+export const DomainUserUpdateValidator = vine.compile(
+  vine.object({
+    username: vine
+      .string()
+      .escape()
+      .trim()
+      .maxLength(255)
+      .unique(async (db, value, field) => {
+        return !(await db
+          .from('user')
+          .where('username', value)
+          .whereNot('id', field.meta.user_id)
+          .first())
+      })
+      .optional(),
+    email: vine
+      .string()
+      .email()
+      .escape()
+      .trim()
+      .maxLength(255)
+      .unique(async (db, value, field) => {
+        return !(await db
+          .from('user')
+          .where('email', value)
+          .whereNot('id', field.meta.user_id)
+          .first())
+      })
+      .optional(),
+  })
+)
+
 export const UserLoginValidator = vine.compile(
   vine.object({
     uid: vine.string().trim().trim().escape(),

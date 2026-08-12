@@ -6,6 +6,7 @@ import {
   UserForgotPasswordValidator,
   UserResetPasswordValidator,
   QsValidator,
+  DomainUserUpdateValidator,
 } from '#validators/auth_validator'
 import User from '#models/user'
 import InvalidTokenException from '#exceptions/invalid_token_exception'
@@ -168,6 +169,39 @@ export default class AuthController {
       })
     }
   }
+  /**
+   * Editar um funcionário. Não havia rota nenhuma de edição de utilizador — o botão
+   * "Editar" do ecrã de Funcionários nunca teve para onde apontar.
+   *
+   * Sem try/catch: o handler global já traduz `E_ROW_NOT_FOUND` (404) e os erros de
+   * validação do VineJS (400) — ver app/exceptions/handler.ts.
+   */
+  async update({ request, params }: HttpContext) {
+    const payload = await request.validateUsing(DomainUserUpdateValidator, {
+      meta: { user_id: params.user_id },
+    })
+    const data = await this.service.update({
+      ...payload,
+      company_alias: params.company_alias,
+      user_id: params.user_id,
+    })
+    return { data, message: 'Funcionário actualizado com sucesso', status: 200 }
+  }
+
+  /** Desactivar/reactivar um funcionário (toggle de `deleted_at`). Nunca apaga a
+   * linha — o utilizador está ligado a caixas e vendas históricas. */
+  async destroy({ params }: HttpContext) {
+    const data = await this.service.softDelete({
+      company_alias: params.company_alias,
+      user_id: params.user_id,
+    })
+    return {
+      data,
+      message: data.deletedAt ? 'Funcionário desactivado' : 'Funcionário reactivado',
+      status: 200,
+    }
+  }
+
   // desabilitar todos os users
   async show({ response, params }: HttpContext) {
     try {

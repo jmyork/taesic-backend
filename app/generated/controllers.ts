@@ -14,6 +14,7 @@ import lotesController from '#controllers/lote_controller'
 import marcasController from '#controllers/marca_controller'
 import metodopagamentosController from '#controllers/metodopagamento_controller'
 import MetricasController from '#controllers/metricas_controller'
+import NifController from '#controllers/nif_controller'
 import papelsController from '#controllers/papel_controller'
 import papel_permissaosController from '#controllers/papel_permissao_controller'
 import permissaosController from '#controllers/permissao_controller'
@@ -71,6 +72,7 @@ export const controllers = {
   Marca: marcasController,
   MetodoPagamento: metodopagamentosController,
   Metricas: MetricasController,
+  Nif: NifController,
   Papel: papelsController,
   PapelPermissao: papel_permissaosController,
   Permissao: permissaosController,

@@ -432,6 +432,35 @@ export class MetodopagamentoSchema extends BaseModel {
   declare updatedAt: DateTime
 }
 
+export class NifConsultaSchema extends BaseModel {
+  static $columns = ['consultadoEm', 'createdAt', 'estado', 'found', 'id', 'inadimplente', 'nif', 'nome', 'raw', 'regimeIva', 'tipo', 'updatedAt'] as const
+  $columns = NifConsultaSchema.$columns
+  @column.dateTime()
+  declare consultadoEm: DateTime
+  @column.dateTime({ autoCreate: true })
+  declare createdAt: DateTime
+  @column()
+  declare estado: string | null
+  @column()
+  declare found: boolean
+  @column({ isPrimary: true })
+  declare id: string
+  @column()
+  declare inadimplente: string | null
+  @column()
+  declare nif: string
+  @column()
+  declare nome: string | null
+  @column()
+  declare raw: string | null
+  @column()
+  declare regimeIva: string | null
+  @column()
+  declare tipo: string | null
+  @column.dateTime({ autoCreate: true, autoUpdate: true })
+  declare updatedAt: DateTime
+}
+
 export class PapelSchema extends BaseModel {
   static $columns = ['createdAt', 'deletedAt', 'descricao', 'id', 'nome', 'updatedAt'] as const
   $columns = PapelSchema.$columns

@@ -202,6 +202,17 @@ router
         router.get('metricas/promotores/por-promotor', [controllers.Metricas, 'promotoresPorPromotor']).as('domain_metricas.promotores_por_promotor')
         router.get('metricas/promotores/por-produto', [controllers.Metricas, 'promotoresPorProduto']).as('domain_metricas.promotores_por_produto')
 
+        // Consulta de NIF no portal do contribuinte (Minfin), via o serviço externo
+        // `bknkv-utils-api-resources`. Este proxy existe para o frontend NUNCA falar
+        // directamente com esse serviço: ele não tem autenticação e é um scraper lento
+        // (4-14s). Aqui há autenticação, isolamento por empresa, timeout curto e cache
+        // (ver nif_repository.ts). `:nif` é alfanumérico — a barra do path não pode
+        // apanhar NIFs com caracteres estranhos.
+        router
+            .get('nif/:nif', [controllers.Nif, 'consultar'])
+            .where('nif', /^[a-zA-Z0-9]+$/)
+            .as('domain_nif.consultar')
+
         // Despesas — registo manual de gastos da empresa (renda, salários, serviços, etc.),
         // usado pelo Relatório de Despesas e pelo Fluxo de Caixa.
         router.resource('despesas', controllers.Despesas)
@@ -254,6 +265,19 @@ router
             .as('domain_auth.show') //(v)
 
         router.get('auth/me', [controllers.Auth, 'details']).as('domain_auth.me') //(v)
+
+        // Editar/desactivar funcionário. Não existiam — o ecrã de Funcionários tinha
+        // botões de Editar e Apagar sem nenhuma rota por trás.
+        // `auth/me` fica registada ANTES destas: como o path é `auth/:user_id`, sem o
+        // `where` de UUID a rota apanharia também "me". O `where` já o impede, mas a
+        // ordem mantém-se por segurança (mesmo padrão de `produtos/catalogo`).
+        const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+        router.put('auth/:user_id', [controllers.Auth, 'update'])
+            .where('user_id', UUID_V4)
+            .as('domain_auth.update')
+        router.delete('auth/:user_id', [controllers.Auth, 'destroy'])
+            .where('user_id', UUID_V4)
+            .as('domain_auth.destroy')
     })
     .prefix('api/:company_alias')
     .where('company_alias', /^(?!.*--)[a-z]+(?:-[a-z]+)*$/)

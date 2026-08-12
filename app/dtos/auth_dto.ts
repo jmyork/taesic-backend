@@ -55,6 +55,21 @@ export interface ShowUserDTO {
   user_id: string
 }
 
+/** Actualização de um funcionário. A password NUNCA entra aqui — é definida pelo
+ * próprio através do link enviado por email no registo (ver `authRepository.create`).
+ * Os papéis também não: são geridos pelo recurso `user-papeis`, que já existe. */
+export interface UpdateUserDTO {
+  company_alias: string
+  user_id: string
+  username?: string
+  email?: string
+}
+
+export interface DeleteUserDTO {
+  company_alias: string
+  user_id: string
+}
+
 export interface ShowUserDetailsDTO {
   user_id: string
 }

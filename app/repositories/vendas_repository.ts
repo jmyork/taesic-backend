@@ -59,6 +59,9 @@ export default class vendasRepository {
       .join('pos', 'pos.id', 'caixa.pos_id')
       .join('empresa', 'empresa.id', 'pos.empresa_id')
       .join('user', 'user.id', 'caixa.user_id')
+      // leftJoin (nunca inner): indicar o cliente é OPCIONAL — uma venda a "Cliente
+      // Final" tem cliente_presencial_id a null e não pode desaparecer da listagem.
+      .leftJoin('cliente', 'cliente.id', 'vendas.cliente_presencial_id')
 
     if (filter?.company_alias) {
       query.where("empresa.company_alias", filter.company_alias)
@@ -85,7 +88,13 @@ export default class vendasRepository {
         "vendas.*",
         "user.username as vendedor_nome",
         "pos.id as pos_id",
-        "pos.nome as pos_nome"
+        "pos.nome as pos_nome",
+        // Sem isto a API só devolvia o UUID `cliente_presencial_id` — não havia forma
+        // de mostrar o cliente numa listagem ou factura sem um pedido extra por linha.
+        "cliente.nome as cliente_nome",
+        "cliente.nif as cliente_nif",
+        "cliente.numero as cliente_numero",
+        "cliente.tipo as cliente_tipo"
       )
       .orderBy("vendas.created_at", "desc")
       .paginate(page, limit)
@@ -106,6 +115,7 @@ export default class vendasRepository {
       .join('pos', 'pos.id', 'caixa.pos_id')
       .join('empresa', 'empresa.id', 'pos.empresa_id')
       .join('user', 'user.id', 'caixa.user_id')
+      .leftJoin('cliente', 'cliente.id', 'vendas.cliente_presencial_id')
       .where('empresa.company_alias', data.company_alias ?? '')
       .where('vendas.id', data.id)
       // .where('caixa.user_id', data.user_id!)
@@ -113,7 +123,11 @@ export default class vendasRepository {
         'vendas.*',
         'user.username as vendedor_nome',
         'pos.id as pos_id',
-        'pos.nome as pos_nome'
+        'pos.nome as pos_nome',
+        'cliente.nome as cliente_nome',
+        'cliente.nif as cliente_nif',
+        'cliente.numero as cliente_numero',
+        'cliente.tipo as cliente_tipo'
       )
       .firstOrFail()
 
@@ -177,6 +191,9 @@ export default class vendasRepository {
     if (!Caixa.empresa_id) {
       return vendas.create({
         cliente_presencial_id: vendaData.cliente_presencial_id,
+        // `cliente_online_id` era aceite pelo validator e pelo controller mas nunca
+        // chegava aqui a ser gravado — silenciosamente perdido. Corrigido.
+        cliente_online_id: vendaData.cliente_online_id,
         venda_tipo: 'presencial',
         caixa_id: Caixa.id,
         total: data.proforma ? (total ?? 0) : 0,
@@ -189,6 +206,7 @@ export default class vendasRepository {
       return vendas.create(
         {
           cliente_presencial_id: vendaData.cliente_presencial_id,
+          cliente_online_id: vendaData.cliente_online_id,
           venda_tipo: 'presencial',
           caixa_id: Caixa.id,
           total: data.proforma ? (total ?? 0) : 0,

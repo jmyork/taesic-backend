@@ -318,6 +318,8 @@ export default class extends BaseSeeder {
       { nome: 'domain_auth.register', descricao: 'Cria um usuario' },
       { nome: 'domain_auth.list', descricao: 'Listar usuarios' },
       { nome: 'domain_auth.show', descricao: 'Listar um usuario' },
+      { nome: 'domain_auth.update', descricao: 'Editar um funcionário (username/email)' },
+      { nome: 'domain_auth.destroy', descricao: 'Desactivar/reactivar um funcionário' },
       { nome: 'domain_reset.password', descricao: 'Altera a palavra passe' },
       { nome: 'domain_forgot.password', descricao: 'Emite um pedido de recuperação de senha' },
 
@@ -528,6 +530,12 @@ export default class extends BaseSeeder {
       { nome: 'domain_cliente.update', descricao: 'Editar cliente' },
       { nome: 'domain_cliente.destroy', descricao: 'Remover/Recuperar cliente' },
 
+      // ==================== NIF (consulta ao portal do contribuinte) ====================
+      {
+        nome: 'domain_nif.consultar',
+        descricao: 'Consultar um NIF no portal do contribuinte (nome, tipo, estado, regime de IVA)',
+      },
+
       // ==================== PESSOA ====================
       { nome: 'domain_pessoa.index', descricao: 'Listar pessoas' },
       { nome: 'domain_pessoa.show', descricao: 'Ver pessoa específica' },
@@ -714,6 +722,8 @@ export default class extends BaseSeeder {
       'domain_auth.register',
       'domain_auth.list',
       'domain_auth.show',
+      'domain_auth.update',
+      'domain_auth.destroy',
       'domain_reset.password',
       'domain_forgot.password',
 
@@ -775,6 +785,7 @@ export default class extends BaseSeeder {
       'domain_vendas_itens.destroy',
       // cliente
       'domain_cliente.index',
+      'domain_nif.consultar',
       'domain_cliente.show',
       'domain_cliente.store',
       'domain_cliente.update',
@@ -1112,6 +1123,7 @@ export default class extends BaseSeeder {
       'domain_cupom.show',
       // registrar clientes
       'domain_cliente.index',
+      'domain_nif.consultar',
       'domain_cliente.show',
       'domain_cliente.store',
       'domain_cliente.update',
@@ -1208,6 +1220,7 @@ export default class extends BaseSeeder {
       'domain_cupom.show',
       // ver dados de clientes
       'domain_cliente.index',
+      'domain_nif.consultar',
       'domain_cliente.show',
     ])
 
@@ -1219,6 +1232,10 @@ export default class extends BaseSeeder {
     // conjunto do Vendedor — o suficiente para essas rotas — mais visibilidade de desempenho
     // da loja (métricas de vendas, não as de promotores/marketing).
     await givePermissionsToRole('Gerente', [
+      // Consulta de NIF — Gerente/Supervisor também fecham vendas, por isso precisam de
+      // identificar o cliente pelo NIF tal como o Vendedor.
+      'domain_nif.consultar',
+
       // Produto-Marcas (read only)
       'domain_produto_marcas.index',
       'domain_produto_marcas.show',
@@ -1365,6 +1382,9 @@ export default class extends BaseSeeder {
 
     // ===== SUPERVISOR (mesmo conjunto do Gerente — ver comentário acima) =====
     await givePermissionsToRole('Supervisor', [
+      // Consulta de NIF — ver comentário no bloco do Gerente.
+      'domain_nif.consultar',
+
       // Produto-Marcas (read only)
       'domain_produto_marcas.index',
       'domain_produto_marcas.show',
@@ -1677,6 +1697,8 @@ export default class extends BaseSeeder {
       'domain_auth.register',
       'domain_auth.list',
       'domain_auth.show',
+      'domain_auth.update',
+      'domain_auth.destroy',
       'domain_reset.password',
       'domain_forgot.password',
     ])

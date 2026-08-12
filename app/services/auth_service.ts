@@ -8,6 +8,8 @@ import {
   resetPasswordDTO,
   ShowUserDetailsDTO,
   ShowUserDTO,
+  UpdateUserDTO,
+  DeleteUserDTO,
 } from '#dtos/auth_dto'
 // import type { TransactionClientContract } from '@adonisjs/lucid/types/database'
 // import db from '@adonisjs/lucid/services/db'
@@ -35,6 +37,14 @@ export default class authService {
 
   async list(data: ListUserDTO) {
     return await this.repo.list(data)
+  }
+
+  async update(data: UpdateUserDTO) {
+    return await this.repo.update(data)
+  }
+
+  async softDelete(data: DeleteUserDTO) {
+    return await this.repo.softDelete(data)
   }
   async show(data: ShowUserDTO) {
     return await this.repo.show(data)
