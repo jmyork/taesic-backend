@@ -243,7 +243,9 @@ export const generateSecurePassword = (): string => {
 export const buildPasswordDefinitionUrl = async (companyAlias: string, userId: string) => {
   const frontendBaseUrl =
     process.env.APP_PASSWORD_DEFINITION_URL ||
-    `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password/:token`
+    // Ver nota em empresa_controller.activate_company: a omissão 5173 era do frontend
+    // Vite antigo; o Next corre na 3000.
+    `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password/:token`
 
   const resetToken = await generateResetToken(userId)
 

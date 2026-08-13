@@ -13,6 +13,7 @@ import { giveRoleToUser } from '../helpers/Utils.js'
 import pessoa from '#models/pessoa'
 import { randomUUID } from 'crypto'
 import env from '#start/env'
+import { semearMetodosPagamento } from '../helpers/metodos_pagamento_padrao.js'
 
 export default class empresaRepository {
   baseQuery(trx?: TransactionClientContract) {
@@ -135,6 +136,12 @@ export default class empresaRepository {
       )
 
       await giveRoleToUser(user, 'Admin', trx)
+
+      // Métodos de pagamento tradicionais. Dentro da transacção de propósito: uma
+      // empresa criada sem eles não consegue fechar vendas (ver o comentário em
+      // metodos_pagamento_padrao.ts), por isso ou nasce completa ou não nasce.
+      await semearMetodosPagamento(empresa.id, trx)
+
       await trx.commit()
 
       // -----------------------------

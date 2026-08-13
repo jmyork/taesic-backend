@@ -1,6 +1,6 @@
 import { BaseMail } from '@adonisjs/mail'
 
-const FROM = 'noreply.alaragest@bknkv.com'
+const FROM = 'noreply.taesic@bknkv.com'
 
 /**
  * Email de activação de conta — enviado quando uma empresa é registada
@@ -22,7 +22,7 @@ export default class AccountActivationMail extends BaseMail {
     this.message
       .to(this.destinatario)
       .from(FROM)
-      .subject('Welcome to our app | Activation Email')
+      .subject('Active a sua conta — Taesic')
       .htmlView('emails/account_activation', {
         user: {
           firstName: this.firstName,

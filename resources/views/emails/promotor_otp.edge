@@ -1,51 +1,92 @@
-<!DOCTYPE html>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html lang="pt" xmlns="http://www.w3.org/1999/xhtml">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="supported-color-schemes" content="light dark" />
     <meta name="x-apple-disable-message-reformatting" />
     <meta name="format-detection" content="telephone=no,address=no,email=no,date=no,url=no" />
-    <title>O seu código de acesso — Alaragest</title>
-    @include('emails/partials/alaragest_styles')
+    <title>O seu código de acesso — TAESIC</title>
+    @include('emails/partials/taesic_styles')
   </head>
 
-  <body>
-    <div class="wrapper">
-      <div class="card">
-
-        @include('emails/partials/alaragest_header')
-
-        <div class="body">
-          <p class="eyebrow">Painel de promotor</p>
-          <h1>Olá, {{ nome }}!</h1>
-          <p class="subtitle">Use o código abaixo para entrar no seu painel.</p>
-
-          <div class="cta-wrap">
-            <span class="highlight" style="font-size: 32px; letter-spacing: 8px;">{{ codigo }}</span>
-          </div>
-
-          <div class="expiry-box">
-            <span class="expiry-icon">⏳</span>
-            <p class="expiry-text">
-              Este código é válido por <strong>10 minutos</strong> e só pode ser usado uma vez.
-              Se não foi você a pedir, ignore este email.
-            </p>
-          </div>
-
-          <hr class="divider" />
-
-          <div class="signoff">
-            <p>Com os melhores cumprimentos,</p>
-            <p><strong>Equipa Alaragest</strong></p>
-          </div>
-        </div>
-
-        <div class="footer">
-          <p>© {{ year }} Alaragest — Todos os direitos reservados.</p>
-        </div>
-
-      </div>
+  <body
+    class="body"
+    style="margin:0;padding:0;width:100%;background-color:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;"
+  >
+    <div style="display:none;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:#f1f5f9;">
+      O seu código de acesso ao painel de promotor. Válido durante 10 minutos.
     </div>
+
+    <table role="presentation" class="bg" width="100%" border="0" cellpadding="0" cellspacing="0" bgcolor="#f1f5f9" style="background-color:#f1f5f9;">
+      <tr>
+        <td align="center" style="padding:32px 12px 44px 12px;">
+
+          <table role="presentation" class="card" width="600" border="0" cellpadding="0" cellspacing="0" bgcolor="#ffffff" style="width:600px;max-width:600px;background-color:#ffffff;border:1px solid #e2e8f0;border-radius:14px;">
+
+            @include('emails/partials/taesic_header')
+
+            <tr>
+              <td class="px" style="padding:34px 40px 30px 40px;">
+
+                <p class="eyebrow" style="margin:0 0 10px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:11px;line-height:16px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#1e3a8a;">
+                  Painel de promotor
+                </p>
+
+                <h1 class="h1" style="margin:0 0 16px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:23px;line-height:30px;font-weight:700;color:#172554;">
+                  O seu código de acesso
+                </h1>
+
+                <p class="text" style="margin:0 0 4px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:15px;line-height:25px;color:#334155;">
+                  Olá, {{ nome }}. Introduza este código no ecrã de entrada para abrir o seu painel:
+                </p>
+
+                {{-- O código é texto, não imagem: mantém-se seleccionável e copiável em
+                     qualquer cliente, inclusive na versão só-texto da mensagem. --}}
+                <table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0" style="margin:24px 0 20px 0;">
+                  <tr>
+                    <td class="panel" align="center" bgcolor="#f8fafc" style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:22px 16px;">
+                      <div
+                        class="code panel-value"
+                        style="font-family:'Segoe UI',Consolas,Menlo,Monaco,monospace;font-size:34px;line-height:42px;font-weight:700;letter-spacing:10px;color:#172554;"
+                      >{{ codigo }}</div>
+                    </td>
+                  </tr>
+                </table>
+
+                <table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0" style="margin:0 0 20px 0;">
+                  <tr>
+                    <td class="notice" bgcolor="#fffbeb" style="background-color:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:12px 16px;">
+                      <p class="notice-text" style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:13px;line-height:20px;color:#92400e;">
+                        O código é válido durante <strong style="font-weight:700;">10 minutos</strong> e só pode ser
+                        usado uma vez. Pedir um código novo anula este.
+                      </p>
+                    </td>
+                  </tr>
+                </table>
+
+                <table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td class="rule" style="border-top:1px solid #e2e8f0;font-size:0;line-height:0;height:1px;">&nbsp;</td>
+                  </tr>
+                </table>
+
+                <p class="muted" style="margin:18px 0 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:13px;line-height:20px;color:#64748b;">
+                  Se não foi você a pedir este código, ignore este email. Sem o código ninguém
+                  entra na sua conta — e nunca o partilhe com terceiros.
+                </p>
+
+              </td>
+            </tr>
+
+            @include('emails/partials/taesic_footer')
+
+          </table>
+
+        </td>
+      </tr>
+    </table>
   </body>
 </html>

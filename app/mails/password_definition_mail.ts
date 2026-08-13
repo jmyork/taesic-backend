@@ -1,19 +1,21 @@
 import { BaseMail } from '@adonisjs/mail'
 
-const FROM = 'noreply.alaragest@bknkv.com'
+const FROM = 'noreply.taesic@bknkv.com'
 
 /**
- * Email enviado quando uma conta é criada com uma palavra-passe temporária
- * (`auth_repository.create()`). Antes desta consolidação, `temporaryPassword` nunca era
- * passado ao template (`password_definition.edge` mostra-o na "credentials-box") — a
- * caixa aparecia sempre vazia, sem forma de o utilizador saber a sua palavra-passe inicial.
+ * Email enviado quando um administrador cria a conta de um funcionário
+ * (`auth_repository.create()`).
+ *
+ * NÃO leva palavra-passe. O servidor gera uma temporária só para a conta não ficar
+ * sem hash até o utilizador definir a sua, mas essa palavra-passe nunca é usada por
+ * ninguém — o acesso faz-se sempre pelo `resetUrl`. Enviá-la por email era pôr uma
+ * credencial válida a circular em texto simples, sem qualquer benefício.
  */
 export default class PasswordDefinitionMail extends BaseMail {
   constructor(
     private readonly destinatario: string,
     private readonly username: string,
     private readonly companyName: string,
-    private readonly temporaryPassword: string,
     private readonly resetUrl: string
   ) {
     super()
@@ -23,7 +25,7 @@ export default class PasswordDefinitionMail extends BaseMail {
     this.message
       .to(this.destinatario)
       .from(FROM)
-      .subject('Sua conta foi criada — Defina sua senha')
+      .subject('A sua conta foi criada — defina a palavra-passe')
       .htmlView('emails/password_definition', {
         user: {
           email: this.destinatario,
@@ -32,7 +34,6 @@ export default class PasswordDefinitionMail extends BaseMail {
         company: {
           name: this.companyName,
         },
-        temporaryPassword: this.temporaryPassword,
         resetUrl: this.resetUrl,
         year: new Date().getFullYear(),
       })

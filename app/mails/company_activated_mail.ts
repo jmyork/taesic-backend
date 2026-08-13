@@ -20,8 +20,8 @@ export default class CompanyActivatedMail extends BaseMail {
   prepare() {
     this.message
       .to(this.destinatario)
-      .from(env.get('MAIL_FROM', 'noreply@alaragest.com'))
-      .subject('Sua empresa foi ativada com sucesso!')
+      .from(env.get('MAIL_FROM', 'noreply@taesic.com'))
+      .subject('A sua empresa está activa — Taesic')
       .htmlView('emails/company_activated', {
         companyName: this.companyName,
         userName: this.userName,

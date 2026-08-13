@@ -8,6 +8,24 @@ import mail from '@adonisjs/mail/services/main'
 import AccountActivationMail from '#mails/account_activation_mail'
 import env from '#start/env'
 
+/** Base do frontend Next (alaragest-webpage). Ver nota em `activate_company`. */
+function frontendUrl() {
+  return env.get('FRONTEND_URL', 'http://localhost:3000').toString().replace(/\/+$/, '')
+}
+
+/**
+ * Link de activação enviado por email.
+ *
+ * Aponta para o FRONTEND (`/verify/<token>`), não para a API. Antes apontava para
+ * `${APP_URL}/api/verify/<token>`: o utilizador clicava e caía numa resposta crua da
+ * API ou num redireccionamento para uma página que não existia. Agora aterra sempre
+ * numa página com a identidade do produto, que trata da activação e mostra o
+ * resultado — incluindo a opção de reenviar o email quando o link expirou.
+ */
+function buildVerifyUrl(token?: string) {
+  return `${frontendUrl()}/verify/${token ?? ''}`
+}
+
 export default class empresasController {
   private service = new empresaService()
   // ==================== INDEX ====================
@@ -99,7 +117,7 @@ export default class empresasController {
       const payload = await request.validateUsing(CreateCompanyWithUserAndStartACompanyDetalhes)
       const result = await this.service.create_account_with_detalhes(payload)
 
-      const verifyUrl = `${process.env.APP_URL || 'http://localhost:3333'}/api/verify/${result?.token?.token}`
+      const verifyUrl = buildVerifyUrl(result?.token?.token)
       // 📧 email fora da transaction
       try {
         await mail.send(
@@ -141,17 +159,41 @@ export default class empresasController {
   }
 
   // ===================== ACTIVATE COMPANY ================
-  async activate_company({ params, response }: HttpContext) {
+  /**
+   * Activação da conta a partir do token do email.
+   *
+   * Responde de duas formas, conforme quem chama:
+   * - `Accept: application/json` (a página `/verify/<token>` do frontend, por fetch)
+   *   → JSON, para a página mostrar o resultado com a identidade do produto.
+   * - Navegação directa do browser (links de emails ANTIGOS, que apontavam para a API)
+   *   → redirecciona para o frontend, para esses utilizadores não ficarem num beco.
+   *
+   * O destino do redireccionamento é `/verify` (que existe e já tem o formulário de
+   * reenvio) e não `/onboarding/verified`, que nunca chegou a ser criado — era por
+   * isso que clicar no link não levava a lado nenhum.
+   */
+  async activate_company({ params, response, request }: HttpContext) {
     try {
       const token = params.token
 
       const result = await this.service.activateCompany(token)
-      const frontend = env.get('FRONTEND_URL', 'http://localhost:5173')
-      if (result.success) {
-        return response.redirect(`${frontend}/onboarding/verified?status=success`)
-      } else if (result.message !== 'Token expirado') {
-        return response.redirect(`${frontend}/onboarding/verified?status=invalid`)
-      } else return response.redirect(`${frontend}/onboarding/verified?status=expired`)
+      const frontend = frontendUrl()
+      const estado = result.success
+        ? 'success'
+        : result.message !== 'Token expirado'
+          ? 'invalid'
+          : 'expired'
+
+      if (request.accepts(['html', 'json']) === 'json') {
+        const payload = {
+          data: { status: estado, empresa: (result as any).empresa ?? null },
+          message: result.message,
+          status: result.success ? 200 : 400,
+        }
+        return result.success ? response.ok(payload) : response.badRequest(payload)
+      }
+
+      return response.redirect(`${frontend}/verify?status=${estado}`)
     } catch (error: any) {
       console.error('Erro ao ativar empresa:', error)
 
@@ -177,7 +219,7 @@ export default class empresasController {
         })
       }
 
-      const verifyUrl = `${process.env.APP_URL || 'http://localhost:3333'}/api/verify/${result.token.token}`
+      const verifyUrl = buildVerifyUrl(result.token.token)
 
       // Envio de email fora de transação
       try {

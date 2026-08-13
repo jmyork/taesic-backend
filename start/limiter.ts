@@ -51,6 +51,19 @@ export const emailActionThrottle = limiter.define('email_action', (ctx) => {
   return comLogDeBloqueio('email_action', ctx, limiter.allowRequests(5).every('5 minutes'))
 })
 
+/**
+ * Consulta pública de NIF (usada no registo de empresa, antes de haver conta).
+ *
+ * Precisa de limite próprio por dois motivos: cada consulta que não esteja em cache
+ * dispara um pedido ao portal do Estado — não podemos servir de amplificador contra o
+ * Minfin — e sem limite o endpoint torna-se um raspador aberto do registo nacional de
+ * contribuintes. Mais folgado do que o `signup` porque, ao preencher o formulário, é
+ * legítimo consultar/corrigir o NIF algumas vezes.
+ */
+export const nifPublicThrottle = limiter.define('nif_publico', (ctx) => {
+  return comLogDeBloqueio('nif_publico', ctx, limiter.allowRequests(15).every('10 minutes'))
+})
+
 /** Pedir um código OTP (envia SMS/email) — limite mais apertado do que confirmar. */
 export const otpRequestThrottle = limiter.define('otp_request', (ctx) => {
   return comLogDeBloqueio('otp_request', ctx, limiter.allowRequests(3).every('5 minutes'))

@@ -82,9 +82,35 @@ export default class userposRepository {
       .firstOrFail()
   }
 
+  /**
+   * Associa um utilizador a um posto.
+   *
+   * `softDelete()` não apaga a linha — só preenche `deleted_at`. Mas a unique composta
+   * da BD (`userpos_user_id_pos_id_unique`) cobre TODAS as linhas, incluindo as
+   * removidas. Logo, um simples `create()` rebentava com ER_DUP_ENTRY (500) sempre que
+   * se tentava reassociar um par que já tinha existido e sido removido — e o validator
+   * não o apanhava porque só considera as associações activas.
+   *
+   * Por isso: se o par já existe mas está removido, revive-se a linha em vez de
+   * inserir outra. É também o comportamento correcto — reassociar não deve criar
+   * histórico duplicado.
+   */
   async create(data: CreateuserposDTO) {
-    const empresa = await Empresa.findByOrFail('company_alias', data.company_alias)
+    await Empresa.findByOrFail('company_alias', data.company_alias)
     const { empresa_id, company_alias, ...userposData } = data
+
+    const existente = await userpos
+      .query()
+      .where('user_id', userposData.user_id)
+      .where('pos_id', userposData.pos_id)
+      .first()
+
+    if (existente) {
+      existente.deletedAt = null
+      await existente.save()
+      return existente
+    }
+
     return userpos.create({ ...userposData })
   }
 

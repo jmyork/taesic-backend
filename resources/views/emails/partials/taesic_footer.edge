@@ -1,0 +1,25 @@
+{{--
+  Rodapé comum a todos os emails. É um <tr> — vive dentro da tabela `.card`.
+  Precisa de `year` no contexto (todas as Mailables em app/mails/ já o passam).
+--}}
+<tr>
+  <td
+    bgcolor="#f8fafc"
+    align="center"
+    class="footer px"
+    style="background-color:#f8fafc;border-top:1px solid #e2e8f0;border-radius:0 0 14px 14px;padding:22px 40px 24px 40px;"
+  >
+    <p
+      class="muted"
+      style="margin:0 0 5px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:12px;line-height:18px;color:#64748b;"
+    >
+      Este é um email automático. Não responda a esta mensagem.
+    </p>
+    <p
+      class="muted"
+      style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:12px;line-height:18px;color:#94a3b8;"
+    >
+      &copy; {{ year }} TAESIC
+    </p>
+  </td>
+</tr>

@@ -94,7 +94,9 @@ export default class authRepository {
       // 2. Separar dados
       const { company_alias, papel, ...dataSemAlias } = data
 
-      // 3. Gerar senha temporária segura
+      // 3. Palavra-passe temporária: existe só para a conta nunca ficar sem hash até
+      // o utilizador definir a sua pelo link do email. NUNCA sai do servidor — não é
+      // enviada, não é devolvida e ninguém a usa para entrar.
       const temporaryPassword = generateSecurePassword()
 
       // 4. Criar usuário
@@ -114,7 +116,6 @@ export default class authRepository {
             user.email!,
             user.username!,
             empresa.nome || empresa.company_alias,
-            temporaryPassword,
             password_definition_url
           )
         )

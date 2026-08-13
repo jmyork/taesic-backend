@@ -251,4 +251,52 @@ test.group('relatorios_repository - produtos, vendas e filtros', (group) => {
     assert.equal(porCliente.resumo.quantidade, 1)
     assert.equal(porCliente.resumo.total, 1000)
   })
+
+  /**
+   * O relatório devolvia só ids/totais — sem número de factura, cliente nem vendedor
+   * não é possível montar uma tabela legível no ecrã de Relatórios de Vendas.
+   */
+  test('relatorioVendas devolve numero, cliente e vendedor para a tabela do relatório', async ({
+    assert,
+  }) => {
+    const { empresa, user, pos } = await createTenant()
+    const caixa = await createCaixa(user, pos)
+    const cliente = await Cliente.create({
+      tipo: 'Pessoa Jurídica',
+      nome: 'Cliente Do Relatório',
+      nif: '5002889978',
+      empresa_id: empresa.id,
+    } as any)
+
+    const venda = await createVenda(caixa, { status: 'fechada', total: 7500 })
+    venda.cliente_presencial_id = cliente.id
+    venda.empresa_id = empresa.id
+    venda.numero = 42
+    await venda.save()
+
+    const repo = new RelatoriosRepository()
+    const r = await repo.relatorioVendas({ company_alias: empresa.company_alias })
+    const linha = (r.vendas.all() as any[]).find((v) => v.id === venda.id)
+
+    assert.exists(linha)
+    assert.equal(Number(linha.numero), 42)
+    assert.equal(linha.cliente_nome, 'Cliente Do Relatório')
+    assert.equal(linha.cliente_nif, '5002889978')
+    assert.equal(linha.vendedor_nome, user.username)
+  })
+
+  test('relatorioVendas inclui vendas SEM cliente (o join tem de ser opcional)', async ({
+    assert,
+  }) => {
+    const { empresa, user, pos } = await createTenant()
+    const caixa = await createCaixa(user, pos)
+    const venda = await createVenda(caixa, { status: 'fechada', total: 300 })
+
+    const repo = new RelatoriosRepository()
+    const r = await repo.relatorioVendas({ company_alias: empresa.company_alias })
+    const linha = (r.vendas.all() as any[]).find((v) => v.id === venda.id)
+
+    assert.exists(linha, 'uma venda a Cliente Final não pode sumir do relatório')
+    assert.isNull(linha.cliente_nome)
+  })
 })

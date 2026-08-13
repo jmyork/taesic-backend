@@ -19,8 +19,8 @@ export default class AlertaOperacionalMail extends BaseMail {
   prepare() {
     this.message
       .to(this.destinatario)
-      .from(env.get('MAIL_FROM', 'noreply@alaragest.com'))
-      .subject(`[Alerta] ${this.titulo}`)
+      .from(env.get('MAIL_FROM', 'noreply@taesic.com'))
+      .subject(`[Taesic] ${this.titulo}`)
       .htmlView('emails/alerta_operacional', {
         titulo: this.titulo,
         linhas: this.linhas,

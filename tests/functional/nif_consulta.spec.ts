@@ -241,6 +241,34 @@ test.group('consulta de NIF — cache e resiliência', (group) => {
   })
 })
 
+test.group('consulta de NIF — rota pública (registo de empresa)', (group) => {
+  group.each.setup(() => testUtils.db().withGlobalTransaction())
+
+  /**
+   * O registo de empresa acontece antes de existir conta, por isso não pode usar o
+   * proxy autenticado. A rota pública serve o MESMO repositório — logo partilha a
+   * mesma cache, e um NIF já consultado por um tenant não volta ao portal.
+   */
+  test('a rota pública partilha a cache com a rota autenticada', async ({ assert }) => {
+    const { estado, restaurar } = simularFetch({ corpo: RESPOSTA_BKNKV })
+    try {
+      const repo = new NifRepository()
+
+      // Simula a consulta feita por um tenant autenticado.
+      await repo.consultar('5002889978')
+      assert.equal(estado.chamadas, 1)
+
+      // O registo público do mesmo NIF não pode voltar a bater no portal.
+      const publica = await repo.consultar('5002889978')
+      assert.isTrue(publica.cached)
+      assert.equal(publica.data?.tipo_cliente, 'Pessoa Jurídica')
+      assert.equal(estado.chamadas, 1, 'a rota pública tem de servir da cache')
+    } finally {
+      restaurar()
+    }
+  })
+})
+
 test.group('consulta de NIF — permissão domain_nif.consultar', (group) => {
   group.each.setup(() => testUtils.db().withGlobalTransaction())
 

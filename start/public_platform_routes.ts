@@ -1,5 +1,5 @@
 import router from '@adonisjs/core/services/router'
-import { otpRequestThrottle, otpConfirmThrottle } from '#start/limiter'
+import { otpRequestThrottle, otpConfirmThrottle, nifPublicThrottle } from '#start/limiter'
 import { controllers } from '#generated/controllers'
 
 /**
@@ -25,3 +25,21 @@ router.get('api/promotores/painel/produtos', [controllers.PromotorPainel, 'produ
 
 router.get('api/catalogo/produtos', [controllers.CatalogoPublico, 'produtos'])
 router.get('api/p/:codigo_perfil', [controllers.CatalogoPublico, 'perfil'])
+
+/**
+ * Consulta pública de NIF — necessária no REGISTO DE EMPRESA, que por definição
+ * acontece antes de existir conta ou `company_alias`, logo não pode passar pelo
+ * proxy autenticado (`api/:company_alias/nif/:nif`).
+ *
+ * Serve exactamente o mesmo controller e, portanto, a mesma cache: um NIF já
+ * consultado por um tenant é devolvido daqui sem tocar no portal.
+ *
+ * Protegida por `nifPublicThrottle` (ver start/limiter.ts): sem limite, isto seria
+ * um raspador aberto do registo de contribuintes e um amplificador de tráfego
+ * contra o portal do Minfin.
+ */
+router
+  .get('api/nif/:nif', [controllers.Nif, 'consultar'])
+  .where('nif', /^[a-zA-Z0-9]+$/)
+  .use(nifPublicThrottle)
+  .as('public_nif.consultar')

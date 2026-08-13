@@ -352,10 +352,17 @@ export default class RelatoriosRepository {
       .sum('vendas.total as total')
       .first()
 
+    // O relatório devolvia só ids e totais — sem número de factura, sem cliente e sem
+    // vendedor não dá para montar uma tabela legível para quem lê o relatório.
+    // Os joins são LEFT: indicar cliente é opcional, e uma venda sem cliente ("Cliente
+    // Final") não pode desaparecer do relatório.
     const linhas = await query
       .clone()
+      .leftJoin('cliente', 'cliente.id', 'vendas.cliente_presencial_id')
+      .leftJoin('user', 'user.id', 'caixa.user_id')
       .select(
         'vendas.id',
+        'vendas.numero',
         'vendas.status',
         'vendas.venda_tipo',
         'vendas.total',
@@ -363,7 +370,10 @@ export default class RelatoriosRepository {
         'vendas.created_at',
         'caixa.id as caixa_id',
         'pos.id as pos_id',
-        'pos.nome as pos_nome'
+        'pos.nome as pos_nome',
+        'cliente.nome as cliente_nome',
+        'cliente.nif as cliente_nif',
+        'user.username as vendedor_nome'
       )
       .groupBy('vendas.id')
       .orderBy('vendas.created_at', 'desc')

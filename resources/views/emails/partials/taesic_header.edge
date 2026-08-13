@@ -1,0 +1,38 @@
+{{--
+  Cabeçalho. É um <tr> — vive dentro da tabela `.card` do template.
+  Sem imagens (`<img src="http…">` é bloqueado por omissão em Outlook/Gmail e deixaria
+  o cabeçalho vazio) e sem SVG (Gmail e Outlook removem-no). A marca é texto: sobrevive
+  a qualquer cliente, inclusive à versão só-texto.
+--}}
+<tr>
+  <td
+    bgcolor="#1e3a8a"
+    class="px"
+    style="background-color:#1e3a8a;padding:30px 40px 26px 40px;border-radius:14px 14px 0 0;"
+  >
+    <table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0">
+      <tr>
+        <td
+          align="left"
+          style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:24px;line-height:28px;font-weight:700;letter-spacing:5px;color:#ffffff;"
+        >
+          TAESIC
+        </td>
+      </tr>
+      <tr>
+        <td style="padding-top:14px;font-size:0;line-height:0;">
+          <table role="presentation" border="0" cellpadding="0" cellspacing="0">
+            <tr>
+              <td
+                width="44"
+                height="3"
+                bgcolor="#ffffff"
+                style="width:44px;height:3px;background-color:#ffffff;font-size:0;line-height:3px;border-radius:2px;"
+              >&nbsp;</td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </td>
+</tr>

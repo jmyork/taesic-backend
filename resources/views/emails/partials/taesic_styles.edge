@@ -1,0 +1,60 @@
+<style>
+  /*
+    REFORÇO, NÃO FONTE ÚNICA.
+    O CSS crítico (cores, espaçamentos, tipografia, fundo dos botões) está inline em
+    cada elemento — o Gmail descarta o <style> em vários contextos (mensagem reencaminhada,
+    clipping por tamanho, algumas contas IMAP). Aqui ficam só: normalizações que não se
+    podem fazer inline, a adaptação a ecrã pequeno e o modo escuro. Se este bloco
+    desaparecer, o email continua correcto — apenas menos afinado.
+  */
+
+  /* ── Normalização ─────────────────────────────────────────── */
+  body, table, td, p, a, li { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+  table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; border-collapse: collapse; }
+  img { border: 0; outline: none; text-decoration: none; -ms-interpolation-mode: bicubic; }
+  body { margin: 0 !important; padding: 0 !important; width: 100% !important; }
+
+  /* Outlook.com / Windows Mail */
+  .ExternalClass { width: 100%; }
+  .ExternalClass, .ExternalClass p, .ExternalClass td,
+  .ExternalClass div, .ExternalClass span { line-height: 100%; }
+
+  /* iOS: impede a auto-detecção de datas/moradas de pintar links a azul-sistema */
+  a[x-apple-data-detectors] {
+    color: inherit !important; text-decoration: none !important;
+    font-size: inherit !important; font-weight: inherit !important;
+  }
+
+  /* ── Ecrã pequeno ─────────────────────────────────────────── */
+  @media only screen and (max-width: 620px) {
+    .card    { width: 100% !important; }
+    .px      { padding-left: 22px !important; padding-right: 22px !important; }
+    .h1      { font-size: 20px !important; line-height: 28px !important; }
+    .btn     { width: 100% !important; }
+    .btn td  { display: block !important; }
+    .code    { font-size: 28px !important; letter-spacing: 6px !important; }
+  }
+
+  /* ── Modo escuro ──────────────────────────────────────────────
+     Só os clientes que respeitam prefers-color-scheme (Apple Mail, iOS,
+     Outlook macOS) usam isto. Nos que forçam a inversão (Gmail), o email
+     continua legível porque nenhum elemento depende do branco por omissão:
+     fundo e cor de texto estão sempre declarados em par.                */
+  @media (prefers-color-scheme: dark) {
+    .bg          { background-color: #0b1220 !important; }
+    .card        { background-color: #111c33 !important; border-color: #1f2f4d !important; }
+    .h1          { color: #e8eefc !important; }
+    .text        { color: #c7d2e5 !important; }
+    .strong      { color: #e8eefc !important; }
+    .muted       { color: #94a3b8 !important; }
+    .eyebrow     { color: #93c5fd !important; }
+    .panel       { background-color: #16233d !important; border-color: #26385c !important; }
+    .panel-label { color: #94a3b8 !important; }
+    .panel-value { color: #dbe5f8 !important; }
+    .rule        { border-color: #1f2f4d !important; }
+    .notice      { background-color: #2b2113 !important; border-color: #5c4a19 !important; }
+    .notice-text { color: #fcd9a0 !important; }
+    .footer      { background-color: #0d1729 !important; border-color: #1f2f4d !important; }
+    .link        { color: #93c5fd !important; }
+  }
+</style>
