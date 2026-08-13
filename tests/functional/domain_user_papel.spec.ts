@@ -116,3 +116,56 @@ test.group('domain_user_papel_repository', (group) => {
     assert.lengthOf(count, 1)
   })
 })
+
+/**
+ * `revoke()` só marca `deleted_at` — a linha fica. Mas a BD tem
+ * `unique(['user_id','papel_id'])` sobre TODAS as linhas, por isso reatribuir um papel
+ * antes revogado rebentava com ER_DUP_ENTRY (500): `assign()` procurava só entre as
+ * atribuições activas e não via a revogada. Mesma classe de bug já corrigida em
+ * `userpos_repository.create()`.
+ */
+test.group('domain_user_papel — reatribuir depois de revogar', (group) => {
+  group.each.setup(() => testUtils.db().withGlobalTransaction())
+
+  test('reatribuir um papel revogado revive a linha, sem ER_DUP_ENTRY', async ({ assert }) => {
+    const empresa = await createEmpresa()
+    const user = await createUser(empresa, [])
+    const papel = await Papel.findByOrFail('nome', 'Vendedor')
+    const repo = new DomainUserPapelRepository()
+
+    const atribuido = await repo.assign({
+      user_id: user.id,
+      papel_id: papel.id,
+      company_alias: empresa.company_alias,
+    } as any)
+
+    await repo.revoke({ id: atribuido.id, company_alias: empresa.company_alias } as any)
+    assert.isNotNull((await UserPapel.findOrFail(atribuido.id)).deletedAt)
+
+    // Antes da correcção: ER_DUP_ENTRY.
+    const reatribuido = await repo.assign({
+      user_id: user.id,
+      papel_id: papel.id,
+      company_alias: empresa.company_alias,
+    } as any)
+
+    assert.equal(reatribuido.id, atribuido.id, 'deve reutilizar a linha')
+    assert.isNull((await UserPapel.findOrFail(atribuido.id)).deletedAt)
+
+    const linhas = await UserPapel.query().where('user_id', user.id).where('papel_id', papel.id)
+    assert.lengthOf(linhas, 1, 'nunca pode ficar histórico duplicado do mesmo par')
+  })
+
+  test('atribuir um papel já activo é idempotente', async ({ assert }) => {
+    const empresa = await createEmpresa()
+    const user = await createUser(empresa, [])
+    const papel = await Papel.findByOrFail('nome', 'Estoquista')
+    const repo = new DomainUserPapelRepository()
+
+    const a = await repo.assign({ user_id: user.id, papel_id: papel.id, company_alias: empresa.company_alias } as any)
+    const b = await repo.assign({ user_id: user.id, papel_id: papel.id, company_alias: empresa.company_alias } as any)
+
+    assert.equal(a.id, b.id)
+    assert.lengthOf(await UserPapel.query().where('user_id', user.id).where('papel_id', papel.id), 1)
+  })
+})

@@ -47,12 +47,22 @@ export default class DomainUserPapelRepository {
       throw new CannotAssignPlatformRoleException()
     }
 
+    // Procura o par SEM filtrar por `deleted_at`: `revoke()` só marca a linha como
+    // removida, mas a unique composta da BD (`user_papel` unique user_id+papel_id)
+    // cobre também essas. Filtrar só pelas activas — como estava — deixava passar a
+    // reatribuição de um papel antes revogado, que depois rebentava com ER_DUP_ENTRY
+    // (500). Mesma classe de problema já corrigida em `userpos_repository.create()`.
     const existing = await UserPapel.query()
       .where('user_id', data.user_id)
       .where('papel_id', data.papel_id)
-      .whereNull('deleted_at')
       .first()
+
     if (existing) {
+      // Já activo: idempotente. Revogado: revive-se, em vez de criar linha nova.
+      if (existing.deletedAt) {
+        existing.deletedAt = null
+        await existing.save()
+      }
       return existing
     }
 
