@@ -958,7 +958,55 @@ middleware genérico já cobre):
   `domain_pos.meu` nova); migrations corridas em dev e teste (`domain_pos.meu` +
   `userpos` unique composta).
 
-### 7.9 Backlog conhecido, não tocado (propositadamente — ver secção 2)
+### 7.9 Nona sessão — unicidade de utilizador por domínio (auth_validator)
+
+- **`POST api/:company_alias/auth/register` estava partido desde sempre.** As regras
+  `.unique()` de `username`/`email` em `UsersCreateValidator` faziam
+  `!(await db.from('user')...first()).where('empresa.company_alias', ...)` — o `.where()`
+  do filtro por empresa era chamado **sobre a linha já devolvida** (ou sobre `null`), não
+  sobre o query builder. Ou seja: (a) rebentava sempre com `TypeError`, devolvido como 500
+  genérico pelo `catch` do controller (que só trata `error.messages`), e (b) o filtro por
+  empresa nunca chegava a fazer parte do SQL — a unicidade era global. Ninguém tinha
+  reparado porque nenhum teste exercitava este validator.
+- **A unicidade passou a ser por domínio, alinhada com a BD**: `create_users_table`
+  declara `unique(['email','empresa_id'])` e `unique(['username','empresa_id'])` (o
+  `unique()` global do email está comentado nessa migration) — duas empresas podem ter um
+  funcionário com o mesmo email/username, a mesma empresa não. `DomainUserUpdateValidator`
+  verificava globalmente (estava documentado como intencional; era o inverso do que a BD
+  impõe) e passou também a escopar por `company_alias`, mantendo o `whereNot('user.id', ...)`
+  do próprio registo.
+- **Dois helpers no topo de `app/validators/auth_validator.ts`** em vez do mesmo bloco
+  copiado 5 vezes: `uniqueNoDominio(coluna, metaIdKey?)` e `existeNoDominio` (usado pelos
+  fluxos de recuperação de password, que já filtravam por empresa mas repetiam
+  `.where('user.email', value)` duas vezes). Ambos lêem o alias de
+  `field.data.params?.company_alias` — não `field.parent.params.company_alias`: é o padrão
+  já usado em `vendapagamento_validator.ts`, e o optional chaining é o que permite chamar
+  o validator directamente num teste sem `params`.
+- **A unicidade NÃO exclui utilizadores com soft delete.** A constraint da BD também não
+  os exclui, por isso aceitar o email de um funcionário desactivado só trocaria um 400
+  legível por um 500 de chave duplicada no INSERT — há teste a fixar isto.
+- `UsersUpdateValidator` (continua sem rota nenhuma a usá-lo, ver 7.4) foi escopado da
+  mesma forma por consistência, mantendo a sua chave de meta própria (`_id`).
+- **Consequência directa, corrigida na mesma passagem**: com unicidade por domínio, o
+  mesmo email passa a poder existir em dois tenants — e `authRepository.forgot_password()`
+  procurava o utilizador com `User.findBy('email', ...)`, **global**, podendo enviar o link
+  de redefinição ao utilizador da empresa errada. Passou a resolver a empresa primeiro e a
+  procurar por `email` + `empresa_id`, com `firstOrFail()` em vez do `user?.id!` anterior
+  (sem correspondência, o que se enviava era um email para `undefined` com um link
+  `.../undefined`). O validator do endpoint já filtrava por empresa; o repositório, chamado
+  directamente, não. `authRepository.findByEmail()` continua global — não é usado por nada
+  (candidato a remover numa auditoria de código morto).
+- Testado em `tests/functional/auth_validator_dominio.spec.ts` (8 testes): registo rejeita
+  username/email repetidos na mesma empresa, aceita-os noutra empresa, aceita um par novo;
+  update rejeita o email de um colega, aceita gravar mantendo o próprio, aceita o email de
+  alguém de outra empresa, e continua a rejeitar o de um colega desactivado. Mais 2 em
+  `auth_repository_forgot_password.spec.ts` (mesmo email em duas empresas — pedido nos dois
+  sentidos, porque com UUID como PK a query global antiga podia devolver qualquer um dos
+  dois; e email inexistente na empresa não envia nada).
+- Suite completa: 592 testes (eram 582), 35 erros de `tsc --noEmit` (todos pré-existentes,
+  nenhum nos ficheiros tocados).
+
+### 7.10 Backlog conhecido, não tocado (propositadamente — ver secção 2)
 
 - `pessoa_dto.ts` declara `tipo: string`, mas o model `pessoa.ts` tipa `tipo` como
   `'Cliente' | 'Funcionario' | 'Promotor'` — mismatch de tipos pré-existente (não

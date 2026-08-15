@@ -46,9 +46,25 @@ export const messages = {
     'date.sameAs': 'Os campos {{ field }} e {{ otherField }} devem ser iguais',
     'date.notSameAs': 'Os campos {{ field }} e {{ otherField }} devem ser diferentes',
     'date.afterField': 'O campo {{ field }} deve ser uma data após {{ otherField }}',
+    'required': '{{field}} é obrigatório',
+
+    // As regras `.unique()`/`.exists()` do Adonis+Lucid identificam-se como `database.unique` e
+    // `database.exists`, não como `unique`/`exists`. As duas chaves curtas que aqui estavam nunca
+    // chegaram a aplicar-se: o utilizador via sempre o texto inglês por omissão do VineJS
+    // ("The nif has already been taken"). Confirmado no corpo de erro real devolvido pela API,
+    // que traz "rule":"database.unique". Ficam ambas as formas — a curta é inofensiva e evita
+    // que isto volte a partir caso a nomenclatura mude.
     'unique': '{{field}} já existe',
     'exists': '{{field}} não existe',
-    'required': '{{field}} é obrigatório',
+    'database.unique': 'Já existe um registo com este {{field}}.',
+    'database.exists': 'O {{field}} indicado não existe.',
+
+    // Mensagens por campo, para o utilizador saber o que fazer em vez de ler "nif já existe".
+    // A chave é `<campo>.<regra>`, logo só afecta campos com esse nome QUE TENHAM a regra.
+    // Redacção neutra quanto à entidade, para continuar correcta se amanhã outra entidade
+    // passar a exigir NIF/email únicos.
+    'nif.database.unique': 'Já existe um registo com este NIF nesta empresa.',
+    'email.database.unique': 'Já existe um registo com este email nesta empresa.',
 }
 
 vine.messagesProvider = new SimpleMessagesProvider(messages)

@@ -71,6 +71,47 @@ export default class cupomsController {
         }
     }
 
+    // ==================== VALIDAR (por código) ====================
+    /**
+     * Consulta um cupão pelo código, para o ecrã de venda saber QUANTO desconta antes de cobrar.
+     *
+     * Porque é uma rota à parte, e não um filtro na listagem: `domain_cupom.index` é uma
+     * permissão de GESTÃO (quem a tem vê e edita todos os cupões da empresa). Um vendedor tem
+     * de poder aplicar um cupão sem poder geri-los, por isso isto vive numa permissão própria,
+     * `domain_cupom.validar`, atribuída aos mesmos papéis que podem fechar uma venda.
+     *
+     * Devolve apenas o necessário para calcular e mostrar o desconto — nunca o cupão inteiro.
+     */
+    async validar({ params, response }: HttpContext) {
+        const codigo = String(params.codigo ?? '').trim()
+        if (!codigo) {
+            return response.badRequest({ data: null, message: 'Código do cupão não indicado', status: 400 })
+        }
+
+        const cupom = await this.service.validarPorCodigo(codigo, params.company_alias)
+
+        if (!cupom) {
+            // Uma só mensagem para "não existe", "expirou" e "é de outra empresa": distingui-las
+            // permitiria descobrir por tentativa e erro que códigos existem noutras empresas.
+            return response.notFound({
+                data: null,
+                message: 'Cupão inválido, expirado ou inexistente.',
+                status: 404
+            })
+        }
+
+        return response.ok({
+            data: {
+                codigo: cupom.codigo,
+                desconto: Number(cupom.desconto),
+                validade: cupom.validade,
+                promotor_id: cupom.promotor_id,
+            },
+            message: 'Cupão válido',
+            status: 200
+        })
+    }
+
     // ==================== SHOW ====================
     async show({ params, response }: HttpContext) {
         try {

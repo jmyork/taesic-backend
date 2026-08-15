@@ -73,6 +73,12 @@ export default defineConfig({
   */
   preloads: [
     () => import('#start/lucid'),
+    // `start/validator.ts` define `vine.messagesProvider` com a tradução completa das mensagens
+    // de validação, mas nunca esteve nesta lista — ou seja, o ficheiro nunca era carregado e a
+    // aplicação inteira devolvia sempre o texto inglês por omissão do VineJS ("The uid field
+    // must be defined", "The selected tipo is invalid"). Tem de vir antes das rotas, para o
+    // provider já estar instalado quando os controladores forem resolvidos.
+    () => import('#start/validator'),
     () => import('#start/routes'),
     () => import('#start/kernel'),
     () => import('#start/events'),

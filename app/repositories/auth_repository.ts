@@ -184,18 +184,28 @@ export default class authRepository {
   }
 
   async forgot_password(data: ForgotPasswordDTO) {
-    const user = await User.findBy('email', data.email)
-    const empresa = await Empresa.findBy('company_alias', data.company_alias)
+    const empresa = await Empresa.findByOrFail('company_alias', data.company_alias)
+
+    // A procura tem de ser POR DOMÍNIO: a unicidade de `email` é por empresa
+    // (`unique(['email','empresa_id'])`, ver auth_validator.ts), por isso o mesmo email
+    // pode existir em dois tenants — `User.findBy('email', ...)` devolvia o primeiro que
+    // aparecesse e podia enviar o link de redefinição ao utilizador da empresa errada.
+    // `firstOrFail` em vez do `user?.id!` anterior: sem correspondência, o que se enviava
+    // era um email para `undefined` com um link `.../undefined`.
+    const user = await User.query()
+      .where('email', data.email)
+      .where('empresa_id', empresa.id)
+      .firstOrFail()
 
     // Enviar o email de recuperação
     const password_definition_url = await buildPasswordDefinitionUrl(
-      empresa?.company_alias!,
-      user?.id!
+      empresa.company_alias,
+      user.id
     )
-    await mail.send(new ForgotPasswordMail(user?.email!, user?.username!, password_definition_url))
+    await mail.send(new ForgotPasswordMail(user.email!, user.username!, password_definition_url))
 
     await VerificationTokenHash.create({
-      user_id: user?.id!,
+      user_id: user.id,
       purpose: 'password_recovery',
     })
     return user

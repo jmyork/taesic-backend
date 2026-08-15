@@ -306,6 +306,9 @@ export default class extends BaseSeeder {
       { nome: 'domain_cupom.store', descricao: 'Criar cupão para um promotor' },
       { nome: 'domain_cupom.update', descricao: 'Editar cupão' },
       { nome: 'domain_cupom.destroy', descricao: 'Remover/Recuperar cupão' },
+      // Separada das restantes de propósito: valida um código no ecrã de venda sem dar acesso
+      // à gestão de cupões. Vai para os papéis que podem fechar vendas, não para os que gerem.
+      { nome: 'domain_cupom.validar', descricao: 'Validar um código de cupão ao fechar uma venda' },
       // ==================== PROMOTORES DOMAIN ====================
       { nome: 'domain_promotores.index', descricao: 'Listar promotores da empresa' },
       { nome: 'domain_promotores.show', descricao: 'Ver promotor específico' },
@@ -769,6 +772,7 @@ export default class extends BaseSeeder {
       'domain_vendas.store',
       'domain_vendas.update',
       'domain_vendas.destroy',
+      'domain_cupom.validar',
       'domain_vendas.anular',
 
       // reembolso
@@ -1096,6 +1100,7 @@ export default class extends BaseSeeder {
       'domain_vendas.store',
       'domain_vendas.update',
       'domain_vendas.destroy',
+      'domain_cupom.validar',
       'domain_vendas.anular',
 
       // reembolso
@@ -1318,6 +1323,7 @@ export default class extends BaseSeeder {
       'domain_vendas.store',
       'domain_vendas.update',
       'domain_vendas.destroy',
+      'domain_cupom.validar',
       'domain_vendas.anular',
 
       // reembolso
@@ -1467,6 +1473,7 @@ export default class extends BaseSeeder {
       'domain_vendas.store',
       'domain_vendas.update',
       'domain_vendas.destroy',
+      'domain_cupom.validar',
       'domain_vendas.anular',
 
       // reembolso

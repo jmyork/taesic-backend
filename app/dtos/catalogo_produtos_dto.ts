@@ -15,6 +15,19 @@ export interface CatalogoProdutosFilterDTO {
   is_service?: boolean
   disponivel?: boolean
 
+  /**
+   * Inclui também produtos SEM nenhum lote registado.
+   *
+   * Por omissão o catálogo exige pelo menos um lote não-apagado (join a
+   * `lote_produto`) — correcto para vender, porque não se vende o que nunca teve
+   * stock registado. Mas o ECRÃ DE GESTÃO de produtos usa este mesmo catálogo, e um
+   * produto físico acabado de criar ainda não tem lote (`produtos_repository.create()`
+   * só cria lote para serviços): desaparecia da lista logo após ser gravado.
+   *
+   * O PDV deve continuar a NÃO passar esta flag; a gestão de produtos passa-a.
+   */
+  incluir_sem_lote?: boolean
+
   /** Só produtos com pelo menos uma movimentação de estoque registada neste POS. */
   pos_id?: string
   /** Idem, mas por nome do POS (parcial) em vez do id exacto. */

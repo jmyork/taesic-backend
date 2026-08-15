@@ -17,6 +17,9 @@ export const CatalogoProdutosQueryValidator = vine.create(
     produto_categoria_id: vine.string().trim().uuid().optional(),
     is_service: vine.boolean().optional(),
     disponivel: vine.boolean().optional(),
+    /** Ver CatalogoProdutosFilterDTO.incluir_sem_lote — usado pelo ecrã de gestão de
+     * produtos, nunca pelo PDV. */
+    incluir_sem_lote: vine.boolean().optional(),
     pos_id: vine.string().trim().uuid().optional(),
     pos_nome: vine.string().trim().escape().optional(),
 

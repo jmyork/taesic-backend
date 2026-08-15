@@ -40,4 +40,9 @@ export default class vendapagamento extends BaseModel{
   declare metodo_pagamento: BelongsTo<typeof MetodoPagamento>
   @column()
   declare valor: number
+
+  /** Referência do comprovativo (nº de operação da transferência, recibo do TPA…).
+   * Nullable: um pagamento em numerário não tem nem precisa de referência. */
+  @column()
+  declare referencia: string | null
 }

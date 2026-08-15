@@ -141,6 +141,12 @@ router
         router.get("consultar-reembolso", [controllers.ProdutosReembolso, 'index']).as('domain_reembolso_consultar')
         router.get("consultar-reembolso/:venda_id", [controllers.ProdutosReembolso, 'show']).as('domain_reembolso_consultar_id')
 
+        // TEM de vir ANTES do resource: senão `cupom/:id` apanha `cupom/validar/...` primeiro e
+        // o código do cupão seria interpretado como um id.
+        // Permissão própria (`domain_cupom.validar`), atribuída aos papéis que fecham vendas: um
+        // vendedor precisa de aplicar cupões sem poder geri-los.
+        router.get('cupom/validar/:codigo', [controllers.Cupom, 'validar']).as('domain_cupom.validar')
+
         router.resource('cupom', controllers.Cupom).apiOnly().as('domain_cupom')
 
         // Gestão dos promotores desta empresa (domain) — inclui promotores só desta empresa

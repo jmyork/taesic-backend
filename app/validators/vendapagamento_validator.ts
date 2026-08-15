@@ -24,7 +24,9 @@ export const createvendapagamentoValidator=vine.compile(vine.object({venda_id: v
         .first();
       return !!exists;
     }),
-    valor: vine.number().decimal([0, 12]),}))
+    valor: vine.number().decimal([0, 12]),
+    // Referência do comprovativo — ver a migration alter_vendapagamento_add_referencia.
+    referencia: vine.string().trim().escape().maxLength(120).optional(),}))
 export const updatevendapagamentoValidator=vine.compile(vine.object({venda_id: vine.string().trim().escape().exists(async (db,value,field)=>{
       const exists = await db.from('vendas')
         .join('caixa', 'caixa.id', 'vendas.caixa_id')

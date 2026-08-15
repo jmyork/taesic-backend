@@ -300,3 +300,55 @@ test.group('catálogo de produtos — permissão domain_produtos.catalogo', (gro
     assert.isFalse(await userHasPermission(adminUserManager, 'domain_produtos.catalogo'))
   })
 })
+
+/**
+ * O ecrã de gestão de produtos usa o catálogo, e o catálogo exigia (inner join) pelo
+ * menos um lote não-apagado. Mas `produtos_repository.create()` só cria lote para
+ * SERVIÇOS — um produto físico acabado de criar não tem lote e desaparecia da lista
+ * imediatamente após ser gravado (sintoma reportado: "os produtos desaparecem depois
+ * de serem cadastrados"). `incluir_sem_lote` resolve isso sem afectar o PDV.
+ */
+test.group('catálogo — produtos sem lote', (group) => {
+  group.each.setup(() => testUtils.db().withGlobalTransaction())
+
+  test('produto físico sem lote NÃO aparece por omissão (comportamento de venda)', async ({
+    assert,
+  }) => {
+    const { empresa } = await createTenant()
+    const semLote = await createProduto(empresa, { nome: `SemLote ${Date.now()}` })
+
+    const repo = new ProdutosRepository()
+    const r = await repo.catalogo(1, 50, {}, empresa.company_alias)
+
+    assert.notInclude(r.all().map((p: any) => p.id), semLote.id)
+  })
+
+  test('incluir_sem_lote=true fá-lo aparecer — é o que o ecrã de gestão precisa', async ({
+    assert,
+  }) => {
+    const { empresa } = await createTenant()
+    const semLote = await createProduto(empresa, { nome: `SemLote2 ${Date.now()}` })
+    const comLote = await createProduto(empresa, { nome: `ComLote ${Date.now()}` })
+    await createLote(comLote, { quantidade_em_estoque: 5 })
+
+    const repo = new ProdutosRepository()
+    const r = await repo.catalogo(1, 50, { incluir_sem_lote: true }, empresa.company_alias)
+    const ids = r.all().map((p: any) => p.id)
+
+    assert.include(ids, semLote.id, 'o produto sem lote tem de aparecer na gestão')
+    assert.include(ids, comLote.id, 'o que tem lote continua a aparecer')
+  })
+
+  test('um produto com lote não é duplicado por causa do leftJoin', async ({ assert }) => {
+    const { empresa } = await createTenant()
+    const produto = await createProduto(empresa, { nome: `DoisLotes ${Date.now()}` })
+    await createLote(produto, { quantidade_em_estoque: 3 })
+    await createLote(produto, { quantidade_em_estoque: 7 })
+
+    const repo = new ProdutosRepository()
+    const r = await repo.catalogo(1, 50, { incluir_sem_lote: true }, empresa.company_alias)
+    const ocorrencias = r.all().filter((p: any) => p.id === produto.id)
+
+    assert.lengthOf(ocorrencias, 1, 'dois lotes não podem dar duas linhas do mesmo produto')
+  })
+})

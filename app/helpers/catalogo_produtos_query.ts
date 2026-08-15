@@ -18,10 +18,16 @@ import { applyRange } from './query_filters.js'
  * `.preload()`, mais o stock total e o intervalo de preços agregados a partir dos lotes.
  */
 function buildCatalogoProdutosQuery(filter?: CatalogoProdutosFilterDTO, companyAlias?: string) {
+  // `incluir_sem_lote` troca o inner join por leftJoin: com ele, um produto sem
+  // nenhum lote continua a aparecer (com stock/preços a null). Sem ele, mantém-se o
+  // comportamento de sempre — só produtos com lote — que é o correcto para vender.
+  // Ver a explicação completa em CatalogoProdutosFilterDTO.incluir_sem_lote.
+  const juntarLote = filter?.incluir_sem_lote ? 'leftJoin' : 'join'
+
   let query = produtos
     .query()
     .join('empresa', 'empresa.id', 'produtos.empresa_id')
-    .join('lote_produto', (join) => {
+    [juntarLote]('lote_produto', (join: any) => {
       join.on('lote_produto.produto_id', 'produtos.id').andOnNull('lote_produto.deleted_at')
     })
     .whereNull('produtos.deleted_at')

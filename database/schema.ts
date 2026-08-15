@@ -1141,7 +1141,7 @@ export class VendaItenSchema extends BaseModel {
 }
 
 export class VendapagamentoSchema extends BaseModel {
-  static $columns = ['createdAt', 'deletedAt', 'id', 'metodoPagamentoId', 'updatedAt', 'valor', 'vendaId'] as const
+  static $columns = ['createdAt', 'deletedAt', 'id', 'metodoPagamentoId', 'referencia', 'updatedAt', 'valor', 'vendaId'] as const
   $columns = VendapagamentoSchema.$columns
   @column.dateTime({ autoCreate: true })
   declare createdAt: DateTime
@@ -1151,6 +1151,8 @@ export class VendapagamentoSchema extends BaseModel {
   declare id: string
   @column()
   declare metodoPagamentoId: string | null
+  @column()
+  declare referencia: string | null
   @column.dateTime({ autoCreate: true, autoUpdate: true })
   declare updatedAt: DateTime
   @column()
