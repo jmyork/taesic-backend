@@ -1,76 +1,23 @@
-<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-<html lang="pt" xmlns="http://www.w3.org/1999/xhtml">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-    <meta name="color-scheme" content="light dark" />
-    <meta name="supported-color-schemes" content="light dark" />
-    <meta name="x-apple-disable-message-reformatting" />
-    <meta name="format-detection" content="telephone=no,address=no,email=no,date=no,url=no" />
-    <title>{{ titulo }} — TAESIC</title>
-    @include('emails/partials/taesic_styles')
-  </head>
+{{-- Alerta operacional (estoque crítico, validade próxima, venda cancelada de alto valor,
+     reversão de estoque) — uma view para todos, com as linhas geradas pelo listener. --}}
+@component('emails/components/carta', {
+  year,
+  preheader: titulo + ' — alerta automático da sua conta TAESIC.'
+})
 
-  <body
-    class="body"
-    style="margin:0;padding:0;width:100%;background-color:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;"
-  >
-    <div style="display:none;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:#f1f5f9;">
-      {{ titulo }} — alerta automático da sua conta TAESIC.
-    </div>
+  @component('emails/components/titulo')
+    {{ titulo }}
+  @end
 
-    <table role="presentation" class="bg" width="100%" border="0" cellpadding="0" cellspacing="0" bgcolor="#f1f5f9" style="background-color:#f1f5f9;">
-      <tr>
-        <td align="center" style="padding:32px 12px 44px 12px;">
+  @component('emails/components/aviso')
+    @each(linha in linhas)
+      {{ linha }}<br />
+    @end
+  @end
 
-          <table role="presentation" class="card" width="600" border="0" cellpadding="0" cellspacing="0" bgcolor="#ffffff" style="width:600px;max-width:600px;background-color:#ffffff;border:1px solid #e2e8f0;border-radius:14px;">
+  @component('emails/components/nota')
+    Alerta gerado automaticamente a partir da actividade registada na plataforma.
+    Confirme a situação no TAESIC antes de tomar qualquer decisão.
+  @end
 
-            @include('emails/partials/taesic_header')
-
-            <tr>
-              <td class="px" style="padding:34px 40px 30px 40px;">
-
-                <p class="eyebrow" style="margin:0 0 10px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:11px;line-height:16px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#92400e;">
-                  Alerta operacional
-                </p>
-
-                <h1 class="h1" style="margin:0 0 18px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:23px;line-height:30px;font-weight:700;color:#172554;">
-                  {{ titulo }}
-                </h1>
-
-                <table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0">
-                  <tr>
-                    <td class="notice" bgcolor="#fffbeb" style="background-color:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:16px 18px;">
-                      @each(linha in linhas)
-                        <p class="notice-text" style="margin:0 0 6px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:14.5px;line-height:23px;color:#92400e;">
-                          {{ linha }}
-                        </p>
-                      @endeach
-                    </td>
-                  </tr>
-                </table>
-
-                <table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0">
-                  <tr>
-                    <td class="rule" style="border-top:1px solid #e2e8f0;font-size:0;line-height:0;height:1px;padding-top:24px;">&nbsp;</td>
-                  </tr>
-                </table>
-
-                <p class="muted" style="margin:18px 0 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:13px;line-height:20px;color:#64748b;">
-                  Alerta gerado automaticamente a partir da actividade registada na plataforma.
-                  Confirme a situação no TAESIC antes de tomar qualquer decisão.
-                </p>
-
-              </td>
-            </tr>
-
-            @include('emails/partials/taesic_footer')
-
-          </table>
-
-        </td>
-      </tr>
-    </table>
-  </body>
-</html>
+@end

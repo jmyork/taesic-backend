@@ -16,15 +16,20 @@ import type { TransactionClientContract } from '@adonisjs/lucid/types/database'
 import hash from '@adonisjs/core/services/hash'
 import Empresa from '#models/empresa'
 import {
+  buildActivationUrl,
   buildPasswordDefinitionUrl,
   generateSecurePassword,
   getUserPermissions,
   getUserRoles,
   giveRoleToUser,
 } from '../helpers/Utils.js'
+import { logSecurityEvent } from '../helpers/security_logger.js'
 import mail from '@adonisjs/mail/services/main'
 import PasswordDefinitionMail from '#mails/password_definition_mail'
 import ForgotPasswordMail from '#mails/forgot_password_mail'
+import EmailAlteradoActivacaoMail from '#mails/email_alterado_activacao_mail'
+import EmailAlteradoAvisoMail from '#mails/email_alterado_aviso_mail'
+import VerificationTokenHashService from '#services/verification_token_hash_service'
 import { Exception } from '@adonisjs/core/exceptions'
 import db from '@adonisjs/lucid/services/db'
 import VerificationTokenHash from '#models/verification_token_hash'
@@ -286,15 +291,97 @@ export default class authRepository {
    *
    * Só `username` e `email`: a password é definida pelo próprio (link por email) e os
    * papéis têm o seu próprio recurso (`user-papeis`).
+   *
+   * **Alterar o email obriga a reactivar a conta.** Um endereço novo é um endereço por
+   * provar: até ser confirmado não se sabe se existe, se é do funcionário, ou se foi
+   * trocado por engano/por quem não devia. Por isso, quando (e só quando) o email muda:
+   *
+   *  1. as verificações anteriores são invalidadas (`verified: false` + soft delete) —
+   *     `login()` exige um `verification_token_hash` verificado, logo a conta fica sem
+   *     entrada; o soft delete é o que impede o link ANTIGO (que está na caixa de
+   *     correio antiga) de ser reutilizado para reactivar ou redefinir a password;
+   *  2. é criado um token de activação novo e enviado o link para o endereço NOVO;
+   *  3. o endereço ANTIGO recebe um aviso — é a única forma de o dono da conta detectar
+   *     uma alteração que não pediu;
+   *  4. as sessões activas são revogadas, senão o bloqueio seria só de fachada (quem já
+   *     tivesse um bearer token continuava a trabalhar como se nada fosse).
+   *
+   * Tudo em transação, com os emails enviados ANTES do commit: se o envio falhar, nada
+   * fica alterado. Bloquear a conta e depois não conseguir entregar o link de activação
+   * deixaria o funcionário fechado de fora sem forma de voltar.
    */
   async update(data: UpdateUserDTO) {
     const user = await this.findScopedOrFail(data.user_id, data.company_alias)
 
+    const emailAnterior = user.email
+    const emailAlterado = data.email !== undefined && data.email !== emailAnterior
+
     if (data.username !== undefined) user.username = data.username
     if (data.email !== undefined) user.email = data.email
 
-    await user.save()
-    return user
+    if (!emailAlterado) {
+      await user.save()
+      return { user, emailAlterado: false }
+    }
+
+    const empresa = await Empresa.findByOrFail('company_alias', data.company_alias)
+
+    const trx = await db.transaction()
+    try {
+      user.useTransaction(trx)
+      await user.save()
+
+      await VerificationTokenHash.query({ client: trx })
+        .where('user_id', user.id)
+        .whereNull('deleted_at')
+        // `new Date()`, não `DateTime.now().toSQL()`: o `toSQL()` do luxon inclui o offset
+        // ('... +00:00') e o MySQL recusa-o com "Incorrect datetime value". Mesmo padrão
+        // já usado em `Utils.removeRoleFromUser`.
+        .update({ verified: false, deleted_at: new Date() })
+
+      const { token } = await new VerificationTokenHashService().createToken(
+        { user_id: user.id, purpose: 'account_activation' },
+        trx
+      )
+
+      await mail.send(
+        new EmailAlteradoActivacaoMail(
+          user.email,
+          user.username!,
+          empresa.nome || empresa.company_alias,
+          emailAnterior,
+          buildActivationUrl(token)
+        )
+      )
+
+      await mail.send(
+        new EmailAlteradoAvisoMail(
+          emailAnterior,
+          user.username!,
+          empresa.nome || empresa.company_alias,
+          user.email
+        )
+      )
+
+      // Revogar as sessões activas. `User.accessTokens` (DbAccessTokensProvider) não
+      // aceita esta transação, por isso apaga-se pela própria tabela configurada no model
+      // — assim ou tudo isto fica gravado, ou nada fica.
+      await trx.from('auth_access_tokens').where('tokenable_id', user.id).delete()
+
+      await trx.commit()
+    } catch (error) {
+      await trx.rollback()
+      throw error
+    }
+
+    logSecurityEvent('user_email_changed', {
+      user_id: user.id,
+      company_alias: data.company_alias,
+      email_anterior: emailAnterior,
+      email_novo: user.email,
+    })
+
+    return { user, emailAlterado: true }
   }
 
   /**

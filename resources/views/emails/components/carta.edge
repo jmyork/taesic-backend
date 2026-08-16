@@ -1,0 +1,54 @@
+{{--
+  Envelope de TODOS os emails: doctype, <head>, fundo, cartão, cabeçalho e rodapé.
+  Antes estava copiado em cada template (~40 linhas por email); qualquer correcção de
+  compatibilidade tinha de ser repetida 8 vezes.
+
+  Props:
+    preheader — linha que os clientes de email mostram na pré-visualização da caixa de
+                entrada (invisível no corpo). Sem ela, mostram o início do HTML.
+    year      — usado pelo rodapé.
+
+  O conteúdo do email vai no slot por omissão. Componentes NÃO herdam o estado de quem os
+  usa (só as props), por isso `year` tem de ser passado explicitamente — o `@include` do
+  rodapé, esse, já vê as props deste componente.
+--}}
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html lang="pt" xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="supported-color-schemes" content="light dark" />
+    <meta name="x-apple-disable-message-reformatting" />
+    <meta name="format-detection" content="telephone=no,address=no,email=no,date=no,url=no" />
+    {{-- O <title> não é mostrado por nenhum cliente de email (o que conta é o assunto,
+         definido na Mailable) — daí ser fixo em vez de mais uma prop por template. --}}
+    <title>TAESIC</title>
+    @include('emails/partials/taesic_styles')
+  </head>
+
+  <body class="body" style="margin:0;padding:0;width:100%;background-color:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
+    <div style="display:none;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:#f1f5f9;">{{ preheader ?? '' }}</div>
+
+    <table role="presentation" class="bg" width="100%" border="0" cellpadding="0" cellspacing="0" bgcolor="#f1f5f9" style="background-color:#f1f5f9;">
+      <tr>
+        <td align="center" style="padding:32px 12px 44px 12px;">
+          <table role="presentation" class="card" width="600" border="0" cellpadding="0" cellspacing="0" bgcolor="#ffffff" style="width:600px;max-width:600px;background-color:#ffffff;border:1px solid #e2e8f0;border-radius:14px;">
+
+            @include('emails/partials/taesic_header')
+
+            <tr>
+              <td class="px" style="padding:34px 40px 30px 40px;">
+                {{{ await $slots.main() }}}
+              </td>
+            </tr>
+
+            @include('emails/partials/taesic_footer')
+
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

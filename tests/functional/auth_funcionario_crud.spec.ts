@@ -1,5 +1,6 @@
 import { test } from '@japa/runner'
 import testUtils from '@adonisjs/core/services/test_utils'
+import mail from '@adonisjs/mail/services/main'
 import AuthRepository from '#repositories/auth_repository'
 import User from '#models/user'
 import TaxaIva from '#models/taxa_iva'
@@ -15,6 +16,14 @@ import { userHasPermission } from '../../app/helpers/Utils.js'
  */
 test.group('funcionário — editar e desactivar', (group) => {
   group.each.setup(() => testUtils.db().withGlobalTransaction())
+
+  // Alterar o email passou a enviar activação (endereço novo) + aviso (endereço antigo) —
+  // sem o fake, `update()` tentaria o envio real pela Resend. Ver
+  // `auth_update_email.spec.ts` para os testes desse comportamento.
+  group.each.setup(() => {
+    mail.fake()
+    return () => mail.restore()
+  })
 
   test('update altera username e email', async ({ assert }) => {
     const { empresa } = await createTenant()

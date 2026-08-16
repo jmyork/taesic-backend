@@ -39,6 +39,8 @@ export default class authService {
     return await this.repo.list(data)
   }
 
+  /** Devolve `{ user, emailAlterado }`: alterar o email obriga o funcionário a
+   * reactivar a conta pelo link enviado, e o controller tem de o dizer a quem editou. */
   async update(data: UpdateUserDTO) {
     return await this.repo.update(data)
   }

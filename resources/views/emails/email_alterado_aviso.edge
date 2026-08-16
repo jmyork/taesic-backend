@@ -1,0 +1,30 @@
+{{-- Aviso para o endereço ANTIGO. Sem nenhum link accionável, de propósito: é a única
+     forma de o dono da conta detectar uma alteração que não pediu. --}}
+@component('emails/components/carta', {
+  year,
+  preheader: 'O email da sua conta deixou de ser este. Se não foi você, avise um administrador.'
+})
+
+  @component('emails/components/titulo')
+    O email da sua conta foi alterado
+  @end
+
+  @component('emails/components/texto')
+    {{ user.username }}, o email da sua conta em
+    <span class="strong" style="font-weight:600;color:#0f172a;">{{ company.name }}</span>
+    passou de {{ user.email }} (este) para
+    <span class="strong" style="font-weight:600;color:#0f172a;">{{ emailNovo }}</span>.
+    As mensagens da conta passam a ir para o endereço novo.
+  @end
+
+  @component('emails/components/aviso')
+    <strong style="font-weight:700;">Não reconhece esta alteração?</strong> Avise já um
+    administrador da {{ company.name }} — só um administrador pode repor o endereço correcto.
+  @end
+
+  @component('emails/components/nota')
+    Esta mensagem não tem nenhum link para clicar, de propósito: o TAESIC nunca lhe pede
+    dados de acesso por email.
+  @end
+
+@end

@@ -1,0 +1,23 @@
+{{--
+  Botão de acção + o mesmo URL em texto por baixo (para quando o botão não é clicável ou
+  as imagens/estilos são bloqueados). Os dois andavam sempre juntos nos templates antigos,
+  em duas tabelas separadas — aqui é uma chamada só.
+
+  O fundo fica na célula e o padding no <a> em bloco: assim continua a parecer um botão
+  mesmo onde o border-radius é ignorado (Outlook).
+
+  Props: url, texto, nota (opcional, ex.: validade do link).
+--}}
+<table role="presentation" class="btn" border="0" cellpadding="0" cellspacing="0" align="center" style="margin:26px auto 18px auto;">
+  <tr>
+    <td align="center" bgcolor="#1e3a8a" style="background-color:#1e3a8a;border-radius:10px;">
+      <a href="{{ url }}" target="_blank" style="display:block;padding:15px 34px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:15px;line-height:20px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:10px;">{{ texto }}</a>
+    </td>
+  </tr>
+</table>
+
+<p class="muted" style="margin:0 0 16px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:12.5px;line-height:19px;color:#64748b;">
+  {{-- `@if` tem de estar em linha própria no Edge; aqui basta a expressão. --}}
+  {{ nota ?? '' }} Se o botão não funcionar, abra este endereço:<br />
+  <a class="link" href="{{ url }}" target="_blank" style="color:#1e3a8a;text-decoration:underline;word-break:break-all;">{{ url }}</a>
+</p>

@@ -195,6 +195,12 @@ export async function userHasPermission(user: User, permissionName: string) {
     .where('user_papel.user_id', user.id)
     .where('permissao.nome', permissionName)
     .whereNull('user_papel.deleted_at')
+    // `papel_permissao.deleted_at` faltava aqui: o recurso `papel_permissao` faz soft
+    // delete (é o `destroy` da BaseRepository), portanto retirar uma permissão a um papel
+    // pela API marcava a linha como apagada e NÃO revogava nada — a permissão continuava
+    // a valer, sem nada a assinalar. Nenhuma linha estava nesse estado quando isto foi
+    // corrigido, por isso não muda o acesso de ninguém hoje.
+    .whereNull('papel_permissao.deleted_at')
     .first()
 
   return !!permission
@@ -256,6 +262,25 @@ export const buildPasswordDefinitionUrl = async (companyAlias: string, userId: s
     ? `${resetUrl}&company_alias=${encodeURIComponent(companyAlias)}`
     : `${resetUrl}?company_alias=${encodeURIComponent(companyAlias)}`
 }
+
+/**
+ * Base do frontend (Next), sem barra final.
+ *
+ * Estava duplicada dentro de `empresa_controller` (função privada `frontendUrl`) — ficou
+ * aqui, ao lado de `buildPasswordDefinitionUrl`, porque a alteração de email de um
+ * funcionário passou a precisar exactamente do mesmo link de activação.
+ */
+export const frontendBaseUrl = () =>
+  (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/+$/, '')
+
+/**
+ * Link de activação/confirmação enviado por email.
+ *
+ * Aponta para a PÁGINA do frontend (`/verify/<token>`), nunca para a API — ver a nota em
+ * `empresa_controller.activate_company`: os links antigos apontavam para `${APP_URL}/api/
+ * verify/<token>` e o utilizador aterrava numa resposta crua da API.
+ */
+export const buildActivationUrl = (token?: string) => `${frontendBaseUrl()}/verify/${token ?? ''}`
 
 /**
  * Gera um token de reset seguro (alternativa mais segura)

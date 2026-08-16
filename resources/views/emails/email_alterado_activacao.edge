@@ -1,0 +1,30 @@
+{{-- O email de um funcionário foi alterado: o endereço NOVO tem de ser confirmado para a
+     conta voltar a ter acesso (ver auth_repository.update). --}}
+@component('emails/components/carta', {
+  year,
+  preheader: 'Confirme este endereço para voltar a entrar na sua conta.'
+})
+
+  @component('emails/components/titulo')
+    Confirme este endereço
+  @end
+
+  @component('emails/components/texto')
+    {{ user.username }}, o email da sua conta em
+    <span class="strong" style="font-weight:600;color:#0f172a;">{{ company.name }}</span>
+    passou de {{ emailAnterior }} para
+    <span class="strong" style="font-weight:600;color:#0f172a;">{{ user.email }}</span>.
+    A conta fica sem acesso até confirmar.
+  @end
+
+  @!component('emails/components/botao', {
+    url: verifyUrl,
+    texto: 'Confirmar o meu email',
+    nota: 'Válido 24 horas, uma única vez.'
+  })
+
+  @component('emails/components/nota')
+    Não pediu esta alteração? Não confirme e avise um administrador da {{ company.name }}.
+  @end
+
+@end

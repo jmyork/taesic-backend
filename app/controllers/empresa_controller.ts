@@ -6,12 +6,7 @@ import {
 } from '#validators/empresa_validator'
 import mail from '@adonisjs/mail/services/main'
 import AccountActivationMail from '#mails/account_activation_mail'
-import env from '#start/env'
-
-/** Base do frontend Next (alaragest-webpage). Ver nota em `activate_company`. */
-function frontendUrl() {
-  return env.get('FRONTEND_URL', 'http://localhost:3000').toString().replace(/\/+$/, '')
-}
+import { buildActivationUrl, frontendBaseUrl } from '../helpers/Utils.js'
 
 /**
  * Link de activação enviado por email.
@@ -21,10 +16,13 @@ function frontendUrl() {
  * API ou num redireccionamento para uma página que não existia. Agora aterra sempre
  * numa página com a identidade do produto, que trata da activação e mostra o
  * resultado — incluindo a opção de reenviar o email quando o link expirou.
+ *
+ * A construção do URL vive em `helpers/Utils.ts` (`buildActivationUrl`) desde que a
+ * alteração de email de um funcionário passou a enviar o mesmo tipo de link — os dois
+ * fluxos têm de gerar exactamente o mesmo formato.
  */
-function buildVerifyUrl(token?: string) {
-  return `${frontendUrl()}/verify/${token ?? ''}`
-}
+const buildVerifyUrl = buildActivationUrl
+const frontendUrl = frontendBaseUrl
 
 export default class empresasController {
   private service = new empresaService()

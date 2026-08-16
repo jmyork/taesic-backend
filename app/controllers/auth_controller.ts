@@ -180,12 +180,21 @@ export default class AuthController {
     const payload = await request.validateUsing(DomainUserUpdateValidator, {
       meta: { user_id: params.user_id },
     })
-    const data = await this.service.update({
+    const { user, emailAlterado } = await this.service.update({
       ...payload,
       company_alias: params.company_alias,
       user_id: params.user_id,
     })
-    return { data, message: 'Funcionário actualizado com sucesso', status: 200 }
+    return {
+      data: user,
+      // Alterar o email bloqueia a conta até o funcionário confirmar o endereço novo
+      // (ver `auth_repository.update`) — quem editou tem de saber disso, senão o
+      // "não consigo entrar" a seguir aparece como avaria.
+      message: emailAlterado
+        ? 'Funcionário actualizado. O email mudou: a conta fica sem acesso até o funcionário confirmar o novo endereço pelo link que lhe foi enviado.'
+        : 'Funcionário actualizado com sucesso',
+      status: 200,
+    }
   }
 
   /** Desactivar/reactivar um funcionário (toggle de `deleted_at`). Nunca apaga a

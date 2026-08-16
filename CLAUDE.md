@@ -81,6 +81,8 @@ estender estes antes de criar scripts novos ou editar recursos à mão:**
 | `seed:qa-tenant` | `commands/seed_qa_tenant.ts` | Empresa+user Admin idempotentes para testes de UI/Playwright |
 | `empresa:clean:expired` | `commands/empresa_clean_expired.ts` | Remove empresas não activadas cujo token expirou (corrigido, ver secção 7) |
 | `estoque:check-alertas` | `commands/estoque_check_alertas.ts` | Emite `LoteValidadeProxima` para lotes perto da validade (correr via cron externo, diariamente) |
+| `permissao:conceder <alvo> <papeis...>` | `commands/permissao_conceder.ts` | Atribui permissões a papéis sem duplicar. `<alvo>` é um nome exacto (`domain_x.store`, cria-o se não existir) ou um recurso (`domain_x`) com `--leitura` (.index .show), `--escrita` (.store .update .destroy) ou `--tudo`. Aceita vários recursos por vírgula e `--simular` |
+| `permissao:revogar <alvo> <papeis...>` | `commands/permissao_revogar.ts` | O simétrico: retira permissões a papéis (mesmos modos). `--simular` para ver antes; `--forcar` obrigatório em `Admin`/`Platform_Admin`. Nunca apaga a permissão do catálogo nem toca noutros papéis |
 
 Se aparecer uma nova tarefa repetitiva, a resposta correcta é estender um destes
 comandos ou criar um novo `BaseCommand` em `commands/`, não repetir a operação
@@ -223,8 +225,19 @@ middleware genérico já cobre):
 - **Emails**: usar uma Mailable (`app/mails/*.ts`, `extends BaseMail`, implementa
   `prepare()`) em vez de `mail.send((message) => {...})` inline sempre que o email for
   reutilizado por mais do que um sítio — ver `AlertaOperacionalMail` para o padrão.
-  Templates edge em `resources/views/emails/`, reaproveitando os partials
-  `emails/partials/alaragest_header` e `alaragest_styles`.
+  Templates edge em `resources/views/emails/`. **Um email novo escreve-se só com
+  componentes** (`resources/views/emails/components/`, ver 7.11): `carta` (envelope
+  completo — doctype, cabeçalho, rodapé; props `preheader` e `year`), `titulo`, `texto`,
+  `nota`, `botao` (CTA + o mesmo URL em texto), `aviso` (caixa âmbar, slot de texto
+  simples) e `painel` (caixa cinzenta, slot de blocos). Nenhum template volta a repetir
+  `<!DOCTYPE>`/tabelas de fundo/`@include` de partials — o molde mais curto é
+  `account_activation.edge` (27 linhas). Regras do Edge 6 a não esquecer: **não existe
+  `@layout`/`@section`/`@set`** (é `@let(x = ...)` e componentes com slots); um
+  componente **não vê o estado de quem o usa**, só as props (daí `year` ir sempre
+  explícito); e `@if`/`@each` têm de estar em linha própria — no meio de uma frase usa-se
+  interpolação (`{{ nota ?? '' }}`). Qualquer template novo é automaticamente coberto por
+  `tests/functional/emails_render.spec.ts` assim que a Mailable for lá acrescentada —
+  acrescentá-la é obrigatório, é o único sítio que prova que a view renderiza.
 
 ## 7. Estado actual (auditoria acumulada) — o que foi corrigido e o que fica
 
@@ -1036,3 +1049,194 @@ middleware genérico já cobre):
   undefined" app/validators` para mapear todos os validators afectados e decidir,
   caso a caso, se a referência devia mesmo ser rejeitada quando não existe/não passa
   no filtro extra.
+
+### 7.11 Décima sessão — alterar o email de um funcionário obriga a reactivar a conta
+
+- **`auth_repository.update()` gravava o email novo e mais nada.** A conta continuava a
+  entrar com um endereço que ninguém tinha provado existir, e o dono do endereço anterior
+  nunca sabia que a conta lhe tinha sido tirada. Passou a, **só quando o email muda**
+  (`data.email !== undefined && data.email !== user.email` — gravar o mesmo email não
+  conta, senão bastava carregar em "Gravar" no formulário para bloquear o funcionário):
+  1. invalidar as verificações anteriores (`verified: false` + `deleted_at`) — `login()`
+     exige um `verification_token_hash` verificado, portanto a conta fica sem entrada; o
+     soft delete é o que impede o link ANTIGO (que está na caixa de correio antiga) de
+     ainda servir para `verify()` ou `resetPassword()`;
+  2. criar um token novo (`purpose: 'account_activation'`, via
+     `VerificationTokenHashService.createToken`) e enviar o link para o endereço NOVO
+     (`EmailAlteradoActivacaoMail`);
+  3. avisar o endereço ANTIGO (`EmailAlteradoAvisoMail`, sem nenhum link accionável);
+  4. revogar as sessões activas (`delete from auth_access_tokens where tokenable_id`),
+     senão o bloqueio era de fachada — quem já tivesse bearer token continuava a
+     trabalhar. Feito pela tabela em vez de `User.accessTokens.delete()` porque o
+     `DbAccessTokensProvider` não aceita a transação desta operação.
+  As duas decisões de fronteira de acesso (bloquear até reactivar; avisar o endereço
+  antigo) foram confirmadas com o utilizador antes de implementar, como em 7.6.
+- **Tudo numa transação, com os emails enviados ANTES do commit**: se o envio falhar, nada
+  fica alterado. Bloquear a conta e não conseguir entregar o link deixaria o funcionário
+  fechado de fora sem forma de voltar (há teste a fixar isto).
+- `update()` passou a devolver `{ user, emailAlterado }` (antes devolvia só o `user`) —
+  `auth_controller.update` mantém `data: user`, mas troca a mensagem quando o email mudou,
+  para quem editou saber que a conta ficou sem acesso até à confirmação. **Atenção**: um
+  admin que altere o SEU PRÓPRIO email fica igualmente bloqueado e sem sessão.
+- **Duplicação removida**: `frontendUrl()`/`buildVerifyUrl()` eram funções privadas de
+  `empresa_controller.ts`; passaram para `helpers/Utils.ts` (`frontendBaseUrl()`,
+  `buildActivationUrl()`), ao lado de `buildPasswordDefinitionUrl`. Os dois fluxos têm de
+  gerar exactamente o mesmo formato de link (`<FRONTEND_URL>/verify/<token>`).
+- **Cuidado com `DateTime.now().toSQL()` num `update()` de coluna datetime** — inclui o
+  offset (`'2026-08-16 19:45:22.188 +00:00'`) e o MySQL rejeita com "Incorrect datetime
+  value" (apanhado pelo teste, não por leitura). Usar `new Date()`, como
+  `Utils.removeRoleFromUser` já fazia. `verification_token_hash_service.cleanExpired()`
+  usa `toSQL()` numa comparação (`<`) — não foi tocado nesta sessão, mas vale a pena
+  verificar se sofre do mesmo problema.
+- Testado em `tests/functional/auth_update_email.spec.ts` (7 testes): os dois emails com
+  destinatário/template/dados certos e o link a apontar para o token realmente gravado;
+  conta sem acesso depois da alteração (pelo endereço novo E pelo antigo) e reposta depois
+  de `verify()`; token antigo inutilizado para `verify()` e para `resetPassword()`; sessões
+  revogadas; editar só o username (ou gravar o mesmo email) não envia nada nem bloqueia;
+  falha de envio desfaz tudo; isolamento por tenant. `auth_funcionario_crud.spec.ts` ganhou
+  `mail.fake()` no grupo — o teste "update altera username e email" passou a enviar email
+  real pela Resend sem isso. Nota de API do fake mailer: `nodeMailerMessage.to` é um array
+  de **strings**, não de `{address}`.
+- Suite completa: 612 testes (eram 605), `tsc --noEmit` sem erros. Sem migrations nem
+  permissões novas — nada a correr em BD.
+
+#### 7.11.1 Todos os templates de email reescritos em componentes
+
+Pedido a seguir, na mesma sessão: "os emails podem ter menos caracteres? podem ser mais
+simples?" → revisão dos **8** templates, não só dos dois novos.
+
+- **O problema**: cada template repetia ~40 linhas de envelope (doctype, `<head>`, tabela
+  de fundo, cartão, `@include` do cabeçalho/rodapé) e ~95 caracteres de `font-family` em
+  cada elemento. Uma correcção de compatibilidade tinha de ser repetida 8 vezes; ninguém
+  encontrava a mensagem no meio do HTML.
+- **7 componentes novos** em `resources/views/emails/components/` (ver a regra na secção
+  6). O HTML gerado continua com **todo o CSS inline** — o que encurta é a fonte, não o
+  output; o princípio documentado em `taesic_styles.edge` ("o `<style>` é reforço, não
+  fonte única") mantém-se intacto. Estrutura do HTML final verificada tag a tag.
+- **Resultado**: os 6 templates que já existiam passaram de 666 para 170 linhas; os 8
+  emails somam agora 230 linhas + 102 de componentes reutilizados (era ~926). Copy também
+  encurtado: fora `eyebrow`, caixas de aviso redundantes, réguas e parágrafos repetidos —
+  cada email fica com título, uma ideia, a acção e uma nota de segurança.
+- **`tests/functional/emails_render.spec.ts` (8 testes, novos)** — não existia NADA a
+  cobrir templates de email: um erro de sintaxe do Edge, uma variável mal escrita ou um
+  `@include` inexistente só rebentavam no envio real, e como todos os envios estão dentro
+  de try/catch (para não partir o pedido), falhavam **em silêncio**. Envia cada Mailable
+  com `mail.fake()` e confirma doctype/cabeçalho/rodapé/ano, os dados interpolados, e que
+  não sobra `undefined`, `{{` ou `@component` no HTML. Cobre também dois casos de
+  comportamento: `company_activated` sem `password_definition_url` não mostra botão, e
+  `promotor_otp`/`email_alterado_aviso` não têm nenhum link (`href="http`) — um OTP ou um
+  aviso de segurança com botão é superfície de phishing gratuita.
+- Foi este teste que apanhou o `@if(nota){{ nota }} @end` inline no componente do botão
+  (o Edge exige tags de bloco em linha própria) — 5 dos 8 emails ficariam **impossíveis
+  de enviar**, incluindo activação de conta e recuperação de palavra-passe.
+- A regra da secção 6 apontava para partials `alaragest_header`/`alaragest_styles` que já
+  não existem (chamam-se `taesic_*`) — corrigido na mesma passagem.
+- Suite completa: 620 testes, `tsc --noEmit` sem erros.
+
+### 7.12 Décima primeira sessão — nenhum Vendedor conseguia fechar uma venda (RBAC)
+
+- **Sintoma reportado**: "um vendedor não consegue efectuar uma venda... diz ser falta de
+  permissão". **Causa**: `domain_vendapagamento.*` só estava atribuída ao **Admin**.
+  Desde que `vendas_repository.close()` passou a exigir pelo menos um `vendapagamento`
+  cuja soma bate certo com o total (secção 7.4), registar o pagamento passou a ser um
+  passo OBRIGATÓRIO do fluxo — mas o catálogo de permissões (lista à mão no
+  `database_seeder.ts`) nunca foi actualizado. `POST venda-pagamento` devolvia 403
+  ("Unauthorized Operation") e, sem pagamento, `POST vendas/fechar/:id` rebentava a
+  seguir com `VendaSemPagamentoException`. **Vendedor, Gerente e Supervisor — os três
+  papéis que existem para vender — não conseguiam fechar uma única venda; só o Admin.**
+- **Classe de bug a vigiar**: uma regra de negócio nova que acrescenta um PASSO ao fluxo
+  (não só um ecrã novo) exige rever quem tem permissão para esse passo. É a terceira vez
+  que o catálogo mantido à mão fica para trás (ver 7.6: Gerente/Supervisor com zero
+  permissões; 7.8: `domain_pos.meu`).
+- **Corrigido**: `domain_vendapagamento.index/show/store` acrescentadas aos três papéis no
+  seeder (e `update`/`destroy` logo a seguir, ver 7.12.1 — o beco do "valor a mais" que
+  este parágrafo descrevia como backlog foi resolvido na mesma sessão).
+- **Aplicado às bases já existentes** com o comando idempotente que já existia,
+  `node ace permissao:conceder <permissao> <papeis...>` (secção 3) — corrido em dev e
+  teste. **Numa base de produção é este o caminho, nunca `db:fresh:seed`.**
+- **Testado** em `tests/functional/rbac_fluxo_venda.spec.ts` (5 testes): percorre os 12
+  nomes de rota do fluxo completo (pos/meu → caixa → catálogo → venda → itens → métodos de
+  pagamento → **pagamento** → fechar venda → factura → fechar caixa) para Vendedor,
+  Gerente, Supervisor e Admin, e falha com a lista exacta do que falta a cada papel; mais
+  um teste de negócio (sem pagamento não fecha; com pagamento fecha). É a rede que faltava:
+  `rbac_despesas_relatorios.spec.ts` cobria só um recurso, nunca um FLUXO ponta-a-ponta.
+- **Achado ao escrever o teste (não é bug, mas é o segundo "não consigo vender")**:
+  `caixa_repository.open()` exige que o utilizador esteja associado ao POS (`userpos`) —
+  só o Admin passa sem isso. Um vendedor sem essa associação falha com
+  `UserIsNotAPosWorkerException`, não com 403; se o sintoma for esse, o que falta é a
+  associação user↔pos (`POST user-pos`), não uma permissão.
+- Suite completa: 625 testes, `tsc --noEmit` sem erros.
+
+#### 7.12.1 Corrigir um pagamento — só enquanto a venda está aberta
+
+Sequência directa do ponto anterior: dar só `store` ao Vendedor deixava-o preso quando
+registasse um valor **a mais** (`close()` rejeita por excesso e ele não tinha como
+desfazer — a menos é recuperável, basta registar outro pagamento pela diferença). Dar-lhe
+`update`/`destroy` sem mais nada abria um problema pior: mexer num pagamento de uma venda
+**já fechada**, cujo valor a caixa já contabilizou. A saída não era escolher entre os dois
+riscos — era pôr a regra no sítio certo.
+
+- **`PagamentoVendaNaoAbertaException`** (`PAGAMENTO_VENDA_NAO_ABERTA`, 400) +
+  `vendapagamento_repository` a sobrescrever `update()`/`softDelete()` da `BaseRepository`
+  para exigir `vendas.status === 'aberta'`. Vale para **qualquer** papel (Admin incluído)
+  e para quem chame o repositório directamente — não é uma regra de permissão.
+  - O `softDelete` do projecto é um **toggle**: repor um pagamento apagado também altera a
+    soma que `close()` validou, por isso os dois sentidos exigem venda aberta.
+  - `update` com `venda_id` diferente (mover o pagamento para outra venda) verifica as
+    DUAS vendas — senão bastava reatribuir um pagamento a uma venda fechada para lhe
+    alterar o valor pago por fora.
+  - Numa venda já fechada a correcção faz-se por reembolso/anulação, nunca editando o
+    histórico. `close()` já ignora pagamentos com soft delete (`whereNull('deleted_at')`),
+    por isso desfazer com a venda aberta funciona como esperado.
+- **`vendapagamento_controller.update/destroy` perderam o try/catch** (padrão antigo, ver
+  7.4): apanhavam tudo e devolviam 500, portanto a excepção nova chegaria ao vendedor como
+  "Erro interno do servidor" em vez de "a venda já está fechada". Mais 2 dos ~48
+  controllers migrados para o handler global.
+- `domain_vendapagamento.update/destroy` atribuídas a Vendedor/Gerente/Supervisor (seeder
+  + `permissao:conceder` em dev e teste).
+- Testado em `tests/functional/vendapagamento_correccao.spec.ts` (7 testes): o vendedor
+  desfaz um pagamento a mais e fecha a venda sozinho; corrigir pelo `update` também serve;
+  com a venda fechada nem apagar nem editar; não se ressuscita um pagamento apagado depois
+  do fecho; não se move um pagamento para uma venda fechada; a correcção não atravessa
+  tenants; e os três papéis têm mesmo as permissões.
+- **Nota de teste**: `assert.rejects(fn, X)` compara `X` com a **mensagem** quando `X` é
+  string — passar `Exception.name` nunca falha por engano nenhum, passa a comparar texto.
+  Passar a própria classe (`assert.rejects(fn, MinhaExcepcao)`) é o que verifica o tipo.
+- Suite completa: 632 testes, `tsc --noEmit` sem erros.
+
+#### 7.12.2 `permissao:conceder` / `permissao:revogar` — por recurso, não por acção
+
+A pedido: gerir RBAC pela linha de comandos sem escrever uma linha por acção, e poder dar
+"só leitura" ou "só escrita". `permissao:conceder` passou a aceitar **duas formas de alvo**
+e ganhou um par simétrico, `permissao:revogar` (ver a tabela da secção 3 para a sintaxe).
+
+- **Motor partilhado em `app/helpers/rbac_permissoes.ts`** (não dentro dos `BaseCommand`):
+  os dois comandos precisam da mesma resolução de nomes, e assim testa-se sem simular uma
+  execução de ace — `tests/functional/rbac_permissoes_helper.spec.ts` (10 testes).
+- **`--leitura`/`--escrita` cobrem só os sufixos canónicos** (`index/show`,
+  `store/update/destroy`). As acções próprias de cada recurso (`.anular`, `.catalogo`,
+  `.meu`, `.validar`, ...) ficam deliberadamente de fora: nada no nome diz com segurança se
+  lêem ou escrevem, e adivinhar isso numa fronteira de acesso é como se criam buracos. São
+  **assinaladas** em cada corrida ("acções próprias fora de --leitura: ...") e concedem-se
+  pelo nome exacto ou com `--tudo`.
+- **`revogar` apaga mesmo a linha `papel_permissao`**, não faz soft delete: com
+  `unique(papel_id, permissao_id)`, uma linha apagada bloquearia qualquer reatribuição
+  futura. Em contrapartida, `conceder` sabe **repor** uma associação que esteja com soft
+  delete (estado que a API consegue produzir), em vez de responder "já tinha" a quem não tem.
+- **Bug de segurança encontrado e corrigido pelo caminho**: `userHasPermission` não filtrava
+  `papel_permissao.deleted_at`. Como o recurso `papel_permissao` faz soft delete (é o
+  `destroy` da `BaseRepository`), **retirar uma permissão a um papel pela API não revogava
+  nada** — a pessoa continuava a passar no `permission_middleware`, sem nada a assinalar.
+  Corrigido em `app/helpers/Utils.ts` com teste próprio. Não havia nenhuma linha nesse estado
+  (dev: 851 associações, 0 apagadas), por isso a correcção não alterou o acesso de ninguém.
+- **`Admin`/`Platform_Admin` exigem `--forcar` para revogar** (`PAPEIS_CRITICOS`): são os
+  papéis que atribuem permissões aos outros. `--simular` existe nos dois comandos e é o
+  primeiro passo recomendado antes de qualquer revogação.
+- Suite completa: 642 testes, `tsc --noEmit` sem erros.
+- **Achado do ambiente (não é do código, mas afecta scripts/CI)**: com **Node v24.18.0**
+  neste Windows, QUALQUER comando ace que arranque a aplicação termina em *segmentation
+  fault* no teardown — o comando faz o trabalho todo e imprime tudo, mas devolve **exit 139**
+  em vez de 0 (`node ace list:routes`, `seed:qa-tenant`, etc.; só `ace --help`, que não
+  arranca a app, sai a 0). Consequência prática: não encadear comandos ace com `&&` nem
+  confiar no código de saída em CI enquanto isto não for resolvido — o caminho provável é
+  correr Node 22 LTS.

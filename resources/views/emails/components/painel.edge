@@ -1,0 +1,9 @@
+{{-- Caixa cinzenta neutra, para conteúdo em blocos (listas, código OTP, dados da conta).
+     O slot traz os seus próprios elementos. --}}
+<table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0" style="margin:0 0 18px 0;">
+  <tr>
+    <td class="panel" align="{{ alinhamento ?? 'left' }}" bgcolor="#f8fafc" style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:18px 20px;">
+      {{{ await $slots.main() }}}
+    </td>
+  </tr>
+</table>

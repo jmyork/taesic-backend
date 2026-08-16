@@ -1119,6 +1119,18 @@ export default class extends BaseSeeder {
       'domain_metodo_pagamento.index',
       'domain_metodo_pagamento.show',
 
+      // pagamentos da venda — sem isto NÃO existe venda nenhuma: desde que close() passou
+      // a exigir pelo menos um vendapagamento cuja soma bate certo com o total (ver 7.4),
+      // registar o pagamento é um passo obrigatório do fluxo. Editar/apagar um pagamento
+      // já registado continua só no Admin — mexe em dinheiro que a caixa já contabilizou.
+      'domain_vendapagamento.index',
+      'domain_vendapagamento.show',
+      'domain_vendapagamento.store',
+      // corrigir/remover um pagamento SÓ é possível enquanto a venda está aberta — a
+      // regra é imposta em vendapagamento_repository, não por permissão (ver 7.12).
+      'domain_vendapagamento.update',
+      'domain_vendapagamento.destroy',
+
       // facturas (emitir, nunca anular — só o Admin anula)
       'domain_facturas.index',
       'domain_facturas.show',
@@ -1343,6 +1355,18 @@ export default class extends BaseSeeder {
       'domain_metodo_pagamento.index',
       'domain_metodo_pagamento.show',
 
+      // pagamentos da venda — sem isto NÃO existe venda nenhuma: desde que close() passou
+      // a exigir pelo menos um vendapagamento cuja soma bate certo com o total (ver 7.4),
+      // registar o pagamento é um passo obrigatório do fluxo. Editar/apagar um pagamento
+      // já registado continua só no Admin — mexe em dinheiro que a caixa já contabilizou.
+      'domain_vendapagamento.index',
+      'domain_vendapagamento.show',
+      'domain_vendapagamento.store',
+      // corrigir/remover um pagamento SÓ é possível enquanto a venda está aberta — a
+      // regra é imposta em vendapagamento_repository, não por permissão (ver 7.12).
+      'domain_vendapagamento.update',
+      'domain_vendapagamento.destroy',
+
       // facturas (emitir, nunca anular — só o Admin anula)
       'domain_facturas.index',
       'domain_facturas.show',
@@ -1492,6 +1516,18 @@ export default class extends BaseSeeder {
       // metodo-pagamento (leitura — precisa de saber que métodos existem)
       'domain_metodo_pagamento.index',
       'domain_metodo_pagamento.show',
+
+      // pagamentos da venda — sem isto NÃO existe venda nenhuma: desde que close() passou
+      // a exigir pelo menos um vendapagamento cuja soma bate certo com o total (ver 7.4),
+      // registar o pagamento é um passo obrigatório do fluxo. Editar/apagar um pagamento
+      // já registado continua só no Admin — mexe em dinheiro que a caixa já contabilizou.
+      'domain_vendapagamento.index',
+      'domain_vendapagamento.show',
+      'domain_vendapagamento.store',
+      // corrigir/remover um pagamento SÓ é possível enquanto a venda está aberta — a
+      // regra é imposta em vendapagamento_repository, não por permissão (ver 7.12).
+      'domain_vendapagamento.update',
+      'domain_vendapagamento.destroy',
 
       // facturas (emitir, nunca anular — só o Admin anula)
       'domain_facturas.index',

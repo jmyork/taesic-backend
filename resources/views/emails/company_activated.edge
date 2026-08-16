@@ -1,132 +1,34 @@
-<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-<html lang="pt" xmlns="http://www.w3.org/1999/xhtml">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-    <meta name="color-scheme" content="light dark" />
-    <meta name="supported-color-schemes" content="light dark" />
-    <meta name="x-apple-disable-message-reformatting" />
-    <meta name="format-detection" content="telephone=no,address=no,email=no,date=no,url=no" />
-    <title>A sua empresa está activa — TAESIC</title>
-    @include('emails/partials/taesic_styles')
-  </head>
+{{-- Empresa activada (listener de EmpresaActivated). O botão só aparece se houver link de
+     definição de palavra-passe — antes o listener nunca o passava e ficava sem destino. --}}
+@component('emails/components/carta', {
+  year,
+  preheader: 'A conta está activa. Já pode entrar na plataforma.'
+})
 
-  <body
-    class="body"
-    style="margin:0;padding:0;width:100%;background-color:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;"
-  >
-    <div style="display:none;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:#f1f5f9;">
-      A conta está activa. Já pode entrar na plataforma.
-    </div>
+  @component('emails/components/titulo')
+    Bem-vindo ao TAESIC, {{ userName }}
+  @end
 
-    <table role="presentation" class="bg" width="100%" border="0" cellpadding="0" cellspacing="0" bgcolor="#f1f5f9" style="background-color:#f1f5f9;">
-      <tr>
-        <td align="center" style="padding:32px 12px 44px 12px;">
+  @component('emails/components/texto')
+    A empresa <span class="strong" style="font-weight:600;color:#0f172a;">{{ companyName }}</span>
+    está activada. Já pode entrar com o seu email e a palavra-passe que escolheu no registo.
+  @end
 
-          <table role="presentation" class="card" width="600" border="0" cellpadding="0" cellspacing="0" bgcolor="#ffffff" style="width:600px;max-width:600px;background-color:#ffffff;border:1px solid #e2e8f0;border-radius:14px;">
+  @component('emails/components/painel')
+    <p class="panel-label" style="margin:0 0 8px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:11px;line-height:16px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#94a3b8;">Por onde começar</p>
+    <p class="text" style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:14.5px;line-height:24px;color:#334155;">
+      1. Complete os dados da empresa e as contas bancárias.<br />
+      2. Registe os produtos e o stock inicial.<br />
+      3. Crie as contas da equipa — cada pessoa recebe um email para definir a sua palavra-passe.
+    </p>
+  @end
 
-            @include('emails/partials/taesic_header')
+  @if(password_definition_url)
+    @!component('emails/components/botao', {
+      url: password_definition_url,
+      texto: 'Definir nova palavra-passe',
+      nota: 'Só se quiser trocar de palavra-passe antes de entrar. Válido 24 horas.'
+    })
+  @end
 
-            <tr>
-              <td class="px" style="padding:34px 40px 30px 40px;">
-
-                <p class="eyebrow" style="margin:0 0 10px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:11px;line-height:16px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#059669;">
-                  Conta activa
-                </p>
-
-                <h1 class="h1" style="margin:0 0 16px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:23px;line-height:30px;font-weight:700;color:#172554;">
-                  Bem-vindo ao TAESIC, {{ userName }}
-                </h1>
-
-                <p class="text" style="margin:0 0 4px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:15px;line-height:25px;color:#334155;">
-                  A empresa <span class="strong" style="font-weight:600;color:#0f172a;">{{ companyName }}</span>
-                  está activada. Já pode entrar na plataforma com o seu email e a palavra-passe
-                  que escolheu no registo.
-                </p>
-
-                {{-- Próximos passos --}}
-                <table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0" style="margin:22px 0 4px 0;">
-                  <tr>
-                    <td class="panel" bgcolor="#f8fafc" style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:18px 20px;">
-                      <p class="panel-label" style="margin:0 0 10px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:11px;line-height:16px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#94a3b8;">
-                        Por onde começar
-                      </p>
-
-                      <table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0">
-                        <tr>
-                          <td valign="top" width="18" style="width:18px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:15px;line-height:23px;color:#1e3a8a;font-weight:700;">1.</td>
-                          <td class="text" style="padding-bottom:8px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:14.5px;line-height:23px;color:#334155;">
-                            Complete os dados da empresa e as contas bancárias de recebimento.
-                          </td>
-                        </tr>
-                        <tr>
-                          <td valign="top" width="18" style="width:18px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:15px;line-height:23px;color:#1e3a8a;font-weight:700;">2.</td>
-                          <td class="text" style="padding-bottom:8px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:14.5px;line-height:23px;color:#334155;">
-                            Registe os produtos e o stock inicial.
-                          </td>
-                        </tr>
-                        <tr>
-                          <td valign="top" width="18" style="width:18px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:15px;line-height:23px;color:#1e3a8a;font-weight:700;">3.</td>
-                          <td class="text" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:14.5px;line-height:23px;color:#334155;">
-                            Crie as contas da sua equipa. Cada pessoa recebe um email para definir
-                            a própria palavra-passe.
-                          </td>
-                        </tr>
-                      </table>
-
-                    </td>
-                  </tr>
-                </table>
-
-                @if(password_definition_url)
-                  <table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0">
-                    <tr>
-                      <td class="rule" style="border-top:1px solid #e2e8f0;font-size:0;line-height:0;height:1px;padding-top:26px;">&nbsp;</td>
-                    </tr>
-                  </table>
-
-                  <p class="text" style="margin:20px 0 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:15px;line-height:25px;color:#334155;">
-                    Quer trocar de palavra-passe antes de entrar? O link abaixo abre o formulário
-                    onde define uma nova — é você que a escolhe.
-                  </p>
-
-                  {{-- CTA à prova de bala: fundo na célula, padding no <a> em bloco --}}
-                  <table role="presentation" class="btn" border="0" cellpadding="0" cellspacing="0" align="center" style="margin:22px auto 20px auto;">
-                    <tr>
-                      <td align="center" bgcolor="#1e3a8a" style="background-color:#1e3a8a;border-radius:10px;">
-                        <a
-                          href="{{ password_definition_url }}"
-                          target="_blank"
-                          style="display:block;padding:15px 34px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:15px;line-height:20px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:10px;"
-                        >Definir nova palavra-passe</a>
-                      </td>
-                    </tr>
-                  </table>
-
-                  {{-- Fallback em texto: o URL sempre visível para copiar/colar --}}
-                  <table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0" style="margin:0 0 6px 0;">
-                    <tr>
-                      <td class="panel" bgcolor="#f8fafc" style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;">
-                        <p class="muted" style="margin:0 0 6px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:12px;line-height:18px;color:#64748b;">
-                          Válido durante 24 horas e de uso único. Se o botão não funcionar, copie
-                          este endereço para o navegador:
-                        </p>
-                        <a class="link" href="{{ password_definition_url }}" target="_blank" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:12.5px;line-height:19px;color:#1e3a8a;text-decoration:underline;word-break:break-all;">{{ password_definition_url }}</a>
-                      </td>
-                    </tr>
-                  </table>
-                @endif
-
-              </td>
-            </tr>
-
-            @include('emails/partials/taesic_footer')
-
-          </table>
-
-        </td>
-      </tr>
-    </table>
-  </body>
-</html>
+@end
