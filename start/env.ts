@@ -54,4 +54,15 @@ export default await Env.create(new URL('../', import.meta.url), {
   |----------------------------------------------------------
   */
   LIMITER_STORE: Env.schema.enum(['database', 'memory'] as const),
+
+  /*
+  |----------------------------------------------------------
+  | Variáveis do envio de email (Resend)
+  |----------------------------------------------------------
+  | Substituíram o SMTP/Mailpit. A chave é obrigatória: sem ela nenhum email de
+  | activação ou de recuperação de palavra-passe sairia, e é melhor a aplicação
+  | recusar arrancar do que falhar em silêncio a cada envio.
+  */
+  RESEND_API_KEY: Env.schema.string(),
+  RESEND_BASE_URL: Env.schema.string.optional(),
 })

@@ -45,6 +45,17 @@ export default class vendas extends BaseModel {
   @column()
   declare status: 'aberta' | 'fechada' | 'cancelada' | 'reembolsada' | 'proforma'
 
+  /**
+   * Motivos de anulação e de reembolso. As colunas existem na tabela desde sempre (ver a
+   * migration de `vendas`) mas nunca tinham sido declaradas no model — na prática eram
+   * inescreviveis: o Lucid recusa gravar uma propriedade que não conhece.
+   */
+  @column()
+  declare motivo_cancelamento: string | null
+
+  @column()
+  declare motivo_reembolso: string | null
+
   @hasMany(() => venda_itens, {
     foreignKey: 'venda_id',
   })

@@ -6,7 +6,7 @@ export default class vendapagamentosController {
     private service = new vendapagamentoService()
 
     // ==================== INDEX ====================
-    async index({ request, params, response,route }: HttpContext) {
+    async index({ request, params, response }: HttpContext) {
         try {
             const page = request.input('page', 1)
             const limit = request.input('limit', 20)
@@ -28,7 +28,7 @@ export default class vendapagamentosController {
     }
 
     // ==================== STORE ====================
-    async store({ request, response,route }: HttpContext) {
+    async store({ request, response }: HttpContext) {
         try {
             const payload = await request.validateUsing(createvendapagamentoValidator)
             const data = await this.service.create(payload)
@@ -59,7 +59,7 @@ export default class vendapagamentosController {
     }
 
     // ==================== SHOW ====================
-    async show({ params, response,route }: HttpContext) {
+    async show({ params, response }: HttpContext) {
         try {
             const data = await this.service.show(params.id, params.company_alias)
 
@@ -88,7 +88,7 @@ export default class vendapagamentosController {
     }
 
     // ==================== UPDATE ====================
-    async update({ params, request, response,route }: HttpContext) {
+    async update({ params, request, response }: HttpContext) {
         try {
             const payload = await request.validateUsing(updatevendapagamentoValidator,{
                 meta:{
@@ -132,7 +132,7 @@ export default class vendapagamentosController {
     }
 
     // ==================== DESTROY ====================
-    async destroy({ params, response,route }: HttpContext) {
+    async destroy({ params, response }: HttpContext) {
         try {
             await this.service.delete(params.id, params.company_alias)
 

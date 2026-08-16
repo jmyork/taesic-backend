@@ -31,9 +31,21 @@ test.group('cliente/pessoa validators - campos mínimos', () => {
   })
 
   test('createpessoaValidator aceita um payload só com tipo e nome', async ({ assert }) => {
-    const result = await createpessoaValidator.validate({ tipo: 'Colaborador', nome: 'Pessoa Mínima' })
-    assert.equal(result.tipo, 'Colaborador')
+    const result = await createpessoaValidator.validate({ tipo: 'Funcionario', nome: 'Pessoa Mínima' })
+    assert.equal(result.tipo, 'Funcionario')
     assert.equal(result.nome, 'Pessoa Mínima')
+  })
+
+  /**
+   * O `tipo` é um enum na BD — `enum('Cliente','Funcionario','Promotor')`, ver
+   * `alter_pessoa` — e o model tipa-o assim. O validator aceitava qualquer string: um
+   * valor fora desses três passava a validação e só rebentava (ou era truncado) no INSERT.
+   * Este teste antes afirmava o contrário, usando 'Colaborador'.
+   */
+  test('createpessoaValidator recusa um tipo fora do enum da coluna', async ({ assert }) => {
+    await assert.rejects(() =>
+      createpessoaValidator.validate({ tipo: 'Colaborador', nome: 'Pessoa Inválida' })
+    )
   })
 
   test('createpessoaValidator continua a exigir tipo e nome', async ({ assert }) => {

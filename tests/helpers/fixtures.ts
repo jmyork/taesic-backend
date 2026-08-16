@@ -104,7 +104,9 @@ export async function createCaixa(
     pos_id: pos.id,
     valor_inicial: overrides.valor_inicial ?? 0,
     total_vendas: 0,
-    status: overrides.status ?? 'aberto',
+    // A coluna só aceita 'Aberto'/'Fechado' (enum da BD e tipo do model). Os testes
+    // escrevem-no em minúsculas em vários sítios — normaliza-se aqui, num só lugar.
+    status: (overrides.status ?? 'Aberto').toLowerCase() === 'fechado' ? 'Fechado' : 'Aberto',
     observacoes: '',
     total_caixa: 0,
   })

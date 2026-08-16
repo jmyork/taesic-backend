@@ -1,3 +1,4 @@
+import { emailUtilizavel } from '../helpers/email_valido.js'
 import vine from '@vinejs/vine'
 export const createposValidator = vine.compile(
   vine.object({
@@ -16,6 +17,7 @@ export const createposValidator = vine.compile(
       .string()
       .trim()
       .email()
+      .use(emailUtilizavel())
       .unique(async (db, value, field) => {
         return !(await db
           .from('pos')
@@ -59,6 +61,7 @@ export const updateposValidator = vine.compile(
       .string()
       .trim()
       .email()
+      .use(emailUtilizavel())
       .unique(async (db, value, field) => {
         return !(await db
           .from('pos')

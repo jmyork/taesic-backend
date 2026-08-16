@@ -1,3 +1,4 @@
+import { emailUtilizavel } from '../helpers/email_valido.js'
 import vine from '@vinejs/vine'
 import { commonQueryFields } from './common_query_fields.js'
 
@@ -17,7 +18,7 @@ export const createproduto_fornecedoresValidator = vine.compile(
     email: vine
       .string()
       .trim()
-      .email()
+      .email().use(emailUtilizavel())
       .unique(async (db, value, field) => {
         return !(await db
           .from('produto_fornecedores')
@@ -62,7 +63,7 @@ export const updateproduto_fornecedoresValidator = vine.compile(
     email: vine
       .string()
       .trim()
-      .email()
+      .email().use(emailUtilizavel())
       .unique(async (db, value, field) => {
         return !(await db
           .from('produto_fornecedores')
@@ -100,7 +101,7 @@ export const ProdutoFornecedorQueryValidator = vine.compile(
     ...commonQueryFields,
     nome: vine.string().trim().escape().optional(),
     endereco: vine.string().trim().escape().optional(),
-    email: vine.string().trim().email().optional(),
+    email: vine.string().trim().email().use(emailUtilizavel()).optional(),
     telefone: vine.string().trim().escape().optional(),
   })
 )

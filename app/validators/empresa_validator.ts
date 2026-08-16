@@ -1,3 +1,4 @@
+import { emailUtilizavel } from '../helpers/email_valido.js'
 import vine from '@vinejs/vine'
 import { companyExists } from '../helpers/Utils.js'
 import ValidatorConstraint from '../helpers/Validator.js'
@@ -60,6 +61,7 @@ export const CreateCompanyWithUserAndStartACompany = vine.compile(
       email: vine
         .string()
         .email()
+        .use(emailUtilizavel())
         .escape()
         .trim()
         .maxLength(255)
@@ -121,7 +123,9 @@ export const CreateCompanyWithUserAndStartACompanyDetalhes = vine.compile(
   vine.object({
     // USER
     user_username: vine.string().escape().trim().maxLength(255).minLength(3),
-    user_email: vine.string().email().escape().trim(),
+    // Email do dono da empresa: é por ele que se activa a conta e se recupera o acesso,
+    // e é o que sai nas facturas — não pode ser temporário.
+    user_email: vine.string().email().escape().trim().use(emailUtilizavel()),
     user_password: vine.string().trim().escape().minLength(8).maxLength(255),
 
     // DADOS PESSOAIS

@@ -2,14 +2,13 @@ import VerificationTokenHash from '#models/verification_token_hash'
 import { DateTime } from 'luxon'
 import hash from '@adonisjs/core/services/hash'
 import { randomUUID } from 'node:crypto'
-import { TransactionClientContract } from '@adonisjs/lucid/types/database'
 
 export default class VerificationTokenHashService {
   /**
    * Lista tokens com paginação
    */
   async paginate(page: number = 1, limit: number = 20) {
-    return await VerificationTokenHash.query().where('deletedAt', null).paginate(page, limit)
+    return await VerificationTokenHash.query().whereNull('deleted_at').paginate(page, limit)
   }
 
   /**
@@ -117,7 +116,8 @@ export default class VerificationTokenHashService {
       .where('verification_token_expires_at', '<', now)
       .delete()
 
-    return result
+    // `.delete()` devolve o resultado do driver (um array com a contagem), não um número.
+    return Array.isArray(result) ? Number(result[0] ?? 0) : Number(result ?? 0)
   }
 
   /**
@@ -126,7 +126,7 @@ export default class VerificationTokenHashService {
   async findByUser(userId: string, page: number = 1, limit: number = 10) {
     return await VerificationTokenHash.query()
       .where('user_id', userId)
-      .where('deletedAt', null)
+      .whereNull('deleted_at')
       .orderBy('created_at', 'desc')
       .paginate(page, limit)
   }
@@ -137,7 +137,7 @@ export default class VerificationTokenHashService {
   async findByCompany(empresaId: string, page: number = 1, limit: number = 10) {
     return await VerificationTokenHash.query()
       .where('empresa_id', empresaId)
-      .where('deletedAt', null)
+      .whereNull('deleted_at')
       .orderBy('created_at', 'desc')
       .paginate(page, limit)
   }
@@ -151,7 +151,7 @@ export default class VerificationTokenHashService {
     let query = VerificationTokenHash.query()
       .where('verified', false)
       .where('verification_token_expires_at', '>', now)
-      .where('deletedAt', null)
+      .whereNull('deleted_at')
 
     if (userId) {
       query = query.where('user_id', userId)

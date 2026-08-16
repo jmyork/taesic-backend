@@ -1,6 +1,6 @@
 export interface CreatepessoaDTO {
   user_id?: string
-  tipo: string
+  tipo: 'Cliente' | 'Funcionario' | 'Promotor'
   ativo?: boolean
   pais?: string
   cidade?: string
@@ -14,7 +14,7 @@ export interface CreatepessoaDTO {
 }
 export interface UpdatepessoaDTO {
   user_id?: string
-  tipo?: string
+  tipo?: 'Cliente' | 'Funcionario' | 'Promotor'
   ativo?: boolean
   pais?: string
   cidade?: string

@@ -2,6 +2,7 @@ import { test } from '@japa/runner'
 import testUtils from '@adonisjs/core/services/test_utils'
 import AuthRepository from '#repositories/auth_repository'
 import User from '#models/user'
+import TaxaIva from '#models/taxa_iva'
 import { createTenant, createUser } from '../helpers/fixtures.js'
 import { userHasPermission } from '../../app/helpers/Utils.js'
 
@@ -102,5 +103,43 @@ test.group('funcionário — editar e desactivar', (group) => {
       assert.isTrue(await userHasPermission(userManager, perm), `AdminUserManager devia ter ${perm}`)
       assert.isFalse(await userHasPermission(vendedor, perm), `Vendedor NÃO devia ter ${perm}`)
     }
+  })
+})
+
+/**
+ * `auth/me` passou a devolver a identificação e as definições FISCAIS da empresa: sem
+ * isto o frontend não tinha como saber se a empresa liquida IVA e assumia 14% fixos em
+ * todos os documentos — em Angola o regime é por empresa e a taxa vem de `taxa_iva`.
+ */
+test.group('auth/me — definições fiscais da empresa', (group) => {
+  group.each.setup(() => testUtils.db().withGlobalTransaction())
+
+  test('details() devolve a empresa com regime_iva e taxa', async ({ assert }) => {
+    const { empresa, user } = await createTenant()
+
+    const repo = new AuthRepository()
+    const detalhes: any = await repo.details({ user_id: user.id })
+
+    assert.isObject(detalhes.empresa, 'auth/me tem de identificar a empresa do utilizador')
+    assert.equal(detalhes.empresa.id, empresa.id)
+    assert.equal(detalhes.empresa.company_alias, empresa.company_alias)
+    // O fixture cria a empresa com `regime_iva: false` — e tem de chegar como boolean,
+    // não como o 0/1 que o driver mysql2 devolve.
+    assert.isBoolean(detalhes.empresa.regime_iva)
+    assert.isFalse(detalhes.empresa.regime_iva)
+    assert.isNull(detalhes.empresa.taxa_iva.percentual, 'sem taxa associada, nada a assumir')
+  })
+
+  test('a taxa de IVA associada à empresa chega como número', async ({ assert }) => {
+    const { empresa, user } = await createTenant()
+    const taxa = await TaxaIva.create({ nome: 'IVA Geral', percentual: 14, ativo: true } as any)
+    await empresa.merge({ regime_iva: true, taxa_iva_id: taxa.id } as any).save()
+
+    const repo = new AuthRepository()
+    const detalhes: any = await repo.details({ user_id: user.id })
+
+    assert.isTrue(detalhes.empresa.regime_iva)
+    assert.equal(detalhes.empresa.taxa_iva.percentual, 14)
+    assert.equal(detalhes.empresa.taxa_iva.nome, 'IVA Geral')
   })
 })

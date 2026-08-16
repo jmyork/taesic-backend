@@ -1,6 +1,4 @@
 import vine from '@vinejs/vine'
-import { randomUUID } from 'crypto'
-import UniqueValidator from '../helpers/Validator.js'
 export const createcobrancaValidator = vine.compile(
   vine.object({
     subscricao_id: vine

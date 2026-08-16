@@ -384,6 +384,65 @@ export default class authRepository {
         id: p.id,
         nome: p.nome,
       })),
+
+      empresa: await this.empresaDoUtilizador(user),
+    }
+  }
+
+  /**
+   * Identificação e definições FISCAIS da empresa do utilizador autenticado.
+   *
+   * Existe porque não havia forma de o frontend saber se a empresa liquida IVA: os
+   * documentos assumiam 14% fixos em todos os ecrãs, quando em Angola o regime é por
+   * empresa (`empresa.regime_iva`) e a taxa é uma tabela própria (`taxa_iva`, ver o
+   * módulo de Relatórios). Uma empresa fora do regime não deve ver linha de IVA nenhuma.
+   *
+   * Vai no `auth/me` (permissão que todos os papéis já têm) em vez de uma rota nova:
+   * são dados da própria empresa de quem está autenticado, e todos os ecrãs de
+   * facturação precisam deles logo no arranque.
+   */
+  private async empresaDoUtilizador(user: User) {
+    if (!user.empresa_id) return null
+
+    const linha = await db
+      .from('empresa')
+      .leftJoin('taxa_iva', 'taxa_iva.id', 'empresa.taxa_iva_id')
+      // `empresa` NÃO tem coluna de email (ver as migrations): o email institucional da
+      // empresa é o da conta que a registou (`empresa.user_id`). É esse que deve sair nos
+      // documentos, em vez do endereço fixo que lá estava.
+      .leftJoin('user as dono', 'dono.id', 'empresa.user_id')
+      .where('empresa.id', user.empresa_id)
+      .select(
+        'empresa.id as id',
+        'empresa.nome as nome',
+        'empresa.nif as nif',
+        'empresa.company_alias as company_alias',
+        'empresa.localizacao as localizacao',
+        'empresa.contacto as contacto',
+        'empresa.regime_iva as regime_iva',
+        'dono.email as email',
+        'taxa_iva.nome as taxa_iva_nome',
+        'taxa_iva.percentual as taxa_iva_percentual'
+      )
+      .first()
+
+    if (!linha) return null
+
+    // mysql2 devolve boolean como 0/1 e DECIMAL como string — normalizar aqui, para o
+    // frontend não ter de adivinhar (mesma classe de bug já documentada em `is_service`).
+    return {
+      id: linha.id,
+      nome: linha.nome,
+      nif: linha.nif,
+      company_alias: linha.company_alias,
+      localizacao: linha.localizacao,
+      contacto: linha.contacto,
+      email: linha.email ?? null,
+      regime_iva: Boolean(linha.regime_iva),
+      taxa_iva: {
+        nome: linha.taxa_iva_nome ?? null,
+        percentual: linha.taxa_iva_percentual != null ? Number(linha.taxa_iva_percentual) : null,
+      },
     }
   }
 }

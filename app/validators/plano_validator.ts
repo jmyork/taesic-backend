@@ -1,6 +1,4 @@
 import vine from '@vinejs/vine'
-import { randomUUID } from 'crypto'
-import UniqueValidator from '../helpers/Validator.js'
 export const createplanoValidator = vine.compile(
   vine.object({
     nome: vine.string().trim().escape(),

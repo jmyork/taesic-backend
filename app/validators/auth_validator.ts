@@ -2,6 +2,7 @@ import vine from '@vinejs/vine'
 import type { FieldContext } from '@vinejs/vine/types'
 import type { Database } from '@adonisjs/lucid/database'
 import ValidatorConstraint from '../helpers/Validator.js'
+import { emailUtilizavel } from '../helpers/email_valido.js'
 
 /**
  * Unicidade de `username`/`email` **por domínio (empresa)**, nunca global.
@@ -71,6 +72,9 @@ export const UsersCreateValidator = vine.compile(
     email: vine
       .string()
       .email()
+      // O funcionário define a palavra-passe pelo link que recebe por email — um
+      // endereço temporário deixa a conta sem forma de ser activada.
+      .use(emailUtilizavel())
       .escape()
       .trim()
       .maxLength(255)
@@ -129,6 +133,7 @@ export const DomainUserUpdateValidator = vine.compile(
     email: vine
       .string()
       .email()
+      .use(emailUtilizavel())
       .escape()
       .trim()
       .maxLength(255)
@@ -155,15 +160,26 @@ export const UserLoginValidator = vine.compile(
   })
 )
 
+/**
+ * Recuperação de palavra-passe.
+ *
+ * A regra de email utilizável aplica-se aqui também, por decisão explícita: nenhum
+ * endereço temporário ou malformado é aceite em nenhum ponto da aplicação, sem excepções.
+ *
+ * Consequência a conhecer: uma conta antiga cujo email seja de um domínio descartável
+ * deixa de poder pedir recuperação por esta via — o pedido é recusado antes de se
+ * procurar a conta. Nesses casos a saída é um administrador da empresa alterar o email do
+ * funcionário (`PUT auth/:user_id`), que exige na mesma um endereço permanente.
+ */
 export const UserForgotPasswordValidator = vine.compile(
   vine.object({
-    email: vine.string().trim().email().exists(existeNoDominio),
+    email: vine.string().trim().email().use(emailUtilizavel()).exists(existeNoDominio),
   })
 )
 
 export const UserResetPasswordValidator = vine.compile(
   vine.object({
-    email: vine.string().trim().email().exists(existeNoDominio),
+    email: vine.string().trim().email().use(emailUtilizavel()).exists(existeNoDominio),
     password: vine.string().trim().escape().minLength(6),
   })
 )

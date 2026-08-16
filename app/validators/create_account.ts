@@ -1,9 +1,10 @@
+import { emailUtilizavel } from '../helpers/email_valido.js'
 import vine from '@vinejs/vine'
 
 export const CreateAccountValidator = vine.compile(
   vine.object({
     user: vine.object({
-      email: vine.string().trim().email(),
+      email: vine.string().trim().email().use(emailUtilizavel()),
       username: vine.string().trim(),
       pwd: vine.string().trim(),
     }),

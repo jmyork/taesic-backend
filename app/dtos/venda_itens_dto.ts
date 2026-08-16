@@ -23,7 +23,8 @@ export interface Createvenda_itensDTO {
   quantidade: number
   lote_produto_id: string
   venda_id: string
-  quantidade_reembolsada: number
+  /** Nunca vem do pedido: um item nasce sem nada reembolsado — só os reembolsos a mexem. */
+  quantidade_reembolsada?: number
 
   operation_type?: 'sub' | 'add'
   empresa_id?: string | null

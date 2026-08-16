@@ -15,6 +15,7 @@ import caixaRepository from './caixa_repository.js'
 import { DateTime } from 'luxon'
 import db from '@adonisjs/lucid/services/db'
 import Lote from '#models/faturacao/lote'
+import cupom from '#models/cupom'
 import emitter from '@adonisjs/core/services/emitter'
 import EstoqueRevertido from '#events/estoque_revertido'
 import { applyCommonFilters, FieldSpec } from '../helpers/query_filters.js'
@@ -149,6 +150,9 @@ export default class produtos_reembolsoRepository {
       // que anteriormente continuava a mostrar-se "fechada" com o total original.
       venda.status = 'reembolsada'
       venda.total = 0
+      // Sem venda não há desconto: deixar o `valor_desconto` antigo fazia a factura
+      // mostrar um desconto sobre um total zero.
+      venda.valor_desconto = 0
       venda.useTransaction(trx)
       await venda.save()
 
@@ -258,7 +262,26 @@ export default class produtos_reembolsoRepository {
         (soma, item) => soma + item.preco_unitario * item.quantidade,
         0
       )
-      venda.total = novoTotal
+
+      // O total recalculado é BRUTO. Se a venda foi fechada com cupão, o cliente pagou o
+      // valor líquido — gravar aqui o bruto fazia a venda saltar para quase o dobro do que
+      // foi cobrado (visto em dados reais: 1.714.947,05 pagos passavam a 3.429.632,70
+      // depois de devolver 261,40) e inflacionava `caixa.total_vendas`, que soma
+      // `vendas.total`. Reaplica-se a MESMA percentagem do cupão ao novo bruto, tal como
+      // `vendas_repository.close()` faz no fecho.
+      let valorDesconto = 0
+      if (venda.cupom_id) {
+        const cupomDaVenda = await cupom.find(venda.cupom_id, { client: trx })
+        if (cupomDaVenda) {
+          valorDesconto = Math.min(
+            Number((novoTotal * (cupomDaVenda.desconto / 100)).toFixed(2)),
+            novoTotal
+          )
+        }
+      }
+
+      venda.total = Number((novoTotal - valorDesconto).toFixed(2))
+      venda.valor_desconto = valorDesconto
       if (itensRestantes.length === 0) {
         venda.status = 'reembolsada'
       }

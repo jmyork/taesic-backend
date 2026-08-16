@@ -2,6 +2,8 @@ import { test } from '@japa/runner'
 import testUtils from '@adonisjs/core/services/test_utils'
 import VendasRepository from '#repositories/vendas_repository'
 import ProdutosReembolsoRepository from '#repositories/produtos_reembolso_repository'
+import PromotorRepository from '#repositories/promotor_repository'
+import CupomRepository from '#repositories/cupom_repository'
 import Lote from '#models/faturacao/lote'
 import Vendas from '#models/faturacao/vendas'
 import VendaItens from '#models/faturacao/venda_itens'
@@ -108,6 +110,69 @@ test.group('produtos_reembolso_repository', (group) => {
     const reembolsoRow = await ProdutosReembolso.query().where('venda_item_id', itemA.id).first()
     assert.isNotNull(reembolsoRow)
     assert.equal(reembolsoRow!.quantidade, 1)
+  })
+
+  /**
+   * Uma venda fechada com cupão é cobrada líquida (`total = bruto - desconto`). O
+   * recálculo do reembolso parcial somava apenas os itens restantes e gravava esse valor
+   * BRUTO como novo total — o desconto desaparecia e a venda passava a valer quase o
+   * dobro do que o cliente tinha pago. Apanhado em dados reais: uma venda de 3.429.894,10
+   * com 50% de desconto (pago 1.714.947,05) ficou, depois de devolver 261,40, a 3.429.632,70.
+   * O mesmo erro inflacionava `caixa.total_vendas`, que soma `vendas.total`.
+   */
+  test('reembolsar_parcial mantém o desconto do cupão no total recalculado', async ({ assert }) => {
+    const { empresa, user, pos } = await createTenant()
+    const produto = await createProduto(empresa)
+    const lote = await createLote(produto, { quantidade_em_estoque: 10, preco_venda: 1000 })
+
+    const caixa = await createCaixa(user, pos)
+    const venda = await createVenda(caixa)
+    const item = await createVendaItem(venda, lote, { quantidade: 4, preco_unitario: 1000 }) // bruto 4000
+
+    const promotorRepo = new PromotorRepository()
+    const promotor = await promotorRepo.create({
+      nome: 'Promotor Reembolso',
+      email: `pr-${Date.now()}@example.com`,
+      company_alias: empresa.company_alias,
+    })
+    const cupomRepo = new CupomRepository()
+    const cupom = await cupomRepo.create({
+      promotor_id: promotor.id,
+      desconto: 50,
+      company_alias: empresa.company_alias,
+    })
+
+    const vendasRepo = new VendasRepository()
+    await pagarVenda(venda, 2000) // 4000 - 50%
+    await vendasRepo.close({
+      id: venda.id,
+      user_id: user.id,
+      company_alias: empresa.company_alias,
+      cupom_codigo: cupom.codigo,
+    })
+    assert.equal(Number((await Vendas.findOrFail(venda.id)).total), 2000)
+
+    const reembolsoRepo = new ProdutosReembolsoRepository()
+    // devolve 1 das 4 unidades -> restam 3 (bruto 3000), com o mesmo cupão de 50% = 1500
+    await reembolsoRepo.reembolsar_parcial({
+      venda_id: venda.id,
+      venda_item_id: item.id,
+      user_id: user.id,
+      company_alias: empresa.company_alias,
+      quantidade: 1,
+    })
+
+    const depois = await Vendas.findOrFail(venda.id)
+    assert.equal(
+      Number(depois.total),
+      1500,
+      'o desconto do cupão tem de continuar aplicado depois do reembolso parcial'
+    )
+    assert.equal(
+      Number(depois.valor_desconto),
+      1500,
+      'o valor do desconto acompanha o novo bruto (3000 x 50%)'
+    )
   })
 
   test('reembolsar_parcial marca a venda como reembolsada quando não resta nenhum item', async ({ assert }) => {

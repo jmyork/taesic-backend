@@ -1,14 +1,14 @@
+import { emailUtilizavel } from '../helpers/email_valido.js'
 import vine from '@vinejs/vine'
-import { randomUUID } from 'crypto'
-import UniqueValidator from '../helpers/Validator.js'
 export const createpessoaValidator = vine.compile(
   vine.object({
     // Só nome/tipo são realmente indispensáveis — os restantes campos (incluindo user_id, que
     // exigia uma referência a um user já existente) eram obrigatórios só por faltar
     // `.optional()`, ao contrário do updatepessoaValidator que já os tem todos opcionais.
     nome: vine.string().trim().escape(),
-    tipo: vine.string().trim().escape(),
-    email: vine.string().trim().email().optional(),
+    // Os únicos valores que a coluna aceita — o model tipa-os assim e o DTO também.
+    tipo: vine.enum(['Cliente', 'Funcionario', 'Promotor']),
+    email: vine.string().trim().email().use(emailUtilizavel()).optional(),
     telefone: vine.string().trim().escape().optional(),
     nif: vine.string().trim().escape().optional(),
     data_nascimento: vine.date({ formats: ['iso8601'] }).optional(),
@@ -31,7 +31,7 @@ export const createpessoaValidator = vine.compile(
 export const updatepessoaValidator = vine.compile(
   vine.object({
     nome: vine.string().trim().escape().optional(),
-    email: vine.string().trim().email().optional(),
+    email: vine.string().trim().email().use(emailUtilizavel()).optional(),
     telefone: vine.string().trim().escape().optional(),
     nif: vine.string().trim().escape().optional(),
     data_nascimento: vine.date({ formats: ['iso8601'] }).optional(),
@@ -40,7 +40,7 @@ export const updatepessoaValidator = vine.compile(
     cidade: vine.string().trim().escape().optional(),
     pais: vine.string().trim().escape().optional(),
     ativo: vine.boolean().optional(),
-    tipo: vine.string().trim().escape().optional(),
+    tipo: vine.enum(['Cliente', 'Funcionario', 'Promotor']).optional(),
     user_id: vine
       .string()
       .trim()

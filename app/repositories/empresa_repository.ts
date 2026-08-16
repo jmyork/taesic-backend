@@ -72,20 +72,52 @@ export default class empresaRepository {
           .whereRaw('verification_token_hash.empresa_id = empresa.id')
           .where('verification_token_hash.purpose', 'account_activation')
           .where('verification_token_hash.verified', false)
-          .where('verification_token_hash.verification_token_expires_at', '<', now.toSQL())
+          .where('verification_token_hash.verification_token_expires_at', '<', now.toSQL()!)
       })
       .whereNotExists((query) => {
         query
           .from('verification_token_hash')
           .whereRaw('verification_token_hash.empresa_id = empresa.id')
           .where('verification_token_hash.purpose', 'account_activation')
-          .where('verification_token_hash.verification_token_expires_at', '>=', now.toSQL())
+          .where('verification_token_hash.verification_token_expires_at', '>=', now.toSQL()!)
       })
       .select('empresa.id')
 
     const ids = expiradas.map((e: { id: string }) => e.id)
     if (ids.length === 0) return 0
-    return db.from('empresa').whereIn('id', ids).delete()
+
+    // Apagar a empresa NÃO chega para apagar a conta. As chaves estrangeiras de `user` e
+    // `pessoa` para `empresa` são `SET NULL` (ver create_users_table/alter_pessoa), por
+    // isso o dono da conta e os seus dados pessoais sobreviviam à limpeza — ficavam
+    // órfãos, com `empresa_id` a NULL, para sempre. E `verification_token_hash` não tem
+    // sequer chave estrangeira: os tokens ficavam todos para trás.
+    //
+    // Aqui apaga-se o conjunto, pela ordem que as dependências exigem, numa transacção:
+    // se alguma parte falhar não fica meia conta apagada.
+    return db.transaction(async (trx) => {
+      const utilizadores = await trx
+        .from('user')
+        .whereIn('empresa_id', ids)
+        .select('id')
+        .then((linhas: { id: string }[]) => linhas.map((l) => l.id))
+
+      // Tokens de activação/recuperação (sem FK — têm de sair à mão).
+      await trx
+        .from('verification_token_hash')
+        .whereIn('empresa_id', ids)
+        .orWhereIn('user_id', utilizadores.length > 0 ? utilizadores : [''])
+        .delete()
+
+      if (utilizadores.length > 0) {
+        // `pessoa` é SET NULL nas duas pontas: sem isto ficariam registos de pessoas sem
+        // utilizador nem empresa.
+        await trx.from('pessoa').whereIn('user_id', utilizadores).delete()
+        await trx.from('user').whereIn('id', utilizadores).delete()
+      }
+
+      // O resto do tenant (pos, produtos, clientes, …) sai por CASCADE.
+      return trx.from('empresa').whereIn('id', ids).delete()
+    })
   }
 
   async CreateEmpresaUserDetalhes(data: CreateEmpresaUserDTO) {

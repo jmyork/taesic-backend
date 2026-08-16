@@ -6,7 +6,7 @@ export default class papelsController {
   private service = new papelService()
 
   // ==================== INDEX ====================
-  async index({ request, response, auth, bouncer }: HttpContext) {
+  async index({ request, response, bouncer }: HttpContext) {
     try {
       //console.log('Authorizing index action for user:', auth.user?.id)
       await bouncer.with('PapelPolicy').authorize('index')

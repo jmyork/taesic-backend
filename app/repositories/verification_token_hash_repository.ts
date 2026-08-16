@@ -5,10 +5,8 @@ import {
   Updateverification_token_hashDTO,
 } from '#dtos/verification_token_hash_dto'
 import { DeletedValue } from '../helpers/Types.js'
-import hash from '@adonisjs/core/services/hash'
 import empresaRepository from './empresa_repository.ts'
 import Empresa from '#models/empresa'
-import { randomUUID } from 'node:crypto'
 import { ResendCompanyActivationEmailDTO } from '#dtos/empresa_dto'
 import VerificationTokenHashService from '#services/verification_token_hash_service'
 import emitter from '@adonisjs/core/services/emitter'
@@ -121,37 +119,47 @@ export default class verification_token_hashRepository {
           .where('empresa.nif', data.nif_ou_company_alias)
           .orWhere('empresa.company_alias', data.nif_ou_company_alias)
       })
+      // TODOS os aliases são deliberadamente nomes que NÃO existem como coluna de
+      // `Empresa` (daí o prefixo `vth_`/`owner_`). Sem isso a hidratação do Lucid é uma
+      // armadilha: um alias que coincida com uma coluna do model (era o caso de
+      // `user_id` e de `verified`) vai parar à PROPRIEDADE, e um que não coincida vai
+      // parar a `$extras` — o código lia os dois ao contrário e ficava tudo `undefined`.
+      // Consequência real: `createToken` recebia `user_id`/`empresa_id` a `undefined`,
+      // gravava NULL nos dois, e o link reenviado nunca activava a empresa (o `verify()`
+      // não tem por onde lá chegar) — o utilizador ficava sem conseguir entrar, para
+      // sempre. Agora lê-se tudo de `$extras`, de forma uniforme.
       .select([
-        'empresa.id as empresa_id',
-        'empresa.nome as empresa_nome',
-        'empresa.company_alias as empresa_alias',
-        'empresa.nif as empresa_nif',
-        'user.id as user_id',
-        'user.email as user_email',
-        'pessoa.nome as user_nome',
-        'verification_token_hash.verified as verified',
-        'verification_token_hash.id as verification_token_id',
+        'empresa.id as vth_empresa_id',
+        'empresa.nome as vth_empresa_nome',
+        'empresa.company_alias as vth_empresa_alias',
+        'empresa.nif as vth_empresa_nif',
+        'user.id as owner_user_id',
+        'user.email as vth_user_email',
+        'pessoa.nome as vth_user_nome',
+        'verification_token_hash.verified as vth_verified',
+        'verification_token_hash.id as vth_token_id',
       ])
       .first()
-    
-    console.log(dadosEmpresa)
+
     // Se não encontrou, retorna null (ou lança, conforme tua política)
     if (!dadosEmpresa) {
       return null
     }
 
+    const extras = dadosEmpresa.$extras
+
     // Se já verificada, retorna false para o controller tratar
-    if (dadosEmpresa.verified) {
+    if (extras.vth_verified) {
       return false
     }
-    console.log(dadosEmpresa)
+
     // Desativar token existente (usa o id do token retornado ou procura pelo empresa_id)
     // Preferimos usar o id do token se disponível
     let vth
-    if (dadosEmpresa?.$extras.verification_token_id) {
-      vth = await verification_token_hash.findOrFail(dadosEmpresa?.$extras.verification_token_id)
+    if (extras.vth_token_id) {
+      vth = await verification_token_hash.findOrFail(extras.vth_token_id)
     } else {
-      vth = await verification_token_hash.findByOrFail('empresa_id', dadosEmpresa.id)
+      vth = await verification_token_hash.findByOrFail('empresa_id', extras.vth_empresa_id)
     }
     vth.verification_token_expires_at = DateTime.now().minus({ seconds: 10 })
     await vth.save()
@@ -159,21 +167,21 @@ export default class verification_token_hashRepository {
     // Criar novo token (fora de transaction)
     const verifyTokenS = new VerificationTokenHashService()
     const token = await verifyTokenS.createToken({
-      user_id: dadosEmpresa?.$extras.user_id,
-      empresa_id: dadosEmpresa?.id,
+      user_id: extras.owner_user_id,
+      empresa_id: extras.vth_empresa_id,
       purpose: 'account_activation',
     })
 
     // Retorna um objeto plano com os campos que o controller vai usar diretamente
     return {
-      empresa_id: dadosEmpresa?.id,
-      empresa_nome: dadosEmpresa?.nome,
-      empresa_alias: dadosEmpresa?.$extras.empresa_alias,
-      empresa_nif: dadosEmpresa?.nif,
-      user_id: dadosEmpresa?.user_id,
-      user_email: dadosEmpresa?.$extras.user_email,
-      user_nome: dadosEmpresa?.$extras.user_nome,
-      verified: dadosEmpresa?.verified,
+      empresa_id: extras.vth_empresa_id,
+      empresa_nome: extras.vth_empresa_nome,
+      empresa_alias: extras.vth_empresa_alias,
+      empresa_nif: extras.vth_empresa_nif,
+      user_id: extras.owner_user_id,
+      user_email: extras.vth_user_email,
+      user_nome: extras.vth_user_nome,
+      verified: extras.vth_verified,
       token,
     }
   }

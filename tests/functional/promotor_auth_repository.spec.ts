@@ -121,7 +121,7 @@ test.group('promotor_auth_repository', (group) => {
     assert.isNull(naoEncontrado)
   })
 
-  test('pedirOtp para um email desconhecido não lança erro nem envia email (não revela existência)', async ({ assert }) => {
+  test('pedirOtp para um email desconhecido não lança erro nem envia email (não revela existência)', async () => {
     const authRepo = new PromotorAuthRepository()
     await authRepo.pedirOtp('ninguem-registado@example.com')
     fakeMailer.mails.assertNoneSent()

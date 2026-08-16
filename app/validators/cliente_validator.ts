@@ -1,3 +1,4 @@
+import { emailUtilizavel } from '../helpers/email_valido.js'
 import vine from '@vinejs/vine'
 import { randomUUID } from 'crypto'
 import { commonQueryFields } from './common_query_fields.js'
@@ -62,7 +63,7 @@ export const createclienteValidator = vine.compile(
     tipo: vine.enum(['Pessoa Física', 'Pessoa Jurídica']),
     nome: vine.string().trim().escape(),
     razao_social: vine.string().trim().escape().optional(),
-    email: vine.string().trim().email().unique(unicoPorEmpresa('email')).optional(),
+    email: vine.string().trim().email().use(emailUtilizavel()).unique(unicoPorEmpresa('email')).optional(),
     telefone: vine.string().trim().escape().optional(),
     telefone_secundario: vine.string().trim().escape().optional(),
     nif: vine.string().trim().escape().unique(unicoPorEmpresa('nif')).optional(),
@@ -144,7 +145,7 @@ export const updateclienteValidator = vine.compile(
     nome: vine.string().trim().escape().optional(),
     nome_fantasia: vine.string().trim().escape().optional(),
     razao_social: vine.string().trim().escape().optional(),
-    email: vine.string().trim().email().unique(unicoPorEmpresa('email')).optional(),
+    email: vine.string().trim().email().use(emailUtilizavel()).unique(unicoPorEmpresa('email')).optional(),
     telefone: vine.string().trim().escape().optional(),
     telefone_secundario: vine.string().trim().escape().optional(),
     nif: vine.string().trim().escape().unique(unicoPorEmpresa('nif')).optional(),

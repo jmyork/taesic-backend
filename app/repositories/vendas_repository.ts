@@ -62,6 +62,9 @@ export default class vendasRepository {
       // leftJoin (nunca inner): indicar o cliente é OPCIONAL — uma venda a "Cliente
       // Final" tem cliente_presencial_id a null e não pode desaparecer da listagem.
       .leftJoin('cliente', 'cliente.id', 'vendas.cliente_presencial_id')
+      // O documento tem de dizer QUAL o desconto aplicado, não só o valor — a venda só
+      // guarda `cupom_id`.
+      .leftJoin('cupom', 'cupom.id', 'vendas.cupom_id')
 
     if (filter?.company_alias) {
       query.where("empresa.company_alias", filter.company_alias)
@@ -89,6 +92,10 @@ export default class vendasRepository {
         "user.username as vendedor_nome",
         "pos.id as pos_id",
         "pos.nome as pos_nome",
+        // A morada impressa na factura é a do POSTO onde a venda ocorreu, não a da sede.
+        "pos.localizacao as pos_localizacao",
+        "cupom.codigo as cupom_codigo",
+        "cupom.desconto as cupom_desconto",
         // Sem isto a API só devolvia o UUID `cliente_presencial_id` — não havia forma
         // de mostrar o cliente numa listagem ou factura sem um pedido extra por linha.
         "cliente.nome as cliente_nome",
@@ -116,6 +123,9 @@ export default class vendasRepository {
       .join('empresa', 'empresa.id', 'pos.empresa_id')
       .join('user', 'user.id', 'caixa.user_id')
       .leftJoin('cliente', 'cliente.id', 'vendas.cliente_presencial_id')
+      // O documento tem de dizer QUAL o desconto aplicado, não só o valor — a venda só
+      // guarda `cupom_id`.
+      .leftJoin('cupom', 'cupom.id', 'vendas.cupom_id')
       .where('empresa.company_alias', data.company_alias ?? '')
       .where('vendas.id', data.id)
       // .where('caixa.user_id', data.user_id!)
@@ -124,6 +134,9 @@ export default class vendasRepository {
         'user.username as vendedor_nome',
         'pos.id as pos_id',
         'pos.nome as pos_nome',
+        'pos.localizacao as pos_localizacao',
+        'cupom.codigo as cupom_codigo',
+        'cupom.desconto as cupom_desconto',
         'cliente.nome as cliente_nome',
         'cliente.nif as cliente_nif',
         'cliente.numero as cliente_numero',
