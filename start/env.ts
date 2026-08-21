@@ -26,6 +26,13 @@ export default await Env.create(new URL('../', import.meta.url), {
   SESSION_DRIVER: Env.schema.enum(['cookie', 'memory'] as const),
 
   /*
+  | Domínio do cookie de sessão. Opcional: só é definido quando o frontend e a
+  | API estão em subdomínios diferentes (produção). Deve começar por ponto —
+  | `.taesic.bknkv.com` — para cobrir app. e api. Ausente em desenvolvimento.
+  */
+  SESSION_COOKIE_DOMAIN: Env.schema.string.optional(),
+
+  /*
   |----------------------------------------------------------
   | Variables for configuring database connection
   |----------------------------------------------------------

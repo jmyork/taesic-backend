@@ -23,7 +23,20 @@ const sessionConfig = defineConfig({
    * cookie store
    */
   cookie: {
-    domain: '',
+    /**
+     * Domínio do cookie de sessão.
+     *
+     * Em produção o frontend e a API vivem em subdomínios diferentes
+     * (app.taesic.bknkv.com e api.taesic.bknkv.com). Sem domínio explícito o
+     * cookie fica preso ao host que o emitiu e o frontend nunca o reenvia — daí
+     * SESSION_COOKIE_DOMAIN=.taesic.bknkv.com no .env de produção.
+     *
+     * Em desenvolvimento a variável fica ausente, o valor é undefined e o
+     * atributo Domain é omitido, que é o correcto para localhost. Uma string
+     * vazia NÃO é equivalente: produz um `Domain=` inválido no Set-Cookie e o
+     * browser descarta o cookie inteiro, derrubando a sessão sem dar erro.
+     */
+    domain: env.get('SESSION_COOKIE_DOMAIN'),
     path: '/',
     httpOnly: true,
     secure: app.inProduction,
