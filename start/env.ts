@@ -118,6 +118,14 @@ export default await Env.create(new URL('../', import.meta.url), {
   APP_PASSWORD_DEFINITION_URL: Env.schema.string.optional(),
 
   /*
+  | Origens de browser autorizadas a falar directamente com esta API, separadas
+  | por vírgula. Opcional: ausente, permite-se tudo em desenvolvimento e nada em
+  | produção — porque com o BFF o frontend deixou de falar com a API a partir do
+  | browser, e pedidos servidor-a-servidor não passam por CORS (ver config/cors.ts).
+  */
+  CORS_ORIGINS: Env.schema.string.optional(),
+
+  /*
   |----------------------------------------------------------
   | Consulta de NIF (serviço externo bknkv-utils-api-resources)
   |----------------------------------------------------------
