@@ -9,6 +9,7 @@ import db from '@adonisjs/lucid/services/db'
 import type { TransactionClientContract } from '@adonisjs/lucid/types/database'
 import { DateTime } from 'luxon'
 import { randomUUID } from 'node:crypto'
+import env from '#start/env'
 // import cache from '@adonisjs/cache/services/main'
 // const CACHE_TTL = '10m'
 
@@ -247,15 +248,14 @@ export const generateSecurePassword = (): string => {
  * Idealmente, deveria incluir um token de reset seguro em vez da senha
  */
 export const buildPasswordDefinitionUrl = async (companyAlias: string, userId: string) => {
-  const frontendBaseUrl =
-    process.env.APP_PASSWORD_DEFINITION_URL ||
-    // Ver nota em empresa_controller.activate_company: a omissão 5173 era do frontend
-    // Vite antigo; o Next corre na 3000.
-    `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password/:token`
+  // Renomeada de `frontendBaseUrl`: o nome colidia com a função exportada com o
+  // mesmo nome, mais abaixo neste ficheiro, e impedia reutilizá-la aqui.
+  const paginaDeReposicao =
+    env.get('APP_PASSWORD_DEFINITION_URL') ?? `${frontendBaseUrl()}/reset-password/:token`
 
   const resetToken = await generateResetToken(userId)
 
-  const resetUrl = frontendBaseUrl.replace(':token', resetToken)
+  const resetUrl = paginaDeReposicao.replace(':token', resetToken)
 
   // Preserve tenant context for frontend -> backend reset POST flow.
   return resetUrl.includes('?')
@@ -270,8 +270,7 @@ export const buildPasswordDefinitionUrl = async (companyAlias: string, userId: s
  * aqui, ao lado de `buildPasswordDefinitionUrl`, porque a alteração de email de um
  * funcionário passou a precisar exactamente do mesmo link de activação.
  */
-export const frontendBaseUrl = () =>
-  (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/+$/, '')
+export const frontendBaseUrl = () => env.get('FRONTEND_URL').replace(/\/+$/, '')
 
 /**
  * Link de activação/confirmação enviado por email.

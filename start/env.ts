@@ -79,4 +79,63 @@ export default await Env.create(new URL('../', import.meta.url), {
   */
   RESEND_API_KEY: Env.schema.string(),
   RESEND_BASE_URL: Env.schema.string.optional(),
+
+  /*
+  | Remetente dos emails. O domínio tem de estar verificado na Resend, senão os
+  | envios são recusados. Opcional: ausente, usa-se `noreply@taesic.com`.
+  */
+  MAIL_FROM: Env.schema.string.optional(),
+
+  /*
+  | Destinatário dos alertas operacionais (estoque crítico, validade próxima,
+  | cancelamento de valor alto). Opcional POR DESENHO: a ausência desliga o
+  | envio — os alertas continuam a ser calculados, apenas não seguem por email
+  | (ver app/listeners/estoque_alertas.ts).
+  */
+  ALERT_EMAIL: Env.schema.string.optional(),
+
+  /*
+  |----------------------------------------------------------
+  | URLs do frontend
+  |----------------------------------------------------------
+  | O backend envia por email links que apontam para PÁGINAS do frontend —
+  | activação de empresa e reposição de password —, nunca para a API.
+  |
+  | FRONTEND_URL é OBRIGATÓRIA. Estava a ser lida por `process.env` com omissão
+  | para `http://localhost:3000`: um servidor de produção sem ela enviava aos
+  | utilizadores links para a máquina deles próprios, e o email saía com
+  | aparência perfeitamente normal. Falhar no arranque é preferível.
+  |
+  | `tld: false` porque `http://localhost:3000` não tem domínio de topo.
+  */
+  FRONTEND_URL: Env.schema.string({ format: 'url', tld: false }),
+
+  /*
+  | Página que recebe o token de definição de password, quando não é a derivada
+  | de FRONTEND_URL. Opcional: ausente, usa-se `<FRONTEND_URL>/reset-password/:token`.
+  | O marcador `:token` é substituído pelo token real.
+  */
+  APP_PASSWORD_DEFINITION_URL: Env.schema.string.optional(),
+
+  /*
+  |----------------------------------------------------------
+  | Consulta de NIF (serviço externo bknkv-utils-api-resources)
+  |----------------------------------------------------------
+  */
+  NIF_API_URL: Env.schema.string.optional(),
+  NIF_API_TIMEOUT_MS: Env.schema.number.optional(),
+  NIF_CACHE_DIAS: Env.schema.number.optional(),
+
+  /*
+  |----------------------------------------------------------
+  | Limiares dos alertas operacionais
+  |----------------------------------------------------------
+  | Declarados como número, e não como texto, para que um valor inválido seja
+  | apanhado no arranque. Antes eram lidos com `Number(env.get(...))`: um
+  | `cinco` no .env dava NaN, e qualquer comparação com NaN é falsa — o alerta
+  | desligava-se em silêncio, sem erro nenhum.
+  */
+  ESTOQUE_LIMIAR_CRITICO: Env.schema.number.optional(),
+  LOTE_VALIDADE_ALERTA_DIAS: Env.schema.number.optional(),
+  VENDA_CANCELADA_LIMIAR: Env.schema.number.optional(),
 })

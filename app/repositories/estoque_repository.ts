@@ -191,7 +191,7 @@ export default class estoqueRepository {
    * (na notificação) transformar uma movimentação de stock já confirmada em falha. */
   private async avisarSeEstoqueCritico(loteId: string, quantidadeRestante: number, companyAlias?: string) {
     try {
-      const limiar = Number(env.get('ESTOQUE_LIMIAR_CRITICO', '5'))
+      const limiar = env.get('ESTOQUE_LIMIAR_CRITICO') ?? 5
       if (quantidadeRestante > limiar) return
 
       const lote = await Lote.query().where('lote_produto.id', loteId).preload('produto').first()

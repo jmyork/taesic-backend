@@ -144,7 +144,7 @@ export default class loteRepository {
    *
    * @returns número de lotes para os quais um alerta foi emitido.
    */
-  async avisarLotesProximosValidade(diasAlerta = Number(env.get('LOTE_VALIDADE_ALERTA_DIAS', '30'))) {
+  async avisarLotesProximosValidade(diasAlerta = env.get('LOTE_VALIDADE_ALERTA_DIAS') ?? 30) {
     const limite = DateTime.now().plus({ days: diasAlerta })
 
     const lotes = await this.baseQuery()

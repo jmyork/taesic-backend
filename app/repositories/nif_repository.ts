@@ -40,18 +40,18 @@ function derivarTipoCliente(tipo: string | null): 'Pessoa Jurídica' | 'Pessoa F
 
 export default class NifRepository {
   private baseUrl() {
-    return env.get('NIF_API_URL', 'http://127.0.0.1:3400').toString().replace(/\/+$/, '')
+    return (env.get('NIF_API_URL') ?? 'http://127.0.0.1:3400').replace(/\/+$/, '')
   }
 
   private timeoutMs() {
     // 20s cobre o pior caso medido (~15s quando o browser do scraper ainda está
     // por lançar). Só a 1.ª consulta de cada NIF paga isto — as seguintes vêm da
     // cache. Se estourar, devolvemos `disponivel: false` e ninguém fica bloqueado.
-    return Number(env.get('NIF_API_TIMEOUT_MS', '20000'))
+    return env.get('NIF_API_TIMEOUT_MS') ?? 20_000
   }
 
   private cacheDias() {
-    return Number(env.get('NIF_CACHE_DIAS', '30'))
+    return env.get('NIF_CACHE_DIAS') ?? 30
   }
 
   private paraResultado(linha: NifConsulta, cached: boolean): NifResultado {

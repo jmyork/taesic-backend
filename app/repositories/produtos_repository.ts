@@ -248,8 +248,10 @@ export default class produtosRepository {
    * explicitamente quais se aplicam, nunca escondido num único booleano.
    */
   async alertas(company_alias: string, filter?: { tipo?: 'estoque' | 'validade' | 'todos'; page?: number; limit?: number }) {
-    const limiarEstoque = Number(env.get('ESTOQUE_LIMIAR_CRITICO', '5'))
-    const limiteValidade = DateTime.now().plus({ days: Number(env.get('LOTE_VALIDADE_ALERTA_DIAS', '30')) })
+    const limiarEstoque = env.get('ESTOQUE_LIMIAR_CRITICO') ?? 5
+    const limiteValidade = DateTime.now().plus({
+      days: env.get('LOTE_VALIDADE_ALERTA_DIAS') ?? 30,
+    })
 
     const tipo = filter?.tipo ?? 'todos'
 

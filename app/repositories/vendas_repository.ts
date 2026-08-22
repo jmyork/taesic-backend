@@ -364,7 +364,7 @@ export default class vendasRepository {
    * `VENDA_CANCELADA_LIMIAR`, por omissão 50000). */
   private async avisarSeCancelamentoAltoValor(vendaId: string, companyAlias?: string) {
     try {
-      const limiar = Number(env.get('VENDA_CANCELADA_LIMIAR', '50000'))
+      const limiar = env.get('VENDA_CANCELADA_LIMIAR') ?? 50_000
 
       const itens = await venda_itens.query().where('venda_id', vendaId).whereNull('deleted_at')
       const total = itens.reduce((soma, item) => soma + item.preco_unitario * item.quantidade, 0)
