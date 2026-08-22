@@ -8,13 +8,19 @@ import swagger from "#config/swagger";
 import './public_platform_routes.js'
 import './companydomainroutes.js'
 import { middleware } from './kernel.js'
-import { loginThrottle, signupThrottle, emailActionThrottle } from '#start/limiter'
+import { loginThrottle, loginIpThrottle, signupThrottle, emailActionThrottle } from '#start/limiter'
 import { controllers } from '#generated/controllers'
 
 router.post('api/create-company-with-details', [controllers.Empresa, 'create_account_with_detalhes']).use(signupThrottle)//(v)
 router.get('api/verify/:token', [controllers.Empresa, 'activate_company'])//(v)
 router.post('api/resend-company-activation-email', [controllers.Empresa, 'resend_verification_email']).use(emailActionThrottle)//(v)
-router.post('api/auth/login', [controllers.Auth, 'login']).use(loginThrottle) //(V)
+// Dois limitadores, de proposito: `loginThrottle` conta por CONTA (trava o
+// brute-force a um alvo, venha de onde vier) e `loginIpThrottle` conta por
+// ORIGEM (trava a pulverizacao por muitas contas a partir do mesmo sitio).
+// Nenhum dos dois sozinho cobre o outro caso.
+router
+  .post('api/auth/login', [controllers.Auth, 'login'])
+  .use([loginThrottle, loginIpThrottle]) //(V)
 
 router.post('api/auth/logout', [controllers.Auth, 'logout']).use(middleware.auth({ guards: ['api'] })) //(v)
 
