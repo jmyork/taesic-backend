@@ -5,6 +5,7 @@ import {
   Updateproduto_mediaDTO,
 } from '#dtos/produto_media_dto'
 import { DeletedValue } from '../helpers/Types.js'
+import { urlPublicaR2 } from '../helpers/r2_url.js'
 import Empresa from '#models/empresa'
 import { randomUUID } from 'crypto'
 import env from '#start/env'
@@ -141,10 +142,7 @@ export default class produto_mediaRepository {
 
         await file.moveToDisk(imagePath)
 
-        const imageUrl =
-          env.get('NODE_ENV') !== 'development'
-            ? `${env.get('R2_ENDPOINT')}/${env.get('R2_BUCKET')}/${imagePath}`
-            : `${env.get('R2_DEV_SHOW_ENDPOINT')}/${imagePath}`
+        const imageUrl = urlPublicaR2(imagePath)
 
         return {
           ...produtoImagemData,

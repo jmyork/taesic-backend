@@ -53,7 +53,14 @@ export default await Env.create(new URL('../', import.meta.url), {
   R2_SECRET: Env.schema.string(),
   R2_BUCKET: Env.schema.string(),
   R2_ENDPOINT: Env.schema.string(),
-  R2_DEV_SHOW_ENDPOINT: Env.schema.string(),
+
+  /*
+  | Base pública para servir os objectos do bucket. OPCIONAL de propósito: era
+  | obrigatória com o nome R2_DEV_SHOW_ENDPOINT e impedia o arranque em
+  | produção, onde não há subdomínio r2.dev. Ausente, os URLs caem no endpoint
+  | S3 do bucket (ver app/helpers/r2_url.ts).
+  */
+  R2_PUBLIC_URL: Env.schema.string.optional(),
 
   /*
   |----------------------------------------------------------

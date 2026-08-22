@@ -12,8 +12,8 @@ import VerificationTokenHashService from '#services/verification_token_hash_serv
 import { giveRoleToUser } from '../helpers/Utils.js'
 import pessoa from '#models/pessoa'
 import { randomUUID } from 'crypto'
-import env from '#start/env'
 import { semearMetodosPagamento } from '../helpers/metodos_pagamento_padrao.js'
+import { urlPublicaR2 } from '../helpers/r2_url.js'
 
 export default class empresaRepository {
   baseQuery(trx?: TransactionClientContract) {
@@ -186,13 +186,10 @@ export default class empresaRepository {
         const imagePath = `images/profile/${fileName}`
         await file.moveToDisk(imagePath)
 
-        imageUrl =
-          env.get('NODE_ENV') !== 'development'
-            ? `${env.get('R2_ENDPOINT')}/${env.get('R2_BUCKET')}/${imagePath}`
-            : `${env.get('R2_DEV_SHOW_ENDPOINT')}/${imagePath}`
+        imageUrl = urlPublicaR2(imagePath)
       } else {
         // Imagem padrão
-        imageUrl = `${env.get('R2_ENDPOINT')}/${env.get('R2_BUCKET')}/images/default-user.png`
+        imageUrl = urlPublicaR2('images/default-user.png')
       }
 
       const p = await pessoa.create({
