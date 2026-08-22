@@ -126,6 +126,19 @@ export default await Env.create(new URL('../', import.meta.url), {
   CORS_ORIGINS: Env.schema.string.optional(),
 
   /*
+  | Segredo partilhado com o servidor do frontend (o BFF). Definido, esta API
+  | recusa qualquer pedido que não o traga no cabeçalho `x-bff-secret`.
+  |
+  | Opcional, e ausente não faz nada: activar é um acto deliberado, e exige pôr
+  | o MESMO valor no .env do backend e no do frontend. Ausente dos dois lados,
+  | tudo continua a funcionar como antes.
+  |
+  | Ver app/middleware/apenas_bff_middleware.ts, incluindo o que isto NÃO
+  | substitui: a fronteira a sério é a rede.
+  */
+  BFF_SHARED_SECRET: Env.schema.string.optional(),
+
+  /*
   |----------------------------------------------------------
   | Consulta de NIF (serviço externo bknkv-utils-api-resources)
   |----------------------------------------------------------

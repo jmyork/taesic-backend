@@ -33,6 +33,9 @@ server.use([
  * requests with a registered route.
  */
 router.use([
+  // Primeiro de todos, de propósito: se o pedido não vem do frontend indicado,
+  // não vale a pena interpretar o corpo, abrir sessão nem inicializar a auth.
+  () => import('#middleware/apenas_bff_middleware'),
   () => import('@adonisjs/core/bodyparser_middleware'),
   () => import('@adonisjs/session/session_middleware'),
   () => import('@adonisjs/shield/shield_middleware'),
