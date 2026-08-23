@@ -19,13 +19,6 @@ export const policies = {
   ProjectRolePolicy: () => import('#policies/project_role_policy'),
   ProjectUserPolicy: () => import('#policies/project_user_policy'),
   ProjectPolicy: () => import('#policies/project_policy'),
-  UserPapelPolicy: () => import('#policies/user_papel_policy'),
-  PapelPermissaoPolicy: () => import('#policies/papel_permissao_policy'),
-  PapelPolicy: () => import('#policies/papel_policy'),
-  PermissaoPolicy: () => import('#policies/permissao_policy'),
   AuthPolicy: () => import('#policies/auth_policy'),
   CupomPolicy: () => import('#policies/cupom_policy'),
-  PlanoPolicy: () => import('#policies/plano_policy'),
-  TaxaIvaPolicy: () => import('#policies/taxa_iva_policy'),
-  RelatoriosPlataformaPolicy: () => import('#policies/relatorios_plataforma_policy'),
 }

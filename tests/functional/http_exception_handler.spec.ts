@@ -4,6 +4,8 @@ import HttpExceptionHandler from '#exceptions/handler'
 import CupomInvalidoException from '#exceptions/cupom_invalido_exception'
 import UnAuthorizedCaixaException from '#exceptions/un_authorized_caixa_exception'
 import CaixaIsAlreadyOpenException from '#exceptions/caixa_is_already_open_exception'
+import { errors as bouncerErrors } from '@adonisjs/bouncer'
+import { AuthorizationResponse } from '@adonisjs/bouncer'
 
 /**
  * O handler global antes só tratava especificamente `CaixaAlreadyClosedException` — as
@@ -44,6 +46,25 @@ test.group('HttpExceptionHandler', () => {
     await handler.handle(new UnAuthorizedCaixaException(), ctx)
 
     assert.equal(ctx.response.getStatus(), 401)
+  })
+
+  test('uma falha de autorização do Bouncer devolve 403, não 500', async ({ assert }) => {
+    // O que motivou este teste: `relatorios_plataforma_controller` embrulhava cada
+    // acção num try/catch que apanhava esta excepção e respondia 500 "Erro interno
+    // do servidor". Com a policy dessas rotas partida (ver
+    // `relatorios_plataforma_policy.spec.ts`), era isto que um administrador de
+    // plataforma via — um "a aplicação avariou" em vez de um "não pode", que manda a
+    // pessoa investigar o sítio errado. O try/catch foi removido; isto fixa que o
+    // handler global faz a tradução certa.
+    const ctx = await testUtils.createHttpContext()
+    const handler = new HttpExceptionHandler()
+
+    await handler.handle(
+      new bouncerErrors.E_AUTHORIZATION_FAILURE(AuthorizationResponse.deny()),
+      ctx
+    )
+
+    assert.equal(ctx.response.getStatus(), 403)
   })
 
   test('CaixaIsAlreadyOpenException devolve 400 (idem)', async ({ assert }) => {

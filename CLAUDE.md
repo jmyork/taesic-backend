@@ -1646,7 +1646,12 @@ o NIF existe ou é de quem o escreve — 7.16 mantém-se em aberto nos pontos 1,
   era um discordar do outro.
 - 6 testes em `tests/functional/empresa_registo_nif.spec.ts`.
 
-#### As rotas de plataforma passam a poder não existir
+#### As rotas de plataforma passam a poder não existir — **revertido em 7.18**
+
+> A decisão desta subsecção durou pouco: 7.18 tirou as rotas de plataforma deste backend
+> por completo, e a flag `PLATFORM_ROUTES_ENABLED` deixou de existir. Fica aqui o
+> raciocínio, que continua a valer para perceber porque é que a separação de rede não é a
+> mesma coisa que a separação de código.
 
 Decisão tomada com o utilizador: o backoffice **não** ganha um backend próprio. O grupo
 `adminOnly` já existe aqui, e copiá-lo significaria duas bases de código sobre **uma só
@@ -1693,3 +1698,240 @@ canalização da sessão, que é a parte cara; a poda dos ecrãs de inquilino é
 
 - Suite completa: **706 testes** (eram 693), `tsc --noEmit` sem erros. Migração corrida em
   dev e em teste.
+
+#### 7.17.1 Os relatórios de plataforma estavam inalcançáveis por um administrador de plataforma
+
+Encontrado ao construir o primeiro ecrã do backoffice, que é precisamente o que estas
+rotas servem. **Dois portões em série que não concordavam**, e cada um errado no sentido
+oposto:
+
+| portão | critério | quem passa |
+|---|---|---|
+| `adminOnly()` | `papel.escopo = 'plataforma'` | os `Platform_*` — correcto |
+| `RelatoriosPlataformaPolicy` | `IsUserAnAdmin()`, papel chamado literalmente `admin` | o **Admin de inquilino** — exactamente o contrário |
+
+Uma conta só de plataforma passava a primeira e falhava a segunda: as cinco rotas
+`relatorios-plataforma/*` estavam mortas para quem existe para as usar. E o Admin de
+qualquer empresa satisfazia a policy — não era um buraco aberto, porque `adminOnly()` o
+barra antes, mas o único dos dois portões a decidir por si autorizava quem não devia.
+
+**A causa é a de 7.13, com efeito retardado.** `IsUserAnAdmin` procura o nome `admin`, e
+isso descrevia o mundo enquanto `papel.nome` era único globalmente. Desde que os papéis
+passaram a pertencer a uma empresa, "Admin" é o papel MODELO de inquilino, clonado por
+empresa — e nenhum `Platform_*` se chama assim. A migração de 7.13 tratou do middleware,
+do seeder e da atribuição de papéis; **esta policy passou ao lado**, porque nada a
+exercitava.
+
+- Passa a usar `userHasPlatformRole()`, o MESMO critério do middleware. Os dois portões
+  deixam de poder discordar, que era a raiz — não o nome errado em si.
+- **`IsUserAnAdmin` continua a existir e continua a decidir por nome.** É usada por outras
+  policies de plataforma (`plano`, `taxa_iva`, ...). Não foi tocada nesta passagem porque
+  cada uma precisa de ser vista caso a caso — mas **é backlog real, e do mesmo género**:
+  `grep -rn "IsUserAnAdmin" app/policies`.
+
+#### O 500 que devia ser 403
+
+O `catch` genérico do controller apanhava a excepção do Bouncer e respondia **500 "Erro
+interno do servidor"** a quem simplesmente não tinha autorização. Com a policy partida,
+era isto que um administrador de plataforma via: não um "não pode", mas um "a aplicação
+avariou" — que manda investigar o sítio errado e transforma um problema de autorização
+num pedido de suporte.
+
+`relatorios_plataforma_controller` perdeu o try/catch nas 5 acções (mais 5 dos ~48 a
+migrar para o handler global). O handler já traduz as duas coisas: `error.messages` do
+VineJS → 400 com os erros, qualquer `Exception` → o seu próprio status, logo 403 para o
+Bouncer. Fixado em `http_exception_handler.spec.ts`.
+
+**Lição a reter**: um try/catch que devolve sempre 500 não protege nada — apaga a
+distinção entre "não pode" e "rebentou", e foi isso que manteve este bug invisível.
+
+- 3 testes em `tests/functional/relatorios_plataforma_policy.spec.ts` (o administrador de
+  plataforma passa; o Admin de inquilino não; sem papel não), 1 em
+  `http_exception_handler.spec.ts`. Suite: **710 testes**, `tsc --noEmit` sem erros.
+
+### 7.18 A plataforma sai deste backend
+
+Decisão do dono do produto, que **inverte a de 7.17**: os endpoints de plataforma deixam
+de viver aqui e passam a viver num backend próprio, `taesic-backoffice-api`. A flag
+`PLATFORM_ROUTES_ENABLED` que 7.17 introduziu ficou sem objecto e foi removida — não
+sobrevive a esta secção nenhuma referência a ela.
+
+#### A regra que passa a governar os dois projectos
+
+**`taesic-backend` é o dono ÚNICO do esquema.** Os dois backends partilham a mesma base de
+dados MySQL, e isso não tem contorno: é a mesma tabela `empresa`, os mesmos `papel` e
+`permissao`, lidos pelos dois lados. `taesic-backoffice-api` **não tem `database/migrations`
+e nunca corre `migration:run`** — uma coluna nova pede-se aqui.
+
+O preço disto é a deriva silenciosa: o outro projecto tem models sobre tabelas que este
+projecto altera. A rede que o apanha é o `colunas_fantasma.spec.ts`, que existe dos dois
+lados e compara os models com o `information_schema` real.
+
+#### O que saiu
+
+Os sete conjuntos completos (controller + service + repository + validator + policy + DTO)
+de `papel`, `permissao`, `papel_permissao`, `user_papel`, `plano`, `taxa_iva` e
+`relatorios_plataforma` — 42 ficheiros. Verificado por grep ANTES de apagar: **nenhum deles
+era importado por código de inquilino**; a única menção cruzada em todo o repositório era um
+comentário em `relatorios_repository.ts`.
+
+Saíram também as acções `empresas/:id/suspender|reactivar` e o que só elas usavam
+(`SuspenderEmpresaValidator`, os DTOs, `SuspenderPropriaEmpresaException`, e os métodos
+`suspender`/`reactivar`/`revogarSessoes` de `empresa_repository`).
+
+#### O que FICA, e porquê — é aqui que está o cuidado
+
+- **Os models de todos eles.** `papel`/`permissao`/`papel_permissao`/`user_papel` são o RBAC
+  deste backend; `plano` é lido por `subscricao`/`cobranca`; `taxa_iva` por
+  `relatorios_repository`. Tirar os models partiria o inquilino.
+- **As migrações**, todas. Ver a regra acima.
+- **A APLICAÇÃO da suspensão**, inteira: `ValidateCompanyAliasMiddleware`, a verificação no
+  `login()` e o filtro do catálogo público. Só a ACÇÃO mudou de casa. É a divisão certa —
+  quem corta o acesso é o backoffice, quem o nega é o backend onde o inquilino bate à porta,
+  e os dois falam pela mesma coluna `empresa.suspensa_em`.
+- **`AdminOnlyMiddleware` e `userHasPlatformRole()`**, mas só por causa do `cupom` (abaixo).
+  Quando essa rota sair, saem com ela.
+- `commands/permissao_conceder.ts` e `permissao_revogar.ts` — são ferramentas do dono do
+  esquema e trabalham sobre os models, não sobre os repositórios que saíram.
+
+#### `platform_cupom` — a excepção, e porque não foi movida
+
+Foi levantada a hipótese de que os cupões de plataforma fossem de quem promove a
+**plataforma** e ganha sobre a venda de pacotes de assinatura. **Isso não existe no
+esquema**, e confirmá-lo antes de mover evitou levar a coisa errada com o nome certo:
+
+- `cupom_id` só aparece numa tabela: `vendas`.
+- `subscricao` e `cobranca` não têm ligação nenhuma a cupões.
+- `promotor_painel_repository` calcula ganhos por `vendas` → `cupom` → `empresa`, ou seja,
+  sobre vendas feitas DENTRO de uma empresa.
+
+Logo, `platform_cupom` é hoje CRUD cross-tenant sobre os cupões de desconto dos inquilinos.
+Fica onde está, assinalado no próprio `routes.ts`, até haver decisão: ou se apaga (cada
+empresa já gere os seus por `domain_cupom`), ou se desenha a funcionalidade em falta —
+cupão ligado a `subscricao`/`cobranca`, com comissão — e essa nasce no backoffice, em
+tabelas próprias.
+
+#### Ajustes colaterais
+
+- `relatorios_repository.spec.ts` e `relatorios_repository_detalhados.spec.ts` criavam a
+  taxa de IVA pelo repositório que saiu; passaram a usar o **model** `TaxaIva` directamente
+  (que fica). São testes de inquilino e continuam a exercitar o que interessa:
+  `empresa.taxa_iva_id` no cálculo de IVA liquidado.
+- `decimal_places_regression.spec.ts` perdeu o caso do `plano` (o validator foi-se) e
+  manteve os três de inquilino.
+- `empresa_suspensao.spec.ts` foi reescrito: só a aplicação, e passou a suspender por
+  **escrita directa** à coluna, que é exactamente o que o outro backend faz. Testar a
+  aplicação através de uma acção que já não vive aqui seria testar código ausente.
+
+- Suite: **653 testes** (eram 710), `tsc --noEmit` sem erros. A diferença de 57 explica-se
+  toda e sem resto: **35** do `modules_load.spec.ts` (7 conjuntos × 5 pastas que ele varre)
+  e **22** dos testes que foram com o código. Verificado com `list:routes`: as rotas
+  `platform_*` passaram de 45 a 6 (só `cupom`), e as 212 `domain_*` ficaram intactas.
+
+---
+
+### 7.19 ⚠️ Migrações têm de poder correr duas vezes — incidente em `api-qua`
+
+**Isto parou um deploy e deixou o sistema sem ninguém com acesso.** A regra que se segue
+não é preferência de estilo.
+
+#### O que aconteceu
+
+`sudo deploy-app api-qua --force` morreu no passo das migrações:
+
+```
+❯ error database/migrations/1784662475791_alter_papel_por_empresa
+[ error ] alter table `papel` add `empresa_id` char(36) null, add `escopo` enum(...)
+          - Duplicate column name 'empresa_id'
+```
+
+A coluna já lá estava. Uma tentativa anterior tinha corrido a migração **em parte**:
+o `ALTER TABLE` passou, um passo posterior rebentou, e a migração **não ficou registada
+em `adonis_schema`**.
+
+A causa é a mesma de sempre e vale a pena escrevê-la sem rodeios:
+
+> **O MySQL não faz DDL transaccional.** Um `ALTER TABLE` que corra fica feito, mesmo que
+> a migração falhe na instrução seguinte. O Adonis só escreve em `adonis_schema` quando a
+> migração termina inteira. Logo, uma migração que falha a meio deixa **o esquema meio
+> alterado e o registo a dizer que ela nunca correu**.
+
+A partir daí o `migration:run` fica preso: bate sempre na mesma primeira instrução, e
+**nenhuma das migrações seguintes corre**.
+
+#### Porque é que o sistema ficou de facto em baixo
+
+Porque a migração a seguir, `1784662475792_backfill_papel_por_empresa`, nunca chegou a
+correr. Sem o backfill, todos os `papel` ficaram com o `escopo` no valor por omissão da
+coluna nova, **`'modelo'`** — e um papel `modelo` não é atribuível a ninguém nem é de
+plataforma (ver 7.13). Resultado: aplicação de pé, base de dados de pé, e nem
+administradores de plataforma nem funcionários de inquilino com permissão para nada.
+
+A lição operacional: **uma migração de esquema seguida de um backfill são uma unidade**.
+Falhar a primeira não deixa o sistema como estava — deixa-o num estado que nunca foi
+desenhado.
+
+#### A regra
+
+**Toda a migração que altere esquema pergunta antes de fazer.** `database/helpers/esquema.ts`
+dá as três perguntas: `temColuna()`, `temIndice()`, `temRestricao()`. Padrão:
+
+```ts
+async up() {
+  this.defer(async (db) => {
+    if (!(await temColuna(db, 'papel', 'empresa_id'))) {
+      await db.rawQuery('ALTER TABLE papel ADD COLUMN empresa_id CHAR(36) NULL')
+    }
+  })
+}
+```
+
+Três consequências a aceitar de propósito:
+
+1. **`this.defer()` em vez de `this.schema.alterTable()`.** O knex constrói a instrução
+   antes de qualquer pergunta ao `information_schema` poder ser feita. O `defer` corre na
+   ordem em que foi declarado, entre os outros passos — o que preserva a sequência.
+2. **SQL directo, específico do MySQL.** Já era o caso das partes que o knex não expõe
+   (colunas geradas, CHECK). Este projecto é MySQL e não tem intenção de deixar de ser.
+3. **`migration:run --dry-run` deixa de mostrar estas instruções**, porque o Lucid salta
+   os `defer` em dry-run. É uma perda real, e ainda assim o troco é bom: o dry-run nunca
+   apanhou esta classe de falha, e a idempotência recupera-a sozinha.
+
+Também o `down()`. Um `down` que rebente a meio deixa exactamente a mesma confusão.
+
+Já convertidas e **verificadas**: `..._791_alter_papel_por_empresa`,
+`..._793_alter_colunas_fantasma`, `..._794_alter_empresa_suspensao`,
+`..._795_alter_empresa_nif_unico`. A `..._792_backfill_papel_por_empresa` já nascera
+idempotente (é `defer` puro sobre dados, e reexecuta sem duplicar).
+
+#### Como isto foi verificado — e como reverificar
+
+Numa base descartável, nunca em dev nem em teste. `process.env` do shell ganha ao `.env`
+(`@adonisjs/env` só preenche o que ainda não estiver definido), portanto:
+
+```bash
+# 1. base limpa; correr tudo de raiz
+node -e "..."                                  # CREATE DATABASE auth_system_migtest
+DB_DATABASE=auth_system_migtest node ace migration:run
+
+# 2. simular a avaria: apagar objectos de uma migração (meia aplicada) e
+#    apagar as linhas dela de adonis_schema (por registar)
+# 3. correr outra vez — tem de passar
+DB_DATABASE=auth_system_migtest node ace migration:run
+```
+
+Resultado obtido: as quatro voltaram a correr sobre o estado partido, reconstruíram o que
+faltava (`chave_escopo`, `papel_escopo_nome_unique`, `papel_escopo_empresa_chk`), e o
+`information_schema` ficou sem uma única restrição duplicada. `database/schema.ts`
+regenerado ficou byte a byte igual ao que já estava versionado.
+
+#### Antes de qualquer deploy
+
+```bash
+node ace migration:status     # o que está por correr, ANTES de correr
+```
+
+E ter presente que, **em produção, um `migration:run` que falhe não se resolve por
+tentativa e erro.** Com as migrações idempotentes resolve-se por reexecução; sem elas,
+resolve-se a olhar para o `information_schema` e a completar o que falta à mão — que é
+onde nasce a próxima avaria.

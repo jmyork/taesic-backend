@@ -1,5 +1,7 @@
 import { BaseSchema } from '@adonisjs/lucid/schema'
 
+import { temIndice } from '../helpers/esquema.js'
+
 /**
  * `empresa.nif` passa a ter unicidade a sério — na base de dados.
  *
@@ -32,6 +34,7 @@ import { BaseSchema } from '@adonisjs/lucid/schema'
 export default class extends BaseSchema {
   protected tableName = 'empresa'
 
+  /** Re-executavel: ver `database/helpers/esquema.ts`. */
   async up() {
     // 1. Normalizar o que já existe. `TRIM()` do MySQL tira espaços dos dois lados.
     this.defer(async (db) => {
@@ -54,19 +57,24 @@ export default class extends BaseSchema {
             `Resolva os duplicados (decidir qual empresa fica com o NIF) antes de correr esta migração.`
         )
       }
-    })
 
-    // 3. O índice. `nif` continua nullable e o MySQL permite vários NULL num índice
-    //    único — o que é o comportamento certo aqui: uma empresa sem NIF gravado é um
-    //    problema de dados, não algo que este índice deva resolver.
-    this.schema.alterTable(this.tableName, (table) => {
-      table.unique(['nif'], { indexName: 'empresa_nif_unique' })
+      // 3. O índice. `nif` continua nullable e o MySQL permite vários NULL num índice
+      //    único — o que é o comportamento certo aqui: uma empresa sem NIF gravado é um
+      //    problema de dados, não algo que este índice deva resolver.
+      //
+      //    Guardado, como todo o DDL deste projecto: sem a pergunta, uma segunda
+      //    passagem morre com `Duplicate key name`. Ver `database/helpers/esquema.ts`.
+      if (!(await temIndice(db, 'empresa', 'empresa_nif_unique'))) {
+        await db.rawQuery('CREATE UNIQUE INDEX empresa_nif_unique ON empresa (nif)')
+      }
     })
   }
 
   async down() {
-    this.schema.alterTable(this.tableName, (table) => {
-      table.dropUnique(['nif'], 'empresa_nif_unique')
+    this.defer(async (db) => {
+      if (await temIndice(db, 'empresa', 'empresa_nif_unique')) {
+        await db.rawQuery('DROP INDEX empresa_nif_unique ON empresa')
+      }
     })
   }
 }

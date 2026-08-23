@@ -16,11 +16,7 @@ import marcasController from '#controllers/marca_controller'
 import metodopagamentosController from '#controllers/metodopagamento_controller'
 import MetricasController from '#controllers/metricas_controller'
 import NifController from '#controllers/nif_controller'
-import papelsController from '#controllers/papel_controller'
-import papel_permissaosController from '#controllers/papel_permissao_controller'
-import permissaosController from '#controllers/permissao_controller'
 import pessoasController from '#controllers/pessoa_controller'
-import planosController from '#controllers/plano_controller'
 import possController from '#controllers/pos_controller'
 import produto_categoriassController from '#controllers/produto_categorias_controller'
 import produto_contraindicacoessController from '#controllers/produto_contraindicacoes_controller'
@@ -36,10 +32,7 @@ import PromotorAuthController from '#controllers/promotor_auth_controller'
 import PromotorController from '#controllers/promotor_controller'
 import PromotorPainelController from '#controllers/promotor_painel_controller'
 import RelatoriosController from '#controllers/relatorios_controller'
-import RelatoriosPlataformaController from '#controllers/relatorios_plataforma_controller'
 import subscricaosController from '#controllers/subscricao_controller'
-import taxaIvasController from '#controllers/taxa_iva_controller'
-import user_papelsController from '#controllers/user_papel_controller'
 import userpossController from '#controllers/userpos_controller'
 import venda_itenssController from '#controllers/venda_itens_controller'
 import vendapagamentosController from '#controllers/vendapagamento_controller'
@@ -75,11 +68,7 @@ export const controllers = {
   MetodoPagamento: metodopagamentosController,
   Metricas: MetricasController,
   Nif: NifController,
-  Papel: papelsController,
-  PapelPermissao: papel_permissaosController,
-  Permissao: permissaosController,
   Pessoa: pessoasController,
-  Plano: planosController,
   Pos: possController,
   ProdutoCategorias: produto_categoriassController,
   ProdutoContraindicacoes: produto_contraindicacoessController,
@@ -95,10 +84,7 @@ export const controllers = {
   Promotor: PromotorController,
   PromotorPainel: PromotorPainelController,
   Relatorios: RelatoriosController,
-  RelatoriosPlataforma: RelatoriosPlataformaController,
   Subscricao: subscricaosController,
-  TaxaIva: taxaIvasController,
-  UserPapel: user_papelsController,
   UserPos: userpossController,
   VendaItens: venda_itenssController,
   VendaPagamento: vendapagamentosController,

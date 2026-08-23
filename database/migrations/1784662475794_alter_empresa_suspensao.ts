@@ -1,5 +1,7 @@
 import { BaseSchema } from '@adonisjs/lucid/schema'
 
+import { temColuna, temIndice, temRestricao } from '../helpers/esquema.js'
+
 /**
  * Suspender uma empresa passa a ser possível — e a significar alguma coisa.
  *
@@ -34,35 +36,64 @@ import { BaseSchema } from '@adonisjs/lucid/schema'
 export default class extends BaseSchema {
   protected tableName = 'empresa'
 
+  /** Re-executável: cada passo pergunta antes de fazer. Ver
+   *  `database/helpers/esquema.ts` para o porquê de isto não ser opcional. */
   async up() {
-    this.schema.alterTable(this.tableName, (table) => {
-      table.timestamp('suspensa_em').nullable().index()
-      table.string('suspensa_motivo', 255).nullable()
+    this.defer(async (db) => {
+      if (!(await temColuna(db, 'empresa', 'suspensa_em'))) {
+        await db.rawQuery('ALTER TABLE empresa ADD COLUMN suspensa_em TIMESTAMP NULL')
+      }
+
+      if (!(await temIndice(db, 'empresa', 'empresa_suspensa_em_index'))) {
+        await db.rawQuery('CREATE INDEX empresa_suspensa_em_index ON empresa (suspensa_em)')
+      }
+
+      if (!(await temColuna(db, 'empresa', 'suspensa_motivo'))) {
+        await db.rawQuery('ALTER TABLE empresa ADD COLUMN suspensa_motivo VARCHAR(255) NULL')
+      }
 
       // Quem carregou no botão. `SET NULL` e não `CASCADE`: apagar o administrador
       // que suspendeu não pode reactivar a empresa que ele suspendeu.
-      table.uuid('suspensa_por').nullable()
-      table.foreign('suspensa_por').references('id').inTable('user').onDelete('SET NULL')
-    })
+      if (!(await temColuna(db, 'empresa', 'suspensa_por'))) {
+        await db.rawQuery('ALTER TABLE empresa ADD COLUMN suspensa_por CHAR(36) NULL')
+      }
 
-    this.schema.raw(
-      `ALTER TABLE empresa
-         ADD CONSTRAINT empresa_suspensao_chk
-         CHECK (
-           (suspensa_em IS NULL AND suspensa_motivo IS NULL)
-           OR (suspensa_em IS NOT NULL AND suspensa_motivo IS NOT NULL)
-         )`
-    )
+      if (!(await temRestricao(db, 'empresa', 'empresa_suspensa_por_foreign'))) {
+        await db.rawQuery(
+          `ALTER TABLE empresa
+             ADD CONSTRAINT empresa_suspensa_por_foreign
+             FOREIGN KEY (suspensa_por) REFERENCES user (id) ON DELETE SET NULL`
+        )
+      }
+
+      if (!(await temRestricao(db, 'empresa', 'empresa_suspensao_chk'))) {
+        await db.rawQuery(
+          `ALTER TABLE empresa
+             ADD CONSTRAINT empresa_suspensao_chk
+             CHECK (
+               (suspensa_em IS NULL AND suspensa_motivo IS NULL)
+               OR (suspensa_em IS NOT NULL AND suspensa_motivo IS NOT NULL)
+             )`
+        )
+      }
+    })
   }
 
   async down() {
-    this.schema.raw(`ALTER TABLE empresa DROP CONSTRAINT empresa_suspensao_chk`)
+    this.defer(async (db) => {
+      if (await temRestricao(db, 'empresa', 'empresa_suspensao_chk')) {
+        await db.rawQuery('ALTER TABLE empresa DROP CONSTRAINT empresa_suspensao_chk')
+      }
 
-    this.schema.alterTable(this.tableName, (table) => {
-      table.dropForeign(['suspensa_por'])
-      table.dropColumn('suspensa_por')
-      table.dropColumn('suspensa_motivo')
-      table.dropColumn('suspensa_em')
+      if (await temRestricao(db, 'empresa', 'empresa_suspensa_por_foreign')) {
+        await db.rawQuery('ALTER TABLE empresa DROP FOREIGN KEY empresa_suspensa_por_foreign')
+      }
+
+      for (const coluna of ['suspensa_por', 'suspensa_motivo', 'suspensa_em']) {
+        if (await temColuna(db, 'empresa', coluna)) {
+          await db.rawQuery(`ALTER TABLE empresa DROP COLUMN ${coluna}`)
+        }
+      }
     })
   }
 }

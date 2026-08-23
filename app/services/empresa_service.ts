@@ -1,10 +1,5 @@
 import empresaRepository from '#repositories/empresa_repository'
-import {
-  ReactivarEmpresaDTO,
-  ResendCompanyActivationEmailDTO,
-  SuspenderEmpresaDTO,
-  UpdateempresaDTO,
-} from '#dtos/empresa_dto'
+import { ResendCompanyActivationEmailDTO, UpdateempresaDTO } from '#dtos/empresa_dto'
 // import User from '#models/user'
 // import emitter from '@adonisjs/core/services/emitter'
 import verification_token_hashRepository from '#repositories/verification_token_hash_repository'
@@ -29,14 +24,6 @@ export default class empresaService {
 
   delete(id: string) {
     return this.repo.softDelete(id)
-  }
-
-  suspender(data: SuspenderEmpresaDTO) {
-    return this.repo.suspender(data)
-  }
-
-  reactivar(data: ReactivarEmpresaDTO) {
-    return this.repo.reactivar(data)
   }
 
   getUnverifiedCompanies() {

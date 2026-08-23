@@ -148,26 +148,6 @@ export default await Env.create(new URL('../', import.meta.url), {
   */
   BFF_SHARED_SECRET_BACKOFFICE: Env.schema.string.optional(),
 
-  /*
-  |----------------------------------------------------------
-  | Rotas de plataforma (backoffice) — registar ou não
-  |----------------------------------------------------------
-  |
-  | O grupo `adminOnly` de start/routes.ts governa a plataforma inteira,
-  | cross-tenant: suspender empresas, planos, taxas de IVA, relatórios de todos
-  | os inquilinos. `false` faz com que essas rotas NÃO cheguem sequer a ser
-  | registadas — não existem, respondem 404 como qualquer caminho inventado.
-  |
-  | Para que serve: o mesmo build vai para duas instâncias. A pública, exposta à
-  | Internet, corre com isto a `false`; a restrita (atrás de VPN ou lista de IPs)
-  | corre com isto ligado. Uma só base de código, um só dono das migrações, e a
-  | separação a sério feita onde ela existe mesmo — na rede.
-  |
-  | Ausente = ligado, para nenhum deploy actual mudar de comportamento ao
-  | actualizar. Não é uma fronteira de acesso por si: mesmo registadas, estas
-  | rotas continuam a exigir autenticação e um papel de escopo `plataforma`.
-  */
-  PLATFORM_ROUTES_ENABLED: Env.schema.boolean.optional(),
 
   /*
   |----------------------------------------------------------

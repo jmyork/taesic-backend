@@ -211,25 +211,6 @@ export const SetupCompanyValidator = vine.compile(
   })
 )
 
-/**
- * Suspender uma empresa exige um motivo escrito.
- *
- * Não é burocracia: a suspensão corta o acesso a um cliente inteiro e revoga as
- * sessões de todos os seus utilizadores. Quem for atender o telefonema que se
- * segue precisa de saber porquê, e quem reactivar precisa de saber o que tinha de
- * ficar resolvido antes. O CHECK da base de dados impõe o mesmo invariante do
- * lado de lá (`empresa_suspensao_chk`), para que nenhum outro caminho de código
- * consiga gravar uma suspensão muda.
- *
- * `minLength(10)` é o suficiente para excluir o "x" e o "teste" sem obrigar a
- * escrever um relatório: "Fraude NIF" passa.
- */
-export const SuspenderEmpresaValidator = vine.compile(
-  vine.object({
-    motivo: vine.string().trim().minLength(10).maxLength(255),
-  })
-)
-
 export const ResendVerificationEmailValidator = vine.compile(
   vine.object({
     nif_ou_company_alias: vine.string().exists(async (db, value) => {

@@ -2,36 +2,46 @@ import { test } from '@japa/runner'
 import testUtils from '@adonisjs/core/services/test_utils'
 import { DateTime } from 'luxon'
 import db from '@adonisjs/lucid/services/db'
-import EmpresaRepository from '#repositories/empresa_repository'
 import AuthRepository from '#repositories/auth_repository'
 import ValidateCompanyAliasMiddleware from '#middleware/validate_company_alias_middleware'
 import Empresa from '#models/empresa'
 import User from '#models/user'
 import VerificationTokenHash from '#models/verification_token_hash'
-import { ESCOPO_PAPEL } from '#models/auth/papel'
-import { giveRoleToUser } from '../../app/helpers/Utils.js'
 import { paginateCatalogoProdutos } from '../../app/helpers/catalogo_produtos_query.js'
 import { createEmpresa, createUser, createProduto, createLote } from '../helpers/fixtures.js'
 
 /**
- * Suspender uma empresa — a peça que faltava para o backoffice não ser decorativo.
+ * A APLICAÇÃO da suspensão de uma empresa — o que este backend faz quando encontra
+ * uma empresa suspensa.
  *
- * Até esta sessão não havia forma de cortar o acesso a um inquilino:
- * `ValidateCompanyAliasMiddleware` verificava o alias, o dono e o `verified`, e mais
- * nada. Uma empresa comprometida, em dívida, ou registada com o NIF de outra pessoa
- * continuava a facturar até alguém ir à base de dados à mão.
+ * A ACÇÃO de suspender (a rota, o motivo obrigatório, a revogação das sessões, a
+ * trava de não suspender a própria empresa) mudou-se para `taesic-backoffice-api`,
+ * onde vivem os endpoints de plataforma. Aqui fica o que corta o acesso ao
+ * inquilino — que é onde o inquilino vive. Os dois backends lêem e escrevem a mesma
+ * coluna `empresa.suspensa_em` na mesma base de dados.
  *
- * O que estes testes protegem, por ordem de importância:
- *
- *  1. a suspensão corta o acesso a TODAS as rotas de inquilino, num só ponto;
- *  2. corta-o já, e não só a quem voltar a autenticar-se — as sessões vivas morrem;
- *  3. não corta a mais ninguém (o inquilino do lado continua a trabalhar);
- *  4. quem suspende não se consegue trancar a si próprio de fora.
+ * Por isso os testes abaixo suspendem por **escrita directa**, e não pelo
+ * repositório: é exactamente o que o outro backend faz do lado de lá, e testar a
+ * aplicação através de uma acção que já não vive aqui seria testar código ausente.
  */
-test.group('empresa — suspensão', (group) => {
+test.group('empresa — aplicação da suspensão', (group) => {
   group.each.setup(() => testUtils.db().withGlobalTransaction())
 
-  const repo = new EmpresaRepository()
+  /** O que o backoffice grava. `new Date()` e não `DateTime.toSQL()`: o offset do
+   *  luxon faz o MySQL recusar com "Incorrect datetime value" (ver 7.11). */
+  async function suspender(empresa: Empresa, motivo = 'Suspeita de fraude') {
+    await db
+      .from('empresa')
+      .where('id', empresa.id)
+      .update({ suspensa_em: new Date(), suspensa_motivo: motivo })
+  }
+
+  async function reactivar(empresa: Empresa) {
+    await db
+      .from('empresa')
+      .where('id', empresa.id)
+      .update({ suspensa_em: null, suspensa_motivo: null, suspensa_por: null })
+  }
 
   /** `login()` exige um `verification_token_hash` verificado do utilizador. */
   async function activar(user: User) {
@@ -43,15 +53,6 @@ test.group('empresa — suspensão', (group) => {
       verified: true,
       purpose: 'account_activation',
     })
-  }
-
-  async function sessoesVivas(user: User) {
-    const linha = await db
-      .from('auth_access_tokens')
-      .where('tokenable_id', user.id)
-      .count('* as total')
-      .first()
-    return Number(linha?.total ?? 0)
   }
 
   /** Corre o portão das rotas de inquilino como o faria um pedido real. */
@@ -68,88 +69,6 @@ test.group('empresa — suspensão', (group) => {
     return { passou, status: ctx.response.getStatus() }
   }
 
-  /** Um administrador de plataforma que NÃO pertence à empresa que vai suspender. */
-  async function adminDaPlataforma() {
-    const casa = await createEmpresa()
-    const admin = await createUser(casa)
-    await giveRoleToUser(admin, 'Platform_Admin', undefined, { escopo: ESCOPO_PAPEL.plataforma })
-    return admin
-  }
-
-  test('suspender grava a data, o motivo e o autor', async ({ assert }) => {
-    const empresa = await createEmpresa()
-    const admin = await adminDaPlataforma()
-
-    await repo.suspender({
-      empresa_id: empresa.id,
-      motivo: 'NIF pertence a outra empresa',
-      actor_id: admin.id,
-    })
-
-    const recarregada = await Empresa.findOrFail(empresa.id)
-    assert.isTrue(recarregada.estaSuspensa)
-    assert.equal(recarregada.suspensa_motivo, 'NIF pertence a outra empresa')
-    assert.equal(recarregada.suspensa_por, admin.id)
-  })
-
-  test('suspender revoga as sessões vivas de todos os utilizadores da empresa', async ({
-    assert,
-  }) => {
-    const empresa = await createEmpresa()
-    const dono = await createUser(empresa, ['Admin'])
-    const vendedor = await createUser(empresa, ['Vendedor'])
-    await activar(dono)
-    await activar(vendedor)
-
-    const auth = new AuthRepository()
-    await auth.login({
-      uid: dono.email,
-      password: 'Password123!#',
-      company_alias: empresa.company_alias,
-    })
-    await auth.login({
-      uid: vendedor.email,
-      password: 'Password123!#',
-      company_alias: empresa.company_alias,
-    })
-
-    assert.equal(await sessoesVivas(dono), 1)
-    assert.equal(await sessoesVivas(vendedor), 1)
-
-    await repo.suspender({ empresa_id: empresa.id, motivo: 'Suspeita de fraude' })
-
-    // Este é o ponto todo: sem isto, a suspensão só valeria para quem voltasse a
-    // autenticar-se — quem já tinha um bearer token continuava a trabalhar.
-    assert.equal(await sessoesVivas(dono), 0)
-    assert.equal(await sessoesVivas(vendedor), 0)
-  })
-
-  test('suspender não toca nas sessões de outra empresa', async ({ assert }) => {
-    const alvo = await createEmpresa()
-    const vizinha = await createEmpresa()
-    const doAlvo = await createUser(alvo)
-    const daVizinha = await createUser(vizinha)
-    await activar(doAlvo)
-    await activar(daVizinha)
-
-    const auth = new AuthRepository()
-    await auth.login({
-      uid: doAlvo.email,
-      password: 'Password123!#',
-      company_alias: alvo.company_alias,
-    })
-    await auth.login({
-      uid: daVizinha.email,
-      password: 'Password123!#',
-      company_alias: vizinha.company_alias,
-    })
-
-    await repo.suspender({ empresa_id: alvo.id, motivo: 'Cliente em incumprimento' })
-
-    assert.equal(await sessoesVivas(doAlvo), 0)
-    assert.equal(await sessoesVivas(daVizinha), 1, 'o inquilino do lado não pode ser afectado')
-  })
-
   test('o portão das rotas de inquilino deixa passar antes e recusa 403 depois', async ({
     assert,
   }) => {
@@ -160,11 +79,34 @@ test.group('empresa — suspensão', (group) => {
     const antes = await passaNoPortao(user, empresa.company_alias)
     assert.isTrue(antes.passou, 'antes da suspensão o acesso é normal')
 
-    await repo.suspender({ empresa_id: empresa.id, motivo: 'Conta comprometida' })
+    await suspender(empresa)
 
+    // Este é o ponto que torna a suspensão real: um único portão cobre TODAS as
+    // rotas `api/:company_alias/...` — vender, facturar, gerir stock, tudo.
     const depois = await passaNoPortao(user, empresa.company_alias)
     assert.isFalse(depois.passou, 'nenhuma rota de inquilino pode ser servida')
-    assert.equal(depois.status, 403)
+    assert.equal(depois.status, 403, '403, não 404: o inquilino tem de saber que foi cortado')
+  })
+
+  test('um token vivo deixa de servir para alguma coisa', async ({ assert }) => {
+    // O backoffice revoga as sessões ao suspender, mas isso é do outro lado. O que
+    // este backend garante é que, mesmo que sobrasse um token, não abre porta nenhuma.
+    const empresa = await createEmpresa()
+    const user = await createUser(empresa)
+    await activar(user)
+
+    const sessao = await new AuthRepository().login({
+      uid: user.email,
+      password: 'Password123!#',
+      company_alias: empresa.company_alias,
+    })
+    assert.equal(sessao.type, 'bearer')
+
+    await suspender(empresa)
+
+    const { passou, status } = await passaNoPortao(user, empresa.company_alias)
+    assert.isFalse(passou)
+    assert.equal(status, 403)
   })
 
   test('o login recusa uma empresa suspensa, com ou sem company_alias no pedido', async ({
@@ -174,7 +116,7 @@ test.group('empresa — suspensão', (group) => {
     const user = await createUser(empresa)
     await activar(user)
 
-    await repo.suspender({ empresa_id: empresa.id, motivo: 'Fraude confirmada' })
+    await suspender(empresa, 'Fraude confirmada')
 
     const auth = new AuthRepository()
 
@@ -195,21 +137,21 @@ test.group('empresa — suspensão', (group) => {
       'Esta empresa está suspensa. Contacte o suporte da plataforma.'
     )
 
-    assert.equal(await sessoesVivas(user), 0, 'uma tentativa recusada não deixa token para trás')
+    const tokens = await db
+      .from('auth_access_tokens')
+      .where('tokenable_id', user.id)
+      .count('* as total')
+      .first()
+    assert.equal(Number(tokens?.total ?? 0), 0, 'uma tentativa recusada não deixa token para trás')
   })
 
-  test('reactivar limpa as três colunas e devolve o acesso', async ({ assert }) => {
+  test('reactivada, a empresa volta a trabalhar', async ({ assert }) => {
     const empresa = await createEmpresa()
     const user = await createUser(empresa)
     await activar(user)
 
-    await repo.suspender({ empresa_id: empresa.id, motivo: 'Verificação de identidade' })
-    await repo.reactivar({ empresa_id: empresa.id })
-
-    const recarregada = await Empresa.findOrFail(empresa.id)
-    assert.isFalse(recarregada.estaSuspensa)
-    assert.isNull(recarregada.suspensa_motivo)
-    assert.isNull(recarregada.suspensa_por)
+    await suspender(empresa)
+    await reactivar(empresa)
 
     const { passou } = await passaNoPortao(user, empresa.company_alias)
     assert.isTrue(passou)
@@ -222,67 +164,29 @@ test.group('empresa — suspensão', (group) => {
     assert.equal(sessao.type, 'bearer')
   })
 
-  test('suspender duas vezes não reescreve a suspensão original, mas revoga na mesma', async ({
-    assert,
-  }) => {
-    const empresa = await createEmpresa()
-    const user = await createUser(empresa)
-    await activar(user)
+  test('uma empresa suspensa não afecta o inquilino do lado', async ({ assert }) => {
+    const alvo = await createEmpresa()
+    const vizinha = await createEmpresa()
+    const doAlvo = await createUser(alvo)
+    const daVizinha = await createUser(vizinha)
+    await activar(doAlvo)
+    await activar(daVizinha)
 
-    await repo.suspender({ empresa_id: empresa.id, motivo: 'Motivo original' })
-    const primeira = await Empresa.findOrFail(empresa.id)
+    await suspender(alvo)
 
-    // Uma sessão que aparecesse depois da suspensão (emitida por um caminho que ainda
-    // não verifique, ou por uma corrida) tem de morrer no segundo clique.
-    await db.table('auth_access_tokens').insert({
-      tokenable_id: user.id,
-      type: 'auth_token',
-      hash: 'sessao-fantasma',
-      abilities: JSON.stringify(['*']),
-      created_at: new Date(),
-      updated_at: new Date(),
-    })
-    assert.equal(await sessoesVivas(user), 1)
-
-    await repo.suspender({ empresa_id: empresa.id, motivo: 'Motivo diferente' })
-
-    const segunda = await Empresa.findOrFail(empresa.id)
-    assert.equal(
-      segunda.suspensa_motivo,
-      'Motivo original',
-      'a suspensão original é o registo que conta'
+    assert.isFalse((await passaNoPortao(doAlvo, alvo.company_alias)).passou)
+    assert.isTrue(
+      (await passaNoPortao(daVizinha, vizinha.company_alias)).passou,
+      'o corte é de uma empresa, não da plataforma'
     )
-    assert.equal(segunda.suspensa_em?.toMillis(), primeira.suspensa_em?.toMillis())
-    assert.equal(await sessoesVivas(user), 0)
-  })
-
-  test('reactivar uma empresa que não está suspensa não faz nada', async ({ assert }) => {
-    const empresa = await createEmpresa()
-
-    const resultado = await repo.reactivar({ empresa_id: empresa.id })
-
-    assert.isFalse(resultado.estaSuspensa)
-    assert.isNull((await Empresa.findOrFail(empresa.id)).suspensa_em)
-  })
-
-  test('um administrador não suspende a empresa a que pertence', async ({ assert }) => {
-    const empresa = await createEmpresa()
-    const admin = await createUser(empresa)
-    await giveRoleToUser(admin, 'Platform_Admin', undefined, { escopo: ESCOPO_PAPEL.plataforma })
-
-    await assert.rejects(
-      () => repo.suspender({ empresa_id: empresa.id, motivo: 'Engano meu', actor_id: admin.id }),
-      'Não pode suspender a empresa a que pertence — ficaria sem acesso e sem forma de reverter.'
-    )
-
-    assert.isFalse((await Empresa.findOrFail(empresa.id)).estaSuspensa)
   })
 
   test('a base de dados recusa uma suspensão sem motivo', async ({ assert }) => {
+    // O invariante (`empresa_suspensao_chk`) não depende de nenhum caminho de código
+    // o respeitar — e isso passou a importar mais agora que quem suspende é OUTRO
+    // backend. Uma suspensão muda é uma que ninguém consegue explicar nem reverter.
     const empresa = await createEmpresa()
 
-    // O invariante não depende de nenhum caminho de código o respeitar: uma suspensão
-    // muda é uma que ninguém consegue explicar nem reverter com confiança.
     await assert.rejects(() =>
       db.from('empresa').where('id', empresa.id).update({ suspensa_em: new Date() })
     )
@@ -303,7 +207,7 @@ test.group('empresa — suspensão', (group) => {
       'antes da suspensão o produto está na montra pública'
     )
 
-    await repo.suspender({ empresa_id: empresa.id, motivo: 'Montra a anunciar fraude' })
+    await suspender(empresa, 'Montra a anunciar fraude')
 
     const depois = await paginateCatalogoProdutos(1, 200)
     assert.isFalse(

@@ -3,7 +3,6 @@ import empresaService from '#services/empresa_service'
 import {
   CreateCompanyWithUserAndStartACompanyDetalhes,
   ResendVerificationEmailValidator,
-  SuspenderEmpresaValidator,
 } from '#validators/empresa_validator'
 import mail from '@adonisjs/mail/services/main'
 import AccountActivationMail from '#mails/account_activation_mail'
@@ -253,37 +252,8 @@ export default class empresasController {
       })
     }
   }
-  // ===================== SUSPENDER / REACTIVAR =====================
-  /**
-   * Suspender e reactivar uma empresa — backoffice, `middleware.adminOnly()`.
-   *
-   * Sem try/catch, ao contrário do resto deste controller: o handler global
-   * (`app/exceptions/handler.ts`) já traduz `SuspenderPropriaEmpresaException` e o
-   * `E_ROW_NOT_FOUND` de um id inexistente para o mesmo envelope. É o padrão para
-   * onde os controllers estão a migrar (ver secção 7 do CLAUDE.md); repetir aqui o
-   * `catch` genérico só voltaria a esconder um 409 legítimo atrás de um 500.
-   *
-   * `actor_id` vem de `auth.user`, nunca do corpo do pedido: quem suspendeu tem de
-   * ser quem está autenticado, e não quem o pedido diz que é.
-   */
-  async suspender({ request, response, params, auth }: HttpContext) {
-    const { motivo } = await request.validateUsing(SuspenderEmpresaValidator)
-
-    const data = await this.service.suspender({
-      empresa_id: params.id,
-      motivo,
-      actor_id: auth.user?.id ?? null,
-    })
-
-    return response.ok({ data, message: 'Empresa suspensa com sucesso', status: 200 })
-  }
-
-  async reactivar({ response, params, auth }: HttpContext) {
-    const data = await this.service.reactivar({
-      empresa_id: params.id,
-      actor_id: auth.user?.id ?? null,
-    })
-
-    return response.ok({ data, message: 'Empresa reactivada com sucesso', status: 200 })
-  }
+  // Suspender/reactivar uma empresa vive agora em `taesic-backoffice-api` — é uma
+  // acção de plataforma. A APLICAÇÃO da suspensão fica aqui, que é onde o inquilino
+  // vive: `ValidateCompanyAliasMiddleware`, a verificação no `login` e o filtro do
+  // catálogo público. Os dois backends lêem e escrevem a mesma `empresa.suspensa_em`.
 }

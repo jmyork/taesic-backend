@@ -1,5 +1,7 @@
 import { BaseSchema } from '@adonisjs/lucid/schema'
 
+import { temColuna } from '../helpers/esquema.js'
+
 /**
  * Cria as duas colunas que os models declaravam e a base de dados não tinha.
  *
@@ -24,29 +26,33 @@ import { BaseSchema } from '@adonisjs/lucid/schema'
  * colunas que ninguém lê seria trocar um problema por outro maior.
  */
 export default class extends BaseSchema {
+  /** Re-executável: cada passo pergunta antes de fazer. Ver
+   *  `database/helpers/esquema.ts` para o porquê de isto não ser opcional. */
   async up() {
-    this.schema.alterTable('cobranca', (table) => {
+    this.defer(async (db) => {
       // Nullable: as cobranças que já existem não têm este dado, e inventá-lo
       // seria pior do que a sua ausência. É preenchido a seguir com `created_at`,
       // que é a melhor aproximação verdadeira que existe para elas.
-      table.datetime('data_emissao').nullable()
-    })
+      if (!(await temColuna(db, 'cobranca', 'data_emissao'))) {
+        await db.rawQuery('ALTER TABLE cobranca ADD COLUMN data_emissao DATETIME NULL')
+      }
 
-    this.defer(async (db) => {
       await db.rawQuery('UPDATE cobranca SET data_emissao = created_at WHERE data_emissao IS NULL')
-    })
 
-    this.schema.alterTable('pessoa', (table) => {
-      table.boolean('ativo').notNullable().defaultTo(true)
+      if (!(await temColuna(db, 'pessoa', 'ativo'))) {
+        await db.rawQuery('ALTER TABLE pessoa ADD COLUMN ativo TINYINT(1) NOT NULL DEFAULT 1')
+      }
     })
   }
 
   async down() {
-    this.schema.alterTable('cobranca', (table) => {
-      table.dropColumn('data_emissao')
-    })
-    this.schema.alterTable('pessoa', (table) => {
-      table.dropColumn('ativo')
+    this.defer(async (db) => {
+      if (await temColuna(db, 'cobranca', 'data_emissao')) {
+        await db.rawQuery('ALTER TABLE cobranca DROP COLUMN data_emissao')
+      }
+      if (await temColuna(db, 'pessoa', 'ativo')) {
+        await db.rawQuery('ALTER TABLE pessoa DROP COLUMN ativo')
+      }
     })
   }
 }

@@ -10,7 +10,7 @@ import Vendapagamento from '#models/vendapagamento'
 import MetodoPagamento from '#models/metodopagamento'
 import ProdutoCategorias from '#models/faturacao/produto_categorias'
 import CategoriasProdutos from '#models/faturacao/categorias_produtos'
-import TaxaIvaRepository from '#repositories/taxa_iva_repository'
+import TaxaIva from '#models/taxa_iva'
 import { createTenant, createCaixa, createVenda, createProduto, createLote, createVendaItem } from '../helpers/fixtures.js'
 
 /**
@@ -227,8 +227,7 @@ test.group('relatorios_repository - métodos detalhados sem teste próprio', (gr
     const caixa = await createCaixa(user, pos)
     await createVenda(caixa, { status: 'fechada', total: 11400 })
 
-    const taxaRepo = new TaxaIvaRepository()
-    const taxa = await taxaRepo.create({ nome: 'Taxa Geral', percentual: 14 })
+    const taxa = await TaxaIva.create({ nome: 'Taxa Geral', percentual: 14 })
     const empresaModel = await Empresa.findByOrFail('company_alias', empresa.company_alias)
     empresaModel.regime_iva = true
     empresaModel.taxa_iva_id = taxa.id

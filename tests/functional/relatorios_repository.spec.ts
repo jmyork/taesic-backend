@@ -3,7 +3,7 @@ import testUtils from '@adonisjs/core/services/test_utils'
 import { DateTime } from 'luxon'
 import RelatoriosRepository from '#repositories/relatorios_repository'
 import DespesasRepository from '#repositories/despesas_repository'
-import TaxaIvaRepository from '#repositories/taxa_iva_repository'
+import TaxaIva from '#models/taxa_iva'
 import FacturaRepository from '#repositories/factura_repository'
 import Cliente from '#models/cliente'
 import Empresa from '#models/empresa'
@@ -71,8 +71,7 @@ test.group('relatorios_repository - dashboard executivo, IVA, despesas, comparat
       registrado_por: user.id,
     })
 
-    const taxaRepo = new TaxaIvaRepository()
-    const taxa = await taxaRepo.create({ nome: 'Taxa Geral', percentual: 14 })
+    const taxa = await TaxaIva.create({ nome: 'Taxa Geral', percentual: 14 })
 
     const empresaModel = await Empresa.findByOrFail('company_alias', empresa.company_alias)
     empresaModel.regime_iva = true

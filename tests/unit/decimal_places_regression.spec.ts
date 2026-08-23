@@ -2,7 +2,6 @@ import { test } from '@japa/runner'
 import { CaixaQueryValidator } from '#validators/caixa_validator'
 import { updatecobrancaValidator } from '#validators/cobranca_validator'
 import { createclienteValidator } from '#validators/cliente_validator'
-import { createplanoValidator } from '#validators/plano_validator'
 
 /**
  * `vine.number().decimal(30)` foi copiado por vários validators — `.decimal()` espera um
@@ -42,17 +41,4 @@ test.group('vine .decimal(30) regressão — valores monetários normais', () =>
     assert.equal(result.saldo, 250.75)
   })
 
-  test('createplanoValidator aceita preco/limite_uso normais', async ({ assert }) => {
-    const result = await createplanoValidator.validate({
-      nome: 'Plano Teste',
-      descricao: 'Plano de teste',
-      preco: 15000,
-      moeda: 'AOA',
-      periodo: 'mensal',
-      ativo: true,
-      limite_uso: 100,
-    })
-    assert.equal(result.preco, 15000)
-    assert.equal(result.limite_uso, 100)
-  })
 })

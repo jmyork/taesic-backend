@@ -1,5 +1,7 @@
 import { BaseSchema } from '@adonisjs/lucid/schema'
 
+import { temColuna, temIndice, temRestricao } from '../helpers/esquema.js'
+
 /**
  * Papéis passam a pertencer a uma EMPRESA. As permissões, não.
  *
@@ -50,67 +52,127 @@ import { BaseSchema } from '@adonisjs/lucid/schema'
 export default class extends BaseSchema {
   protected tableName = 'papel'
 
+  /**
+   * ── Re-executável, e não é zelo ────────────────────────────────────────────────
+   *
+   * Cada passo pergunta primeiro se já está feito. Foi esta migração que parou o
+   * deploy de `api-qua`: uma tentativa anterior deixou `empresa_id` e `escopo` na
+   * tabela e não chegou a registar-se em `adonis_schema` (o MySQL não faz DDL
+   * transaccional), e a tentativa seguinte bateu em `Duplicate column name`. A
+   * partir daí nada mais avançou — nem esta, nem o backfill que vem a seguir, e os
+   * papéis todos ficaram no `escopo` por omissão, `modelo`, que não é atribuível a
+   * ninguém.
+   *
+   * Escrita em `defer` + SQL directo, e não com `this.schema.alterTable()`: o knex
+   * constrói a instrução ANTES de qualquer pergunta ao `information_schema` poder
+   * ser feita. Ver `database/helpers/esquema.ts`.
+   */
   async up() {
-    this.schema.alterTable(this.tableName, (table) => {
-      table.uuid('empresa_id').nullable()
-      table.foreign('empresa_id').references('id').inTable('empresa').onDelete('CASCADE')
+    this.defer(async (db) => {
+      if (!(await temColuna(db, 'papel', 'empresa_id'))) {
+        await db.rawQuery('ALTER TABLE papel ADD COLUMN empresa_id CHAR(36) NULL')
+      }
+
+      if (!(await temRestricao(db, 'papel', 'papel_empresa_id_foreign'))) {
+        await db.rawQuery(
+          `ALTER TABLE papel
+             ADD CONSTRAINT papel_empresa_id_foreign
+             FOREIGN KEY (empresa_id) REFERENCES empresa (id) ON DELETE CASCADE`
+        )
+      }
 
       // Omitido, um papel nasce `modelo`: não é atribuível a utilizadores e não é
       // de plataforma. Se algum caminho de código se esquecer de o definir, o que
       // sai é inofensivo — e é isso que se quer de um valor por omissão numa
       // fronteira de acesso.
-      table.enum('escopo', ['plataforma', 'modelo', 'empresa']).notNullable().defaultTo('modelo')
+      if (!(await temColuna(db, 'papel', 'escopo'))) {
+        await db.rawQuery(
+          `ALTER TABLE papel
+             ADD COLUMN escopo ENUM('plataforma', 'modelo', 'empresa')
+             NOT NULL DEFAULT 'modelo'`
+        )
+      }
 
       // A unicidade global do nome é o que impedia dois inquilinos de terem, cada
-      // um, o seu "Vendedor".
-      table.dropUnique(['nome'])
+      // um, o seu "Vendedor". `papel_nome_unique` é o nome que o knex lhe deu na
+      // migração que criou a tabela.
+      if (await temIndice(db, 'papel', 'papel_nome_unique')) {
+        await db.rawQuery('DROP INDEX papel_nome_unique ON papel')
+      }
+
+      // VIRTUAL, não STORED — e não é indiferente. Uma coluna gerada STORED obriga
+      // o InnoDB a reconstruir a tabela (ALGORITHM=COPY), e essa reconstrução falha
+      // com `ER_CANNOT_ADD_FOREIGN` numa tabela envolvida em chaves estrangeiras:
+      // `papel.empresa_id` acabou de ganhar uma, e `user_papel.papel_id` e
+      // `papel_permissao.papel_id` apontam para cá. Apanhado a correr esta migração,
+      // não por leitura — e foi essa falha que deixou o DDL a meio da primeira vez.
+      //
+      // VIRTUAL não reconstrói a tabela e o MySQL 8 aceita um índice único sobre ela
+      // — o índice materializa o valor, que é tudo o que aqui é preciso.
+      if (!(await temColuna(db, 'papel', 'chave_escopo'))) {
+        await db.rawQuery(
+          `ALTER TABLE papel
+             ADD COLUMN chave_escopo VARCHAR(64)
+             GENERATED ALWAYS AS (COALESCE(empresa_id, escopo)) VIRTUAL`
+        )
+      }
+
+      if (!(await temIndice(db, 'papel', 'papel_escopo_nome_unique'))) {
+        await db.rawQuery(
+          'CREATE UNIQUE INDEX papel_escopo_nome_unique ON papel (chave_escopo, nome)'
+        )
+      }
+
+      // O invariante deixa de depender de nenhum programador o respeitar: um papel
+      // de empresa TEM empresa, um de plataforma ou modelo NÃO tem. Nenhum caminho
+      // de código consegue gravar a combinação errada.
+      if (!(await temRestricao(db, 'papel', 'papel_escopo_empresa_chk'))) {
+        await db.rawQuery(
+          `ALTER TABLE papel
+             ADD CONSTRAINT papel_escopo_empresa_chk
+             CHECK (
+               (escopo = 'empresa' AND empresa_id IS NOT NULL)
+               OR (escopo <> 'empresa' AND empresa_id IS NULL)
+             )`
+        )
+      }
     })
-
-    // Coluna gerada e índice em SQL directo: o knex não os expõe.
-    //
-    // VIRTUAL, não STORED — e não é indiferente. Uma coluna gerada STORED obriga
-    // o InnoDB a reconstruir a tabela (ALGORITHM=COPY), e essa reconstrução falha
-    // com `ER_CANNOT_ADD_FOREIGN` numa tabela envolvida em chaves estrangeiras:
-    // `papel.empresa_id` acabou de ganhar uma, e `user_papel.papel_id` e
-    // `papel_permissao.papel_id` apontam para cá. Apanhado a correr esta migração,
-    // não por leitura: a versão STORED deixou o DDL a meio (o MySQL não faz DDL
-    // transaccional, portanto as colunas ficaram e a migração não ficou registada).
-    //
-    // VIRTUAL não reconstrói a tabela e o MySQL 8 aceita um índice único sobre ela
-    // — o índice materializa o valor, que é tudo o que aqui é preciso.
-    this.schema.raw(
-      `ALTER TABLE papel
-         ADD COLUMN chave_escopo VARCHAR(64)
-         GENERATED ALWAYS AS (COALESCE(empresa_id, escopo)) VIRTUAL`
-    )
-    this.schema.raw(`CREATE UNIQUE INDEX papel_escopo_nome_unique ON papel (chave_escopo, nome)`)
-
-    // O invariante deixa de depender de nenhum programador o respeitar: um papel
-    // de empresa TEM empresa, um de plataforma ou modelo NÃO tem. Nenhum caminho
-    // de código consegue gravar a combinação errada.
-    this.schema.raw(
-      `ALTER TABLE papel
-         ADD CONSTRAINT papel_escopo_empresa_chk
-         CHECK (
-           (escopo = 'empresa' AND empresa_id IS NOT NULL)
-           OR (escopo <> 'empresa' AND empresa_id IS NULL)
-         )`
-    )
   }
 
+  /** Guardado pelas mesmas perguntas, e pela mesma razão: um `down` que rebente a
+   *  meio deixa a tabela num estado que o `up` seguinte não sabe ler. */
   async down() {
-    this.schema.raw(`ALTER TABLE papel DROP CONSTRAINT papel_escopo_empresa_chk`)
-    this.schema.raw(`DROP INDEX papel_escopo_nome_unique ON papel`)
-    this.schema.raw(`ALTER TABLE papel DROP COLUMN chave_escopo`)
+    this.defer(async (db) => {
+      if (await temRestricao(db, 'papel', 'papel_escopo_empresa_chk')) {
+        await db.rawQuery('ALTER TABLE papel DROP CONSTRAINT papel_escopo_empresa_chk')
+      }
 
-    this.schema.alterTable(this.tableName, (table) => {
-      table.dropForeign(['empresa_id'])
-      table.dropColumn('empresa_id')
-      table.dropColumn('escopo')
+      if (await temIndice(db, 'papel', 'papel_escopo_nome_unique')) {
+        await db.rawQuery('DROP INDEX papel_escopo_nome_unique ON papel')
+      }
+
+      if (await temColuna(db, 'papel', 'chave_escopo')) {
+        await db.rawQuery('ALTER TABLE papel DROP COLUMN chave_escopo')
+      }
+
+      if (await temRestricao(db, 'papel', 'papel_empresa_id_foreign')) {
+        await db.rawQuery('ALTER TABLE papel DROP FOREIGN KEY papel_empresa_id_foreign')
+      }
+
+      if (await temColuna(db, 'papel', 'empresa_id')) {
+        await db.rawQuery('ALTER TABLE papel DROP COLUMN empresa_id')
+      }
+
+      if (await temColuna(db, 'papel', 'escopo')) {
+        await db.rawQuery('ALTER TABLE papel DROP COLUMN escopo')
+      }
+
       // Só volta a ser possível depois de o backfill ter sido revertido — com
       // papéis clonados por empresa há nomes repetidos, e a unicidade global
       // rebentaria. Ver a migração do backfill.
-      table.unique(['nome'])
+      if (!(await temIndice(db, 'papel', 'papel_nome_unique'))) {
+        await db.rawQuery('CREATE UNIQUE INDEX papel_nome_unique ON papel (nome)')
+      }
     })
   }
 }

@@ -54,92 +54,37 @@ router.get('/verification-token/company/:empresaId', [
 // e nunca devem ser expostos sem essas duas camadas de proteção.
 
 /**
- * O grupo de plataforma (backoffice) — cross-tenant, `adminOnly`.
+ * O que resta do grupo de plataforma neste backend: UMA rota.
  *
- * `PLATFORM_ROUTES_ENABLED=false` faz com que estas rotas NÃO cheguem a ser
- * registadas: deixam de existir e respondem 404 como qualquer caminho inventado.
- * O mesmo build vai então para duas instâncias — a pública, exposta à Internet,
- * com isto desligado; a restrita, atrás de VPN ou lista de IPs, com isto ligado.
- * Uma só base de código, um só dono das migrações, e a separação feita onde ela
- * existe mesmo: na rede.
+ * Todo o resto — `papel`, `permissao`, `papel_permissao`, `user_papel`, `plano`,
+ * `taxa_iva`, `relatorios_plataforma` e as acções de suspender/reactivar uma
+ * empresa — mudou-se para `taesic-backoffice-api`, por decisão do dono do produto:
+ * os endpoints da plataforma vivem no backend do backoffice, não aqui.
  *
- * Ausente = ligado, para nenhum deploy actual mudar de comportamento. E não é uma
- * fronteira de acesso por si — registadas ou não, estas rotas continuam a exigir
- * autenticação e um papel de escopo `plataforma`. Isto reduz a superfície; não
- * substitui o portão.
+ * `platform_cupom` ficou, e ficou ASSINALADO, porque a premissa não se confirma.
+ * A ideia era que os cupões de plataforma fossem de quem promove a PLATAFORMA e
+ * ganha sobre a venda de pacotes de assinatura. Isso não existe no esquema:
+ * `cupom_id` só aparece em `vendas`, e `subscricao`/`cobranca` não têm ligação
+ * nenhuma a cupões — o painel do promotor calcula ganhos por `vendas` → `cupom` →
+ * `empresa`, ou seja, sobre vendas DENTRO de uma empresa. Esta rota é, hoje, CRUD
+ * cross-tenant sobre os cupões de desconto dos inquilinos. Levá-la para o
+ * backoffice seria mudar a coisa errada com o nome certo.
+ *
+ * Fica aqui até haver decisão: ou se apaga (cada empresa já gere os seus por
+ * `domain_cupom`), ou se desenha a funcionalidade que falta — cupão ligado a
+ * `subscricao`/`cobranca`, com comissão — e essa nasce no backoffice, em tabelas
+ * próprias.
+ *
+ * `AdminOnlyMiddleware` e `userHasPlatformRole()` continuam neste projecto SÓ por
+ * causa desta rota. Quando ela sair, saem com ela.
  */
-if (env.get('PLATFORM_ROUTES_ENABLED') !== false) {
-  router
-    .group(() => {
-      // --------------
-      router.resource('permissao', controllers.Permissao).apiOnly().as('platform_permissao')
-
-      router.resource('papel', controllers.Papel).apiOnly().as('platform_papel')
-
-      router
-        .resource('papel-permissao', controllers.PapelPermissao)
-        .apiOnly()
-        // `update` está comentado no controller (nunca foi implementado) — sem este .except() a
-        // rota fica registada e responde com um 500 em vez de simplesmente não existir.
-        .except(['update'])
-        .as('platform_papel_permissao')
-
-      router
-        .resource('user-papel', controllers.UserPapel)
-        .apiOnly()
-        // idem: `update` está comentado no controller.
-        .except(['update'])
-        .as('platform_user_papel')
-
-      router.resource('cupom', controllers.Cupom).apiOnly().as('platform_cupom')
-
-      router.resource('plano', controllers.Plano).apiOnly().as('platform_plano')
-
-      router.resource('taxa-iva', controllers.TaxaIva).apiOnly().as('platform_taxa_iva')
-
-      // Suspender e reactivar um inquilino. `POST` e não `PATCH empresa/:id`: não é a
-      // edição de um campo, é uma acção com efeitos colaterais (revoga as sessões vivas
-      // de todos os utilizadores da empresa) e com um motivo obrigatório. Não colide com
-      // `api/:company_alias/...` — nenhum recurso de inquilino se chama `empresas`, e a
-      // colisão só existiria se houvesse (ver a explicação em public_platform_routes.ts).
-      router
-        .post('empresas/:id/suspender', [controllers.Empresa, 'suspender'])
-        .as('platform_empresa.suspender')
-      router
-        .post('empresas/:id/reactivar', [controllers.Empresa, 'reactivar'])
-        .as('platform_empresa.reactivar')
-
-      // Relatórios do proprietário da plataforma — cross-tenant, só leitura (ver
-      // relatorios_plataforma_repository.ts).
-      router
-        .get('relatorios-plataforma/contas-receber', [
-          controllers.RelatoriosPlataforma,
-          'contasReceber',
-        ])
-        .as('platform_relatorios.contas_receber')
-      router
-        .get('relatorios-plataforma/receita', [
-          controllers.RelatoriosPlataforma,
-          'receitaPlataforma',
-        ])
-        .as('platform_relatorios.receita')
-      router
-        .get('relatorios-plataforma/empresas-resumo', [
-          controllers.RelatoriosPlataforma,
-          'empresasResumo',
-        ])
-        .as('platform_relatorios.empresas_resumo')
-      router
-        .get('relatorios-plataforma/uso', [controllers.RelatoriosPlataforma, 'usoPlataforma'])
-        .as('platform_relatorios.uso')
-      router
-        .get('relatorios-plataforma/auditoria', [controllers.RelatoriosPlataforma, 'auditoria'])
-        .as('platform_relatorios.auditoria')
-    })
-    .prefix('api')
-    .use(middleware.auth({ guards: ['api'] }))
-    .use(middleware.adminOnly())
-}
+router
+  .group(() => {
+    router.resource('cupom', controllers.Cupom).apiOnly().as('platform_cupom')
+  })
+  .prefix('api')
+  .use(middleware.auth({ guards: ['api'] }))
+  .use(middleware.adminOnly())
 
 /**
  * Documentação da API — NÃO registada em produção, por omissão.
