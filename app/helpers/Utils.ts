@@ -1,4 +1,4 @@
-import Papel from '#models/auth/papel'
+import Papel, { ESCOPO_PAPEL } from '#models/auth/papel'
 import papel_permissao from '#models/auth/papel_permissao'
 import Permissao from '#models/auth/permissao'
 import UserPapel from '#models/auth/user_papel'
@@ -81,8 +81,107 @@ export const getCompanyDetails = async (nif: string) => {
   }
 }
 
-export async function givePermissionsToRole(roleName: string, permissions: string[]) {
-  const role = await Papel.findByOrFail('nome', roleName)
+/**
+ * Restringe uma consulta aos papéis que este utilizador PODE de facto usar.
+ *
+ * Vale como segunda tranca. A primeira é não criar atribuições erradas; esta
+ * garante que, mesmo que uma linha errada exista — deixada por uma migração,
+ * escrita à mão na base de dados, sobrevivente de uma empresa apagada —, ela não
+ * concede nada. Um papel de outra empresa não conta. Um `modelo` nunca conta:
+ * existe para ser clonado, não para ser usado.
+ *
+ * `papel.deleted_at` entra aqui e não entrava antes: um papel apagado com soft
+ * delete continuava a conceder as suas permissões. Não fazia diferença enquanto
+ * ninguém podia apagar papéis; passa a fazer no momento em que cada empresa
+ * pode apagar os seus.
+ */
+function apenasPapeisUtilizaveis<T>(consulta: T, user: User): T {
+  // Os construtores de consulta do Lucid são mutáveis e encadeáveis: aplicar as
+  // cláusulas e devolver o MESMO objecto mantém o tipo de quem chamou — devolver
+  // o resultado de `.where()` colapsava tudo para `any` e apagava a verificação de
+  // tipos de todos os chamadores (foi o que aconteceu à primeira tentativa).
+  const q = consulta as unknown as {
+    whereNull(coluna: string): unknown
+    where(callback: (sub: any) => void): unknown
+  }
+
+  q.whereNull('papel.deleted_at')
+  q.where((sub) => {
+    sub.where('papel.escopo', ESCOPO_PAPEL.plataforma)
+    if (user.empresa_id) {
+      sub.orWhere((interno: any) => {
+        interno
+          .where('papel.escopo', ESCOPO_PAPEL.empresa)
+          .where('papel.empresa_id', user.empresa_id!)
+      })
+    }
+  })
+
+  return consulta
+}
+
+/**
+ * Este utilizador é do dono da plataforma?
+ *
+ * A resposta vem de `papel.escopo`, nunca do nome. Ver o comentário em
+ * `admin_only_middleware.ts` para o porquê — em resumo: com papéis por empresa,
+ * qualquer inquilino podia criar um papel chamado `Platform_Admin`.
+ */
+export async function userHasPlatformRole(user: User): Promise<boolean> {
+  const papel = await Papel.query()
+    .join('user_papel', 'user_papel.papel_id', 'papel.id')
+    .where('user_papel.user_id', user.id)
+    .whereNull('user_papel.deleted_at')
+    .whereNull('papel.deleted_at')
+    .where('papel.escopo', ESCOPO_PAPEL.plataforma)
+    .select('papel.id')
+    .first()
+
+  return !!papel
+}
+
+/**
+ * Resolve um papel pelo nome DENTRO de um âmbito. Nunca globalmente.
+ *
+ * `Papel.findByOrFail('nome', ...)` deixou de ser suficiente: com uma cópia de
+ * "Vendedor" por empresa, procurar pelo nome devolve a primeira que aparecer —
+ * que pode ser a de outra empresa. Toda a resolução por nome passa por aqui.
+ */
+export async function encontrarPapel(
+  nome: string,
+  escopo: (typeof ESCOPO_PAPEL)[keyof typeof ESCOPO_PAPEL],
+  empresaId?: string | null,
+  trx?: TransactionClientContract
+) {
+  const consulta = Papel.query({ client: trx })
+    .where('nome', nome)
+    .where('escopo', escopo)
+    .whereNull('deleted_at')
+
+  if (escopo === ESCOPO_PAPEL.empresa) {
+    consulta.where('empresa_id', empresaId!)
+  } else {
+    consulta.whereNull('empresa_id')
+  }
+
+  return consulta.first()
+}
+
+/**
+ * `escopo` explícito, e sem valor por omissão, de propósito: quem chama tem de
+ * dizer a que mundo pertence o papel que quer alterar. O seeder trabalha sobre
+ * `modelo` e `plataforma`; uma empresa trabalha sobre os seus.
+ */
+export async function givePermissionsToRole(
+  roleName: string,
+  permissions: string[],
+  escopo: (typeof ESCOPO_PAPEL)[keyof typeof ESCOPO_PAPEL] = ESCOPO_PAPEL.modelo,
+  empresaId?: string | null
+) {
+  const role = await encontrarPapel(roleName, escopo, empresaId)
+  if (!role) {
+    throw new Error(`Papel "${roleName}" não existe no âmbito "${escopo}".`)
+  }
 
   const perms = await Permissao.query().whereIn('nome', [...new Set(permissions)])
 
@@ -97,8 +196,16 @@ export async function givePermissionsToRole(roleName: string, permissions: strin
   // await role.related('permissao').sync(perms.map((p) => p.id))
 }
 
-export async function removePermissionsFromRole(roleName: string, permissions: string[]) {
-  const role = await Papel.findByOrFail('nome', roleName)
+export async function removePermissionsFromRole(
+  roleName: string,
+  permissions: string[],
+  escopo: (typeof ESCOPO_PAPEL)[keyof typeof ESCOPO_PAPEL] = ESCOPO_PAPEL.modelo,
+  empresaId?: string | null
+) {
+  const role = await encontrarPapel(roleName, escopo, empresaId)
+  if (!role) {
+    throw new Error(`Papel "${roleName}" não existe no âmbito "${escopo}".`)
+  }
 
   const perms = await Permissao.query().whereIn('nome', [...new Set(permissions)])
 
@@ -124,28 +231,78 @@ export async function removePermissionsFromRole(roleName: string, permissions: s
  * acontece a tempo, porque o próprio `trx.commit()` espera por esta chamada terminar primeiro)
  * — resultando sempre em "Lock wait timeout exceeded", nunca só ocasionalmente por race.
  */
+/**
+ * `escopo` explícito só para conceder acesso de PLATAFORMA a alguém que também
+ * tem empresa (o caso do fundador, ou de um seeder).
+ *
+ * Não é o valor por omissão, e a razão é de segurança. Se isto caísse
+ * automaticamente para o âmbito de plataforma quando o nome não existisse na
+ * empresa, bastaria a alguém conseguir passar "Platform_Admin" como nome de papel
+ * para escalar. Hoje o validador de registo de funcionário tem uma lista fixa que
+ * exclui os `Platform_*`, mas fazer depender uma fronteira de acesso de um
+ * validador HTTP noutro ficheiro é precisamente o padrão que já falhou aqui antes
+ * (ver `venda_itens_repository.create()`). Quem quer plataforma, diz que quer.
+ */
+export interface OpcoesAtribuicaoPapel {
+  escopo?: (typeof ESCOPO_PAPEL)[keyof typeof ESCOPO_PAPEL]
+}
+
 export async function giveRoleToUser(
   user: User,
   roleName: string | string[],
-  trx?: TransactionClientContract
+  trx?: TransactionClientContract,
+  opcoes: OpcoesAtribuicaoPapel = {}
 ) {
   const roleSet = new Set(Array.isArray(roleName) ? roleName : [roleName])
 
-  const roleData = await Promise.all(
-    [...roleSet].map(async (role) => ({
-      user_id: user.id,
-      papel_id:
-        (await Papel.query({ client: trx }).where('nome', role).select('id').first())?.id || '',
-    }))
-  )
+  // O âmbito vem de QUEM é o utilizador, não de quem chama: um utilizador com
+  // empresa recebe papéis da sua empresa, um utilizador de plataforma recebe
+  // papéis de plataforma. Antes procurava-se `where('nome', role)` sem mais nada
+  // — com uma cópia de "Vendedor" por empresa, isso devolvia a primeira que
+  // aparecesse na tabela, que podia ser a de OUTRA empresa.
+  const escopo =
+    opcoes.escopo ?? (user.empresa_id ? ESCOPO_PAPEL.empresa : ESCOPO_PAPEL.plataforma)
+
+  const roleData: { user_id: string; papel_id: string }[] = []
+
+  for (const nome of roleSet) {
+    const papel = await encontrarPapel(nome, escopo, user.empresa_id, trx)
+
+    // Antes: `?.id || ''`. Uma string vazia num campo de chave estrangeira faz o
+    // MySQL rebentar com um erro de constraint que não diz nada sobre a causa —
+    // e, pior, se algum dia essa FK fosse relaxada, a atribuição desaparecia em
+    // silêncio e o utilizador ficava sem papel nenhum sem ninguém saber porquê.
+    if (!papel) {
+      throw new Error(
+        `Não existe o papel "${nome}" no âmbito "${escopo}"` +
+          (user.empresa_id ? ` da empresa ${user.empresa_id}` : '') +
+          `. Nenhum papel foi atribuído.`
+      )
+    }
+
+    roleData.push({ user_id: user.id, papel_id: papel.id })
+  }
+
   await UserPapel.createMany(roleData, { client: trx })
 }
 
 export async function removeRoleFromUser(user: User, roleName: string | string[]) {
   const roleSet = new Set(Array.isArray(roleName) ? roleName : [roleName])
-  const roles = await Papel.query()
-    .whereIn('nome', [...roleSet])
-    .select('id')
+  const escopo = user.empresa_id ? ESCOPO_PAPEL.empresa : ESCOPO_PAPEL.plataforma
+
+  // Mesmo cuidado que em `giveRoleToUser`: sem filtrar por âmbito, revogar
+  // "Vendedor" podia revogar o papel homónimo de outra empresa — que, não estando
+  // atribuído a este utilizador, não faria nada; mas basta a lista de ids conter
+  // o papel certo de outra empresa e um dia atingir alguém.
+  const consulta = Papel.query().whereIn('nome', [...roleSet]).where('escopo', escopo)
+
+  if (user.empresa_id) consulta.where('empresa_id', user.empresa_id)
+  else consulta.whereNull('empresa_id')
+
+  const roles = await consulta.select('id')
+
+  if (roles.length === 0) return
+
   await UserPapel.query()
     .where('user_id', user.id)
     .whereIn(
@@ -161,15 +318,19 @@ export async function removeRoleFromUser(user: User, roleName: string | string[]
  * @returns
  */
 export async function getUserPermissions(user: User) {
-  const permissions = await Permissao.query()
+  const consulta = Permissao.query()
     .distinct('permissao.id', 'permissao.nome')
     .join('papel_permissao', 'papel_permissao.permissao_id', 'permissao.id')
     .join('papel', 'papel.id', 'papel_permissao.papel_id')
     .join('user_papel', 'user_papel.papel_id', 'papel.id')
     .where('user_papel.user_id', user.id)
     .whereNull('user_papel.deleted_at')
+    // Faltava, e é o mesmo problema já corrigido em `userHasPermission`: retirar
+    // uma permissão a um papel faz soft delete, portanto sem isto a lista
+    // continuava a incluí-la.
+    .whereNull('papel_permissao.deleted_at')
 
-  return permissions
+  return apenasPapeisUtilizaveis(consulta, user)
 }
 
 /**
@@ -179,17 +340,17 @@ export async function getUserPermissions(user: User) {
  */
 
 export async function getUserRoles(user: User) {
-  const roles = await Papel.query()
-    .distinct('papel.id', 'papel.nome')
+  const consulta = Papel.query()
+    .distinct('papel.id', 'papel.nome', 'papel.escopo', 'papel.empresa_id')
     .join('user_papel', 'user_papel.papel_id', 'papel.id')
     .where('user_papel.user_id', user.id)
     .whereNull('user_papel.deleted_at')
 
-  return roles
+  return apenasPapeisUtilizaveis(consulta, user)
 }
 
 export async function userHasPermission(user: User, permissionName: string) {
-  const permission = await Permissao.query()
+  const consulta = Permissao.query()
     .join('papel_permissao', 'papel_permissao.permissao_id', 'permissao.id')
     .join('papel', 'papel.id', 'papel_permissao.papel_id')
     .join('user_papel', 'user_papel.papel_id', 'papel.id')
@@ -202,11 +363,21 @@ export async function userHasPermission(user: User, permissionName: string) {
     // a valer, sem nada a assinalar. Nenhuma linha estava nesse estado quando isto foi
     // corrigido, por isso não muda o acesso de ninguém hoje.
     .whereNull('papel_permissao.deleted_at')
-    .first()
+
+  const permission = await apenasPapeisUtilizaveis(consulta, user).first()
 
   return !!permission
 }
 
+/**
+ * Verificação por NOME de papel. Continua a existir, mas nunca para decidir se
+ * alguém é da plataforma — para isso é `userHasPlatformRole()`.
+ *
+ * A diferença importa: com papéis por empresa, os nomes deixaram de ser únicos, e
+ * um nome já não identifica um papel. `getUserRoles()` só devolve papéis que este
+ * utilizador pode usar (os da sua empresa, ou de plataforma), portanto comparar
+ * nomes aqui é seguro — mas é seguro por causa desse filtro, não por si.
+ */
 export async function userHasRole(user: User | string, roleName: string[]) {
   const roles = await getUserRoles(typeof user === 'string' ? await User.findOrFail(user) : user)
   return roles.some((role) => roleName.includes(role.nome))

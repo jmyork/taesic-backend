@@ -17,8 +17,6 @@ export default class Permissao extends BaseModel {
   @column.dateTime()
   declare deletedAt: DateTime | null
 
-  @column()
-  declare enabled: boolean
 
   @beforeCreate()
   static uuid(model: Permissao) {

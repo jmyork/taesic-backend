@@ -31,6 +31,16 @@ function buildCatalogoProdutosQuery(filter?: CatalogoProdutosFilterDTO, companyA
       join.on('lote_produto.produto_id', 'produtos.id').andOnNull('lote_produto.deleted_at')
     })
     .whereNull('produtos.deleted_at')
+    // Uma empresa suspensa desaparece do catálogo.
+    //
+    // Este helper serve as duas listagens: a pública (cross-tenant, `api/catalogo/
+    // produtos`) e a da própria empresa. O que importa é a primeira — o catálogo
+    // público é a única superfície onde os produtos de um inquilino continuavam
+    // visíveis depois de lhe ser cortado o acesso, e deixar lá a montra de uma empresa
+    // suspensa por fraude é continuar a fazer-lhe publicidade. A listagem interna
+    // também fica filtrada, o que é indiferente: as rotas de inquilino já respondem
+    // 403 antes de aqui chegarem.
+    .whereNull('empresa.suspensa_em')
 
   if (companyAlias) {
     query = query.where('empresa.company_alias', companyAlias)

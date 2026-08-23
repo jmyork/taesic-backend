@@ -13,14 +13,12 @@ export interface ProdutoContraIndicacaoQueryDTO {
   empresa_id?: string
 }
 export interface Createproduto_contraindicacoesDTO {
-  enabled?: boolean
   contraindicacao: string
   produto_id: string
   company_alias?: string
   empresa_id?: string
 }
 export interface Updateproduto_contraindicacoesDTO {
-  enabled?: boolean
   contraindicacao?: string
   produto_id?: string
 }

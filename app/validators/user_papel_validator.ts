@@ -5,7 +5,7 @@ export const createuser_papelValidator = vine.compile(
       .string()
       .exists(async (db, value, __) => {
         const exists = await db.from('user').where('id', value).first()
-        return exists !== undefined
+        return !!exists
       })
       .unique(async (db, __, field) => {
         const isUnique = !(await db
@@ -18,7 +18,7 @@ export const createuser_papelValidator = vine.compile(
       .string()
       .exists(async (db, value, __) => {
         const exists = await db.from('papel').where('id', value).first()
-        return exists !== undefined
+        return !!exists
       })
       .unique(async (db, __, field) => {
         const isUnique = !(await db

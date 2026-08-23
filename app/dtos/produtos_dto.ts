@@ -22,7 +22,6 @@ export interface ProdutoQueryDTO {
 }
 
 export interface CreateprodutosDTO {
-  enabled?: boolean | undefined
   fornecedor_id?: string | undefined
   marca_id?: string | undefined
   formato_id?: string | undefined
@@ -41,7 +40,6 @@ export interface CreateprodutosDTO {
 }
 
 export interface UpdateprodutosDTO {
-  enabled?: boolean | undefined
   formato_id?: string | undefined
   fabricante_id?: string | undefined
   marca_id?: string | undefined

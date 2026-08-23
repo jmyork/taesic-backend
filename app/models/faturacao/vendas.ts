@@ -31,8 +31,6 @@ export default class vendas extends BaseModel {
   @column.dateTime()
   declare deletedAt: DateTime | null
 
-  @column()
-  declare enabled: boolean
 
   @beforeCreate()
   static uuid(model: vendas) {

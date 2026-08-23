@@ -39,7 +39,6 @@ export interface CreateEmpresaDTO {
   verified?: boolean
 }
 export interface UpdateempresaDTO {
-  enabled?: boolean
   nome?: string
   nif?: string
   user_id?: string
@@ -48,6 +47,24 @@ export interface UpdateempresaDTO {
   contacto: string
   company_alias: string
   taxa_iva_id?: string
+}
+
+/**
+ * Suspensão pelo dono da plataforma.
+ *
+ * `actor_id` é anulável porque nem toda a suspensão vem de um clique: um comando
+ * ace ou uma rotina de cobrança não têm utilizador para apontar. O motivo, esse,
+ * é sempre obrigatório — ver a migração `alter_empresa_suspensao`.
+ */
+export interface SuspenderEmpresaDTO {
+  empresa_id: string
+  motivo: string
+  actor_id?: string | null
+}
+
+export interface ReactivarEmpresaDTO {
+  empresa_id: string
+  actor_id?: string | null
 }
 
 export interface ResendCompanyActivationEmailDTO{

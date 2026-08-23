@@ -105,7 +105,7 @@ export const createclienteValidator = vine.compile(
       .escape()
       .exists(async (db, value, __) => {
         const exists = await db.from('cliente').where('id', value).first()
-        return exists !== undefined
+        return !!exists
       })
       .optional(),
   })
@@ -187,7 +187,7 @@ export const updateclienteValidator = vine.compile(
       .escape()
       .exists(async (db, value, __) => {
         const exists = await db.from('cliente').where('id', value).first()
-        return exists !== undefined
+        return !!exists
       })
       .optional(),
   })

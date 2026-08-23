@@ -1,6 +1,6 @@
 import { test } from '@japa/runner'
 import testUtils from '@adonisjs/core/services/test_utils'
-import Papel from '#models/auth/papel'
+import Papel, { ESCOPO_PAPEL } from '#models/auth/papel'
 import Permissao from '#models/auth/permissao'
 import papel_permissao from '#models/auth/papel_permissao'
 import { DateTime } from 'luxon'
@@ -19,6 +19,25 @@ import { userHasPermission } from '../../app/helpers/Utils.js'
  * Testa-se o helper e não a execução do ace: é onde está toda a decisão (o que conta como
  * leitura, o que fica de fora, o que já existe) e assim corre sem simular uma consola.
  */
+/**
+ * Desde que os papeis passaram a pertencer a uma empresa, `findByOrFail('nome', X)`
+ * deixou de identificar um papel: ha uma copia por empresa mais o modelo. Estes
+ * testes tem de agir sobre a copia QUE O UTILIZADOR TEM — revogar do modelo nao
+ * retira nada a ninguem, e o teste passaria a nao provar o que diz provar.
+ */
+function papelDaEmpresa(empresaId: string, nome: string) {
+  return Papel.query()
+    .where('empresa_id', empresaId)
+    .where('escopo', ESCOPO_PAPEL.empresa)
+    .where('nome', nome)
+    .firstOrFail()
+}
+
+/** O padrao (nao atribuido a ninguem) — para os casos que so exercitam a mecanica. */
+function papelModelo(nome: string) {
+  return Papel.query().where('escopo', ESCOPO_PAPEL.modelo).where('nome', nome).firstOrFail()
+}
+
 test.group('rbac — resolver, conceder e revogar permissões', (group) => {
   group.each.setup(() => testUtils.db().withGlobalTransaction())
 
@@ -85,7 +104,7 @@ test.group('rbac — resolver, conceder e revogar permissões', (group) => {
   })
 
   test('conceder é idempotente e repõe uma associação com soft delete', async ({ assert }) => {
-    const papel = await Papel.findByOrFail('nome', 'VendedorVisualizador')
+    const papel = await papelModelo('VendedorVisualizador')
     const permissao = await Permissao.findByOrFail('nome', 'domain_vendapagamento.store')
 
     assert.equal(await concederPermissao(papel, permissao), 'atribuída')
@@ -108,7 +127,7 @@ test.group('rbac — resolver, conceder e revogar permissões', (group) => {
   test('revogar tira mesmo o acesso e é idempotente', async ({ assert }) => {
     const empresa = await createEmpresa()
     const vendedor = await createUser(empresa, ['Vendedor'])
-    const papel = await Papel.findByOrFail('nome', 'Vendedor')
+    const papel = await papelDaEmpresa(empresa.id, 'Vendedor')
     const permissao = await Permissao.findByOrFail('nome', 'domain_vendapagamento.store')
 
     assert.isTrue(await userHasPermission(vendedor, 'domain_vendapagamento.store'))
@@ -131,7 +150,7 @@ test.group('rbac — resolver, conceder e revogar permissões', (group) => {
   test('uma associação com soft delete não dá acesso nenhum', async ({ assert }) => {
     const empresa = await createEmpresa()
     const vendedor = await createUser(empresa, ['Vendedor'])
-    const papel = await Papel.findByOrFail('nome', 'Vendedor')
+    const papel = await papelDaEmpresa(empresa.id, 'Vendedor')
     const permissao = await Permissao.findByOrFail('nome', 'domain_vendas.store')
 
     const linha = await papel_permissao
@@ -152,7 +171,7 @@ test.group('rbac — resolver, conceder e revogar permissões', (group) => {
   test('revogar não toca noutros papéis nem no catálogo', async ({ assert }) => {
     const empresa = await createEmpresa()
     const admin = await createUser(empresa, ['Admin'])
-    const papelVendedor = await Papel.findByOrFail('nome', 'Vendedor')
+    const papelVendedor = await papelDaEmpresa(empresa.id, 'Vendedor')
     const permissao = await Permissao.findByOrFail('nome', 'domain_facturas.store')
 
     await revogarPermissao(papelVendedor, permissao)

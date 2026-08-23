@@ -5,7 +5,7 @@ import env from '#start/env'
 import { logSecurityEvent } from '../helpers/security_logger.js'
 
 /**
- * Só o frontend indicado pode falar com esta API.
+ * Só os frontends indicados podem falar com esta API.
  *
  * PORQUE NÃO CHEGA O CORS: o CORS é uma regra que o BROWSER aplica a si próprio.
  * Um `curl`, um script em Python ou uma app nativa ignoram-no por completo. Ele
@@ -30,21 +30,42 @@ import { logSecurityEvent } from '../helpers/security_logger.js'
  */
 export default class ApenasBffMiddleware {
   async handle(ctx: HttpContext, next: NextFn) {
-    const esperado = env.get('BFF_SHARED_SECRET')?.trim()
+    // Dois frontends, dois segredos: a app dos inquilinos e o backoffice da
+    // plataforma são clientes distintos e rodam-se um sem tocar no outro. Duas
+    // variáveis em vez de uma lista separada por vírgulas porque um segredo é
+    // texto arbitrário — uma vírgula lá dentro partiria a lista em silêncio.
+    const conhecidos = [
+      { cliente: 'app', segredo: env.get('BFF_SHARED_SECRET')?.trim() ?? '' },
+      { cliente: 'backoffice', segredo: env.get('BFF_SHARED_SECRET_BACKOFFICE')?.trim() ?? '' },
+    ].filter((c) => c.segredo.length > 0)
 
-    if (!esperado) {
+    if (conhecidos.length === 0) {
       return next()
     }
 
     const recebido = ctx.request.header('x-bff-secret')?.trim()
 
-    if (!recebido || !iguaisEmTempoConstante(recebido, esperado)) {
+    // Sem `find`/`some`, de propósito: esses param no primeiro que casa, e o
+    // número de comparações passaria a depender de QUAL dos segredos acertou.
+    // Aqui compara-se sempre contra todos.
+    let cliente: string | null = null
+    for (const c of conhecidos) {
+      if (recebido && iguaisEmTempoConstante(recebido, c.segredo)) {
+        cliente = c.cliente
+      }
+    }
+
+    if (!cliente) {
       // Um pedido sem o segredo ou é uma má configuração, ou é alguém a chamar a
       // API directamente. Ambos merecem registo: um pico disto é o sinal de que
       // a API está exposta a quem não devia alcançá-la.
       logSecurityEvent(
         'bff_secret_invalido',
-        { rota: ctx.route?.pattern, tinhaCabecalho: Boolean(recebido) },
+        {
+          rota: ctx.route?.pattern,
+          tinhaCabecalho: Boolean(recebido),
+          clientesConfigurados: conhecidos.map((c) => c.cliente),
+        },
         ctx
       )
 

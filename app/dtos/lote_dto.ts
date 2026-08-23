@@ -36,7 +36,6 @@ export interface LoteQueryDTO {
 }
 
 export interface CreateloteDTO {
-  enabled?: boolean
   preco_compra?: number
   preco_venda: number
   quantidade_em_estoque?: number
@@ -50,7 +49,6 @@ export interface CreateloteDTO {
   company_alias?: string
 }
 export interface UpdateloteDTO {
-  enabled?: boolean
   preco_compra?: number
   preco_venda?: number
   quantidade_em_estoque?: number

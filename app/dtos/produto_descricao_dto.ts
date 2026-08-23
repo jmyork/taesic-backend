@@ -14,7 +14,6 @@ export interface ProdutoDescricaoQueryDTO {
 }
 
 export interface Createproduto_descricaoDTO {
-  enabled?: boolean
   propriedade: string
   descricao_detalhada: string
   produto_id: string
@@ -22,7 +21,6 @@ export interface Createproduto_descricaoDTO {
   company_alias?: string
 }
 export interface Updateproduto_descricaoDTO {
-  enabled?: boolean
   propriedade?: string
   descricao_detalhada?: string
   produto_id?: string

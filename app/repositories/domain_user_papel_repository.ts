@@ -1,6 +1,6 @@
 import { DateTime } from 'luxon'
 import UserPapel from '#models/auth/user_papel'
-import Papel from '#models/auth/papel'
+import Papel, { ESCOPO_PAPEL } from '#models/auth/papel'
 import User from '#models/user'
 import Empresa from '#models/empresa'
 import {
@@ -25,9 +25,25 @@ export default class DomainUserPapelRepository {
       .paginate(data.page ?? 1, data.limit ?? 50)
   }
 
-  /** Papéis que um admin de tenant pode atribuir — nunca os papéis de plataforma (Platform_*). */
-  async listAssignableRoles() {
-    return Papel.query().whereNot('nome', 'like', 'Platform_%').whereNull('deleted_at').orderBy('nome', 'asc')
+  /**
+   * Papéis que esta empresa pode atribuir: os SEUS, e mais nenhuns.
+   *
+   * Antes devolvia `whereNot('nome','like','Platform_%')` — ou seja, todos os
+   * papéis de inquilino existentes na plataforma. Enquanto eram partilhados isso
+   * era simplesmente a lista; agora que cada empresa tem os seus, seria dar à
+   * empresa A a lista de papéis da empresa B e deixá-la atribuí-los aos seus
+   * utilizadores. A filtragem passa a ser por `empresa_id`, e o `escopo` exclui
+   * de uma vez tanto os de plataforma como os `modelo` (que existem para ser
+   * clonados, não usados).
+   */
+  async listAssignableRoles(companyAlias: string) {
+    const empresa = await Empresa.findByOrFail('company_alias', companyAlias)
+
+    return Papel.query()
+      .where('empresa_id', empresa.id)
+      .where('escopo', ESCOPO_PAPEL.empresa)
+      .whereNull('deleted_at')
+      .orderBy('nome', 'asc')
   }
 
   private async assertUserBelongsToCompany(userId: string, companyAlias: string) {
@@ -40,10 +56,17 @@ export default class DomainUserPapelRepository {
   }
 
   async assign(data: CreateDomainUserPapelDTO) {
-    await this.assertUserBelongsToCompany(data.user_id, data.company_alias)
+    const { empresa } = await this.assertUserBelongsToCompany(data.user_id, data.company_alias)
 
     const papel = await Papel.findOrFail(data.papel_id)
-    if (papel.nome.startsWith('Platform_')) {
+
+    // A verificação era `papel.nome.startsWith('Platform_')` — pelo nome. Isso
+    // recusava os papéis de plataforma mas aceitava, sem dar por isso, o papel de
+    // OUTRA empresa: o id vem do corpo do pedido, e nada o obrigava a pertencer a
+    // esta. `pertenceA()` exige as duas coisas ao mesmo tempo — âmbito de empresa
+    // E esta empresa — e por isso recusa de uma vez os de plataforma, os `modelo`
+    // e os alheios.
+    if (!papel.pertenceA(empresa.id)) {
       throw new CannotAssignPlatformRoleException()
     }
 

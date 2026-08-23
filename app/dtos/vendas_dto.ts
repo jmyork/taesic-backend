@@ -64,7 +64,6 @@ export interface CreateVendasDTO {
   data_venda?: Date
   total?: number
   fechado?: boolean
-  enabled?: boolean
   proforma?: boolean
 }
 
@@ -75,7 +74,6 @@ export interface UpdateVendasDTO {
   data_venda?: Date
   cliente_presencial_id?: string
   cliente_online_id?: string
-  enabled?: boolean
   empresa_id?: string
   company_alias?: string
   user_id?: string

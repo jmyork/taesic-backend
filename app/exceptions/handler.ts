@@ -1,6 +1,7 @@
 import app from '@adonisjs/core/services/app'
 import { HttpContext, ExceptionHandler } from '@adonisjs/core/http'
 import { Exception } from '@adonisjs/core/exceptions'
+import { frontendBaseUrl } from '../helpers/Utils.js'
 
 export default class HttpExceptionHandler extends ExceptionHandler {
   /**
@@ -26,6 +27,49 @@ export default class HttpExceptionHandler extends ExceptionHandler {
   }
 
   /**
+   * Rota que não existe: uma PESSOA vai para o frontend, um PROGRAMA recebe JSON.
+   *
+   * O pedido foi feito ao domínio da API. Se veio de alguém que escreveu o
+   * endereço na barra do browser, o sítio certo para o pôr é o frontend — é o que
+   * é pedido aqui. Mas responder com um redireccionamento a TUDO seria pior do
+   * que não fazer nada: o BFF, os testes e qualquer cliente que espere JSON
+   * receberiam de repente HTML de uma página, e rebentavam a interpretá-lo em vez
+   * de tratarem um 404 — que é um caso normal, previsto e já tratado.
+   *
+   * Daí as três condições, todas necessárias:
+   *
+   * 1. `GET`/`HEAD` apenas. Um 302 a um POST leva vários clientes a repetir o
+   *    POST no destino — mandaríamos o corpo de um pedido para a página inicial
+   *    do frontend. Nenhum outro método é navegação de browser.
+   * 2. Fora de `/api`. Tudo o que é API vive sob esse prefixo; um 404 ali é um
+   *    erro de integração e tem de continuar a ser legível como JSON.
+   * 3. `Accept` a pedir HTML. É o que distingue o browser do `fetch`, que por
+   *    omissão nem envia `text/html`.
+   *
+   * O caminho pedido NÃO é reaproveitado no destino, de propósito. Passá-lo por
+   * `new URL(caminho, frontend)` transformaria `//sitio-do-atacante` — uma URL
+   * relativa ao protocolo, perfeitamente válida — num redireccionamento para fora
+   * do nosso domínio, e um open redirect é exactamente a peça que dá
+   * credibilidade a um link de phishing. A raiz do frontend não tem esse
+   * problema e serve o mesmo objectivo: a página 404 do frontend faz o resto.
+   */
+  private rotaInexistente(ctx: HttpContext) {
+    const metodo = ctx.request.method().toUpperCase()
+    const caminho = ctx.request.url()
+    const querHtml = ctx.request.accepts(['json', 'html']) === 'html'
+    const ehApi = caminho === '/api' || caminho.startsWith('/api/')
+
+    if ((metodo === 'GET' || metodo === 'HEAD') && !ehApi && querHtml) {
+      return ctx.response.redirect(frontendBaseUrl(), false, 302)
+    }
+
+    return this.envelope(ctx, 404, 'Rota não encontrada', {
+      code: 'E_ROUTE_NOT_FOUND',
+      path: caminho,
+    })
+  }
+
+  /**
    * Regra única para todas as exceções da aplicação, em vez de cada controller repetir
    * `if (error.code === 'X') {...}` a mão em cada acção (era o padrão em todos os
    * controllers gerados). `app/exceptions/*` — as ~19 exceções de domínio (CaixaAlreadyOpen,
@@ -39,6 +83,14 @@ export default class HttpExceptionHandler extends ExceptionHandler {
     // Validação (VineJS) — tem uma forma própria (`messages`), não é uma `Exception`.
     if (error.messages) {
       return this.envelope(ctx, 400, 'Dados inválidos', { errors: error.messages })
+    }
+
+    // Rota inexistente. Tem de ser tratada ANTES do `instanceof Exception`
+    // abaixo: `E_ROUTE_NOT_FOUND` é uma `Exception` como as outras, por isso
+    // caía lá e devolvia sempre JSON — o ramo `error.status === 404` que existia
+    // depois nunca chegava a correr para uma rota não encontrada.
+    if (error?.code === 'E_ROUTE_NOT_FOUND') {
+      return this.rotaInexistente(ctx)
     }
 
     if (error instanceof Exception) {

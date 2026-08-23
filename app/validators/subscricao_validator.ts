@@ -7,7 +7,7 @@ export const createsubscricaoValidator = vine.compile(
       .escape()
       .exists(async (db, value, __) => {
         const exists = await db.from('empresa').where('id', value).first()
-        return exists !== undefined
+        return !!exists
       }),
     plano_id: vine
       .string()
@@ -15,7 +15,7 @@ export const createsubscricaoValidator = vine.compile(
       .escape()
       .exists(async (db, value, __) => {
         const exists = await db.from('plano').where('id', value).first()
-        return exists !== undefined
+        return !!exists
       }),
     status: vine.string().trim().escape(),
     data_inicio: vine.date({ formats: ['iso8601'] }),
@@ -32,7 +32,7 @@ export const updatesubscricaoValidator = vine.compile(
       .escape()
       .exists(async (db, value, __) => {
         const exists = await db.from('empresa').where('id', value).first()
-        return exists !== undefined
+        return !!exists
       })
       .optional(),
     plano_id: vine
@@ -41,7 +41,7 @@ export const updatesubscricaoValidator = vine.compile(
       .escape()
       .exists(async (db, value, __) => {
         const exists = await db.from('plano').where('id', value).first()
-        return exists !== undefined
+        return !!exists
       })
       .optional(),
     status: vine.string().trim().escape().optional(),

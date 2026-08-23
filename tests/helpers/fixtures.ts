@@ -10,6 +10,7 @@ import VendaItens from '#models/faturacao/venda_itens'
 import MetodoPagamento from '#models/metodopagamento'
 import Vendapagamento from '#models/vendapagamento'
 import { giveRoleToUser } from '../../app/helpers/Utils.js'
+import { clonarPapeisPadrao } from '../../app/helpers/papeis_da_empresa.js'
 
 /**
  * Fábrica de fixtures usada pelos testes funcionais. Cria a árvore mínima de
@@ -18,9 +19,25 @@ import { giveRoleToUser } from '../../app/helpers/Utils.js'
  * teste isolada (auth_system_test), dentro da transação global de cada teste.
  */
 
-export async function createEmpresa(overrides: Partial<{ company_alias: string; nome: string }> = {}) {
+/**
+ * Uma empresa de teste nasce com a SUA cópia dos papéis padrão, tal como uma
+ * empresa real.
+ *
+ * Não é conveniência: desde que os papéis passaram a pertencer a uma empresa
+ * (migração `alter_papel_por_empresa`), uma empresa sem papéis é uma empresa que
+ * não pode existir em produção — `giveRoleToUser` não encontraria "Admin" no
+ * âmbito dela, e ninguém conseguiria entrar. Uma fixture que produzisse esse
+ * estado deixaria testes a passar sobre uma realidade que o registo real nunca
+ * cria, que é a pior espécie de fixture.
+ *
+ * `comPapeis: false` existe para os poucos testes que querem precisamente uma
+ * empresa nua (ex.: provar que o registo falha sem papéis semeados).
+ */
+export async function createEmpresa(
+  overrides: Partial<{ company_alias: string; nome: string; comPapeis: boolean }> = {}
+) {
   const suffix = randomUUID().slice(0, 8)
-  return Empresa.create({
+  const empresa = await Empresa.create({
     nome: overrides.nome ?? `Empresa Teste ${suffix}`,
     nif: `NIF${suffix}`,
     tamanho: 'pequena',
@@ -33,6 +50,12 @@ export async function createEmpresa(overrides: Partial<{ company_alias: string; 
     verified: true,
     user_id: '',
   } as any)
+
+  if (overrides.comPapeis !== false) {
+    await clonarPapeisPadrao(empresa.id)
+  }
+
+  return empresa
 }
 
 export async function createUser(empresa: Empresa, roles: string[] = []) {

@@ -7,7 +7,7 @@ export const createcobrancaValidator = vine.compile(
       .escape()
       .exists(async (db, value, __) => {
         const exists = await db.from('subscricao').where('id', value).first()
-        return exists !== undefined
+        return !!exists
       }),
     valor: vine.number().decimal([0, 12]),
     moeda: vine.string().trim().escape(),
@@ -26,7 +26,7 @@ export const updatecobrancaValidator = vine.compile(
       .escape()
       .exists(async (db, value, __) => {
         const exists = await db.from('subscricao').where('id', value).first()
-        return exists !== undefined
+        return !!exists
       })
       .optional(),
     valor: vine.number().decimal([0, 12]).optional(),

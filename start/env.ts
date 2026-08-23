@@ -139,6 +139,37 @@ export default await Env.create(new URL('../', import.meta.url), {
   BFF_SHARED_SECRET: Env.schema.string.optional(),
 
   /*
+  | O MESMO, para o segundo frontend: o backoffice da plataforma.
+  |
+  | Duas variáveis e não uma lista separada por vírgulas: um segredo é texto
+  | arbitrário e uma vírgula lá dentro partiria a lista em silêncio. Assim cada
+  | frontend também se roda sem tocar no outro, e o registo de segurança consegue
+  | dizer QUAL dos dois falhou.
+  */
+  BFF_SHARED_SECRET_BACKOFFICE: Env.schema.string.optional(),
+
+  /*
+  |----------------------------------------------------------
+  | Rotas de plataforma (backoffice) — registar ou não
+  |----------------------------------------------------------
+  |
+  | O grupo `adminOnly` de start/routes.ts governa a plataforma inteira,
+  | cross-tenant: suspender empresas, planos, taxas de IVA, relatórios de todos
+  | os inquilinos. `false` faz com que essas rotas NÃO cheguem sequer a ser
+  | registadas — não existem, respondem 404 como qualquer caminho inventado.
+  |
+  | Para que serve: o mesmo build vai para duas instâncias. A pública, exposta à
+  | Internet, corre com isto a `false`; a restrita (atrás de VPN ou lista de IPs)
+  | corre com isto ligado. Uma só base de código, um só dono das migrações, e a
+  | separação a sério feita onde ela existe mesmo — na rede.
+  |
+  | Ausente = ligado, para nenhum deploy actual mudar de comportamento ao
+  | actualizar. Não é uma fronteira de acesso por si: mesmo registadas, estas
+  | rotas continuam a exigir autenticação e um papel de escopo `plataforma`.
+  */
+  PLATFORM_ROUTES_ENABLED: Env.schema.boolean.optional(),
+
+  /*
   |----------------------------------------------------------
   | Consulta de NIF (serviço externo bknkv-utils-api-resources)
   |----------------------------------------------------------
@@ -156,6 +187,20 @@ export default await Env.create(new URL('../', import.meta.url), {
   | `cinco` no .env dava NaN, e qualquer comparação com NaN é falsa — o alerta
   | desligava-se em silêncio, sem erro nenhum.
   */
+  /*
+  |----------------------------------------------------------
+  | Documentação da API (/swagger e /docs)
+  |----------------------------------------------------------
+  | Publicar a especificação entrega a um atacante o mapa completo do que
+  | atacar: 146 caminhos, com parâmetros e formatos, sem precisar de adivinhar
+  | um único nome. Não é uma vulnerabilidade por si — é reconhecimento gratuito,
+  | e não há motivo para o oferecer em produção.
+  |
+  | Omitida, as rotas ficam ligadas fora de produção e desligadas em produção,
+  | que é o comportamento certo por omissão dos dois lados. Pôr `true` em
+  | produção é uma decisão explícita de quem a toma.
+  */
+  API_DOCS_ENABLED: Env.schema.boolean.optional(),
   ESTOQUE_LIMIAR_CRITICO: Env.schema.number.optional(),
   LOTE_VALIDADE_ALERTA_DIAS: Env.schema.number.optional(),
   VENDA_CANCELADA_LIMIAR: Env.schema.number.optional(),

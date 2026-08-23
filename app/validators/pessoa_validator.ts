@@ -23,7 +23,7 @@ export const createpessoaValidator = vine.compile(
       .escape()
       .exists(async (db, value, __) => {
         const exists = await db.from('user').where('id', value).first()
-        return exists !== undefined
+        return !!exists
       })
       .optional(),
   })
@@ -47,7 +47,7 @@ export const updatepessoaValidator = vine.compile(
       .escape()
       .exists(async (db, value, __) => {
         const exists = await db.from('user').where('id', value).first()
-        return exists !== undefined
+        return !!exists
       })
       .optional(),
   })

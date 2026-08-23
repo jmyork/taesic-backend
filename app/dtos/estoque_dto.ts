@@ -35,7 +35,6 @@ export interface EstoqueQueryDTO {
 }
 
 export interface CreateestoqueDTO {
-  enabled?: boolean
   pos_id?: string
   registrado_por?: string
   data_registro?: Date
@@ -48,7 +47,6 @@ export interface CreateestoqueDTO {
   company_alias?: string
 }
 export interface UpdateestoqueDTO {
-  enabled?: boolean
   pos_id?: string
   registrado_por?: string
   // data_registro?: Date

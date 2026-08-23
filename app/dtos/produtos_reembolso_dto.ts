@@ -20,13 +20,11 @@ export interface ProdutosReembolsoQueryDTO {
 }
 
 export interface Createprodutos_reembolsoDTO {
-  enabled?: boolean
   quantidade: number
   user_id: string
   venda_item_id: string
 }
 export interface Updateprodutos_reembolsoDTO {
-  enabled?: boolean
   quantidade?: number
   user_id?: string
   venda_item_id?: string

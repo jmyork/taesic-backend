@@ -22,7 +22,6 @@ export interface ForgotPasswordDTO {
   company_alias: string
 }
 export interface RegisterDTO {
-  enabled?: boolean
   username: string
   email: string
   password?: string
@@ -30,7 +29,6 @@ export interface RegisterDTO {
   papel: string | string[]
 }
 export interface logoutDTO {
-  enabled?: boolean
   userId: string
   token_identifier: number
 }

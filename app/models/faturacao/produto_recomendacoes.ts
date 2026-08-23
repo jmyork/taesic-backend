@@ -19,8 +19,6 @@ export default class produto_recomendacoes extends BaseModel {
   @column.dateTime()
   declare deletedAt: DateTime | null
 
-  @column()
-  declare enabled: boolean
 
   @beforeCreate()
   static uuid(model: produto_recomendacoes) {

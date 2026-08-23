@@ -1,6 +1,12 @@
 import { DateTime } from 'luxon'
 import Empresa from '#models/empresa'
-import { UpdateempresaDTO } from '#dtos/empresa_dto'
+import {
+  ReactivarEmpresaDTO,
+  SuspenderEmpresaDTO,
+  UpdateempresaDTO,
+} from '#dtos/empresa_dto'
+import SuspenderPropriaEmpresaException from '#exceptions/suspender_propria_empresa_exception'
+import { logSecurityEvent } from '../helpers/security_logger.js'
 import { CreateEmpresaUserDTO } from '#dtos/EmpresaUserDetalhes'
 
 import type { TransactionClientContract } from '@adonisjs/lucid/types/database'
@@ -10,6 +16,7 @@ import VerificationTokenHashService from '#services/verification_token_hash_serv
 // import authService from '#services/auth_service'
 // import empresaService from '#services/empresa_service'
 import { giveRoleToUser } from '../helpers/Utils.js'
+import { clonarPapeisPadrao } from '../helpers/papeis_da_empresa.js'
 import pessoa from '#models/pessoa'
 import { randomUUID } from 'crypto'
 import { semearMetodosPagamento } from '../helpers/metodos_pagamento_padrao.js'
@@ -46,6 +53,115 @@ export default class empresaRepository {
     // Removido: r.useTransaction(trx)
     r.deletedAt = DateTime.now()
     await r.save()
+  }
+
+  /**
+   * Apaga os bearer tokens de todos os utilizadores de uma empresa.
+   *
+   * Sem isto, a suspensão só valeria para quem voltasse a autenticar-se: quem já
+   * tivesse um token continuava a trabalhar como se nada fosse, e o corte só se
+   * notaria quando o token expirasse por si. Mesmo caminho já usado em
+   * `auth_repository.update()` quando o email muda — `User.accessTokens`
+   * (DbAccessTokensProvider) não aceita a transacção, portanto apaga-se pela
+   * própria tabela configurada no model.
+   */
+  private async revogarSessoes(empresaId: string, trx: TransactionClientContract) {
+    const utilizadores: { id: string }[] = await trx
+      .from('user')
+      .where('empresa_id', empresaId)
+      .select('id')
+
+    if (utilizadores.length === 0) return 0
+
+    return trx
+      .from('auth_access_tokens')
+      .whereIn(
+        'tokenable_id',
+        utilizadores.map((u) => u.id)
+      )
+      .delete()
+  }
+
+  /**
+   * Suspende uma empresa: corta o acesso e revoga as sessões vivas, numa transacção.
+   *
+   * As duas coisas têm de andar juntas. Gravar a suspensão e falhar a revogação
+   * deixaria uma empresa marcada como suspensa com utilizadores a trabalhar; revogar
+   * sem gravar seria só um logout incomodativo, com toda a gente a entrar outra vez a
+   * seguir.
+   *
+   * **Idempotente.** Suspender uma empresa já suspensa não reescreve a data nem o
+   * motivo originais — quem quiser corrigir o motivo reactiva e volta a suspender, e
+   * fica tudo em `security_logs`. As sessões são revogadas na mesma: o invariante que
+   * interessa é "empresa suspensa não tem sessões vivas", e um segundo clique é a
+   * coisa mais natural do mundo para quem desconfie que o primeiro não pegou.
+   */
+  async suspender(data: SuspenderEmpresaDTO) {
+    const empresa = await this.findOrFail(data.empresa_id)
+
+    // A verificação vive aqui, e não no controller: um comando ace ou uma rotina de
+    // cobrança chegam por outro caminho e o footgun é exactamente o mesmo.
+    if (data.actor_id) {
+      const actor = await User.find(data.actor_id)
+      if (actor?.empresa_id && actor.empresa_id === empresa.id) {
+        throw new SuspenderPropriaEmpresaException()
+      }
+    }
+
+    const jaEstavaSuspensa = empresa.estaSuspensa
+
+    await db.transaction(async (trx) => {
+      if (!jaEstavaSuspensa) {
+        empresa.useTransaction(trx)
+        empresa.suspensa_em = DateTime.now()
+        empresa.suspensa_motivo = data.motivo
+        empresa.suspensa_por = data.actor_id ?? null
+        await empresa.save()
+      }
+
+      await this.revogarSessoes(empresa.id, trx)
+    })
+
+    logSecurityEvent('empresa_suspensa', {
+      empresa_id: empresa.id,
+      company_alias: empresa.company_alias,
+      motivo: data.motivo,
+      actor_id: data.actor_id ?? null,
+      ja_estava_suspensa: jaEstavaSuspensa,
+    })
+
+    return empresa
+  }
+
+  /**
+   * Levanta a suspensão.
+   *
+   * Não devolve sessões a ninguém: quem tinha um token perdeu-o na suspensão e volta
+   * a autenticar-se. É o comportamento certo — uma reactivação não pode ressuscitar a
+   * sessão do portátil roubado que motivou a suspensão.
+   *
+   * Idempotente, pela mesma razão que `suspender`.
+   */
+  async reactivar(data: ReactivarEmpresaDTO) {
+    const empresa = await this.findOrFail(data.empresa_id)
+
+    if (!empresa.estaSuspensa) return empresa
+
+    const motivoAnterior = empresa.suspensa_motivo
+
+    empresa.suspensa_em = null
+    empresa.suspensa_motivo = null
+    empresa.suspensa_por = null
+    await empresa.save()
+
+    logSecurityEvent('empresa_reactivada', {
+      empresa_id: empresa.id,
+      company_alias: empresa.company_alias,
+      motivo_anterior: motivoAnterior,
+      actor_id: data.actor_id ?? null,
+    })
+
+    return empresa
   }
 
   async getUnverifiedCompanies(trx?: TransactionClientContract) {
@@ -166,6 +282,18 @@ export default class empresaRepository {
         },
         trx
       )
+
+      // A empresa recebe a SUA cópia dos papéis padrão antes de o dono levar o
+      // papel de Admin — que é agora o Admin desta empresa, não um Admin
+      // partilhado por todos os inquilinos. Tem de ser por esta ordem: sem os
+      // clones, `giveRoleToUser` não encontra "Admin" no âmbito desta empresa e
+      // rebenta (de propósito — antes punha `papel_id: ''` e falhava com um erro
+      // de chave estrangeira que não dizia nada).
+      //
+      // Dentro da transacção pela mesma razão que os métodos de pagamento: uma
+      // empresa sem papéis não tem administrador e ninguém consegue entrar nela.
+      // Ou nasce completa, ou não nasce.
+      await clonarPapeisPadrao(empresa.id, trx)
 
       await giveRoleToUser(user, 'Admin', trx)
 

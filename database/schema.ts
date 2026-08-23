@@ -154,10 +154,12 @@ export class ClienteSchema extends BaseModel {
 }
 
 export class CobrancaSchema extends BaseModel {
-  static $columns = ['createdAt', 'dataVencimento', 'deletedAt', 'id', 'moeda', 'pago', 'referencia', 'status', 'subscricaoId', 'updatedAt', 'valor'] as const
+  static $columns = ['createdAt', 'dataEmissao', 'dataVencimento', 'deletedAt', 'id', 'moeda', 'pago', 'referencia', 'status', 'subscricaoId', 'updatedAt', 'valor'] as const
   $columns = CobrancaSchema.$columns
   @column.dateTime({ autoCreate: true })
   declare createdAt: DateTime
+  @column.dateTime()
+  declare dataEmissao: DateTime | null
   @column.dateTime()
   declare dataVencimento: DateTime | null
   @column.dateTime()
@@ -237,7 +239,7 @@ export class DespesaSchema extends BaseModel {
 }
 
 export class EmpresaSchema extends BaseModel {
-  static $columns = ['companyAlias', 'contacto', 'createdAt', 'deletedAt', 'id', 'inadiplente', 'localizacao', 'nif', 'nome', 'regimeIva', 'status', 'tamanho', 'taxaIvaId', 'updatedAt', 'userId', 'verified'] as const
+  static $columns = ['companyAlias', 'contacto', 'createdAt', 'deletedAt', 'id', 'inadiplente', 'localizacao', 'nif', 'nome', 'regimeIva', 'status', 'suspensaEm', 'suspensaMotivo', 'suspensaPor', 'tamanho', 'taxaIvaId', 'updatedAt', 'userId', 'verified'] as const
   $columns = EmpresaSchema.$columns
   @column()
   declare companyAlias: string | null
@@ -261,6 +263,12 @@ export class EmpresaSchema extends BaseModel {
   declare regimeIva: boolean | null
   @column()
   declare status: boolean | null
+  @column.dateTime()
+  declare suspensaEm: DateTime | null
+  @column()
+  declare suspensaMotivo: string | null
+  @column()
+  declare suspensaPor: string | null
   @column()
   declare tamanho: string | null
   @column()
@@ -462,14 +470,20 @@ export class NifConsultaSchema extends BaseModel {
 }
 
 export class PapelSchema extends BaseModel {
-  static $columns = ['createdAt', 'deletedAt', 'descricao', 'id', 'nome', 'updatedAt'] as const
+  static $columns = ['chaveEscopo', 'createdAt', 'deletedAt', 'descricao', 'empresaId', 'escopo', 'id', 'nome', 'updatedAt'] as const
   $columns = PapelSchema.$columns
+  @column()
+  declare chaveEscopo: string | null
   @column.dateTime({ autoCreate: true })
   declare createdAt: DateTime
   @column.dateTime()
   declare deletedAt: DateTime | null
   @column()
   declare descricao: string | null
+  @column()
+  declare empresaId: string | null
+  @column()
+  declare escopo: string
   @column({ isPrimary: true })
   declare id: string
   @column()
@@ -513,8 +527,10 @@ export class PermissaoSchema extends BaseModel {
 }
 
 export class PessoaSchema extends BaseModel {
-  static $columns = ['cidade', 'createdAt', 'dataNascimento', 'deletedAt', 'email', 'empresaId', 'endereco', 'genero', 'id', 'imgUrl', 'nif', 'nome', 'numero', 'pais', 'sobrenome', 'telefone', 'tipo', 'updatedAt', 'userId'] as const
+  static $columns = ['ativo', 'cidade', 'createdAt', 'dataNascimento', 'deletedAt', 'email', 'empresaId', 'endereco', 'genero', 'id', 'imgUrl', 'nif', 'nome', 'numero', 'pais', 'sobrenome', 'telefone', 'tipo', 'updatedAt', 'userId'] as const
   $columns = PessoaSchema.$columns
+  @column()
+  declare ativo: boolean
   @column()
   declare cidade: string | null
   @column.dateTime({ autoCreate: true })

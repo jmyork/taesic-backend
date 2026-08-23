@@ -1,10 +1,10 @@
 import { BaseCommand, args, flags } from '@adonisjs/core/ace'
-import Papel from '#models/auth/papel'
 import {
   ehPapelCritico,
   resolverPermissoes,
   revogarPermissao,
   type ModoPermissao,
+  resolverPapeisPorNome,
 } from '../app/helpers/rbac_permissoes.js'
 
 /**
@@ -24,6 +24,24 @@ import {
  *
  * A permissão em si NUNCA é apagada do catálogo, nem os outros papéis são tocados — sai
  * apenas a associação papel↔permissão indicada.
+ *
+ * ── Âmbito (desde que os papéis passaram a ser por empresa) ──────────────────────
+ *
+ * Um nome de papel já não identifica um papel: há uma cópia por empresa, mais o
+ * modelo que é clonado nos registos novos. Sem indicar nada, o comando age sobre os
+ * papéis do dono da plataforma (`modelo` e `plataforma`) — que é o que se quer para
+ * afinar o padrão.
+ *
+ * ATENÇÃO ao que isso significa: mexer no modelo só afecta empresas criadas A PARTIR
+ * DE ENTÃO. As que já existem têm as suas cópias e não mudam. Para lá chegar:
+ *
+ *   --todas-empresas    a cópia deste papel em todas as empresas
+ *   --empresa <alias>   só os papéis dessa empresa
+ *
+ * É esta a linha a usar quando uma regra de negócio nova exige uma permissão nova em
+ * produção — a alternativa é os inquilinos já registados ficarem com um 403 que
+ * ninguém relaciona com a causa. Já aconteceu três vezes neste projecto com o
+ * catálogo mantido à mão (ver CLAUDE.md 7.6, 7.8 e 7.12).
  */
 export default class PermissaoRevogar extends BaseCommand {
   static commandName = 'permissao:revogar'
@@ -50,6 +68,16 @@ export default class PermissaoRevogar extends BaseCommand {
 
   @flags.boolean({ description: 'Mostra o que faria, sem gravar nada' })
   declare simular?: boolean
+
+  @flags.string({
+    description: 'Aplicar aos papéis DESTA empresa (company_alias), em vez dos da plataforma',
+  })
+  declare empresa?: string
+
+  @flags.boolean({
+    description: 'Aplicar à cópia deste papel em TODAS as empresas',
+  })
+  declare todasEmpresas?: boolean
 
   @flags.boolean({ description: 'Necessário para mexer em Admin/Platform_Admin' })
   declare forcar?: boolean
@@ -112,12 +140,16 @@ export default class PermissaoRevogar extends BaseCommand {
     )
 
     let alteracoes = 0
-    for (const nomePapel of this.papeis) {
-      const papel = await Papel.findBy('nome', nomePapel)
-      if (!papel) {
-        this.logger.warning(`Papel inexistente, ignorado: ${nomePapel}`)
-        continue
-      }
+    const { resolvidos, inexistentes: papeisInexistentes } = await resolverPapeisPorNome(
+      this.papeis,
+      { empresa: this.empresa, todasEmpresas: this.todasEmpresas }
+    )
+
+    for (const nome of papeisInexistentes) {
+      this.logger.warning(`Papel inexistente neste âmbito, ignorado: ${nome}`)
+    }
+
+    for (const { papel, etiqueta: nomePapel } of resolvidos) {
 
       for (const permissao of permissoes) {
         if (this.simular) {

@@ -13,12 +13,10 @@ export interface UserPapelQueryDTO {
 }
 
 export interface Createuser_papelDTO {
-  enabled?: boolean
   papel_id: string
   user_id: string
 }
 export interface Updateuser_papelDTO {
-  enabled?: boolean
   papel_id?: string
   user_id?: string
 }

@@ -13,12 +13,10 @@ export interface PermissaoQueryDTO {
 }
 
 export interface CreatepermissaoDTO {
-  enabled?: boolean
   descricao: string
   nome: string
 }
 export interface UpdatepermissaoDTO {
-  enabled?: boolean
   descricao?: string
   nome?: string
 }

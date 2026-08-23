@@ -67,14 +67,14 @@ export const VendaItemCreateValidator = vine.compile(
       .escape()
       .exists(async (db, value, __) => {
         const exists = await db.from('vendas').where('id', value).first()
-        return exists !== undefined
+        return !!exists
       }),
     lote_produto_id: vine
       .string()
       .escape()
       .exists(async (db, value, __) => {
         const exists = await db.from('lote_produto').where('id', value).first()
-        return exists !== undefined
+        return !!exists
       }),
     quantidade: vine.number().positive(),
   })
@@ -84,7 +84,7 @@ export const VendaItemDestroyValidator = vine.compile(
   vine.object({
     id: vine.string().escape().exists(async (db, value, __) => {
       const exists = await db.from('venda_itens').where('id', value).first()
-      return exists !== undefined
+      return !!exists
     }),
   })
 )

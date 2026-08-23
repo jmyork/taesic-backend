@@ -1,5 +1,6 @@
 import Papel from '#models/auth/papel'
 import Permissao from '#models/auth/permissao'
+import Empresa from '#models/empresa'
 import papel_permissao from '#models/auth/papel_permissao'
 
 /**
@@ -153,4 +154,79 @@ export const PAPEIS_CRITICOS = ['Admin', 'Platform_Admin']
 
 export function ehPapelCritico(nome: string) {
   return PAPEIS_CRITICOS.includes(nome)
+}
+
+export interface AmbitoDosPapeis {
+  /** `company_alias` de uma empresa: opera sobre os papéis DESSA empresa. */
+  empresa?: string
+  /** Opera sobre a cópia deste papel em TODAS as empresas. */
+  todasEmpresas?: boolean
+}
+
+export interface PapelResolvido {
+  papel: InstanceType<typeof Papel>
+  /** Para as mensagens: "Vendedor (qa-audit)" em vez de só "Vendedor". */
+  etiqueta: string
+}
+
+/**
+ * Traduz nomes de papéis em linhas concretas, agora que um nome já não identifica
+ * um papel.
+ *
+ * Isto é a consequência operacional mais importante de os papéis passarem a ser
+ * por empresa, e a que se paga caro se for esquecida: conceder uma permissão ao
+ * papel `modelo` só afecta as empresas que forem criadas A PARTIR DE AGORA. As
+ * que já existem têm as suas próprias cópias e não mudam.
+ *
+ * O histórico deste projecto diz que este é exactamente o género de coisa que
+ * fica para trás: o catálogo de permissões mantido à mão já ficou desactualizado
+ * três vezes (Gerente/Supervisor sem permissões, `domain_pos.meu`,
+ * `domain_vendapagamento.*` — que deixou os vendedores sem conseguir fechar uma
+ * única venda). Daí `--todas-empresas` existir: sem ela, cada regra de negócio
+ * nova que exija uma permissão nova voltaria a passar ao lado dos inquilinos já
+ * criados, e o sintoma apareceria como um 403 inexplicável em produção.
+ *
+ * Sem âmbito indicado, opera sobre os papéis do dono da plataforma (`modelo` e
+ * `plataforma`) — é o que um comando de administração quer dizer com "Vendedor".
+ */
+export async function resolverPapeisPorNome(
+  nomes: string[],
+  ambito: AmbitoDosPapeis = {}
+): Promise<{ resolvidos: PapelResolvido[]; inexistentes: string[] }> {
+  const resolvidos: PapelResolvido[] = []
+  const inexistentes: string[] = []
+
+  for (const nome of nomes) {
+    const consulta = Papel.query().where('nome', nome).whereNull('deleted_at')
+
+    if (ambito.todasEmpresas) {
+      consulta.where('escopo', 'empresa').preload('empresa')
+    } else if (ambito.empresa) {
+      consulta
+        .where('escopo', 'empresa')
+        .whereIn(
+          'empresa_id',
+          Empresa.query().select('id').where('company_alias', ambito.empresa)
+        )
+        .preload('empresa')
+    } else {
+      consulta.whereIn('escopo', ['modelo', 'plataforma'])
+    }
+
+    const encontrados = await consulta
+
+    if (encontrados.length === 0) {
+      inexistentes.push(nome)
+      continue
+    }
+
+    for (const papel of encontrados) {
+      resolvidos.push({
+        papel,
+        etiqueta: papel.empresa_id ? `${papel.nome} (${papel.empresa?.company_alias})` : papel.nome,
+      })
+    }
+  }
+
+  return { resolvidos, inexistentes }
 }

@@ -6,6 +6,7 @@ import clientesController from '#controllers/cliente_controller'
 import cobrancasController from '#controllers/cobranca_controller'
 import cupomsController from '#controllers/cupom_controller'
 import despesasController from '#controllers/despesas_controller'
+import DomainPapelController from '#controllers/domain_papel_controller'
 import DomainUserPapelController from '#controllers/domain_user_papel_controller'
 import empresasController from '#controllers/empresa_controller'
 import estoquesController from '#controllers/estoque_controller'
@@ -64,6 +65,7 @@ export const controllers = {
   Cobranca: cobrancasController,
   Cupom: cupomsController,
   Despesas: despesasController,
+  DomainPapel: DomainPapelController,
   DomainUserPapel: DomainUserPapelController,
   Empresa: empresasController,
   Estoque: estoquesController,

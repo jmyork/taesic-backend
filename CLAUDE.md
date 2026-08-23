@@ -1240,3 +1240,456 @@ e ganhou um par simétrico, `permissao:revogar` (ver a tabela da secção 3 para
   arranca a app, sai a 0). Consequência prática: não encadear comandos ace com `&&` nem
   confiar no código de saída em CI enquanto isto não for resolvido — o caminho provável é
   correr Node 22 LTS.
+
+### 7.13 Décima segunda sessão — papéis passam a pertencer a uma EMPRESA
+
+Pedido: "a gestão dos papéis deve ser por inquilino... e toda a gestão deve ser feita pela
+empresa". As **permissões ficaram deliberadamente fora** — decisão discutida e aceite antes
+de implementar: uma permissão aqui é um nome de rota (`domain_produtos.store`), ou seja, o
+que o *software* sabe fazer. Um inquilino não pode inventar uma; por empresa seriam 296
+linhas duplicadas por cada uma, e cada rota nova exigiria um backfill em todas — falhar uma
+tiraria a funcionalidade a essa empresa em silêncio. O que a empresa escolhe é QUAIS das
+permissões existentes cada um dos SEUS papéis tem.
+
+#### Os três âmbitos (`papel.escopo`)
+
+| escopo | `empresa_id` | o que é |
+|---|---|---|
+| `plataforma` | NULL | os 5 `Platform_*`, do dono da plataforma |
+| `modelo` | NULL | os 10 padrões, clonados no registo de cada empresa. **Nunca atribuíveis** |
+| `empresa` | preenchido | os papéis próprios de uma empresa — os únicos que um utilizador de inquilino recebe |
+
+- `escopo` existe porque a alternativa era decidir pelo NOME, e **era aí que estava a
+  armadilha desta mudança**: `AdminOnlyMiddleware` reconhecia o dono da plataforma por
+  `nome LIKE 'Platform_%'`. Com a unicidade a passar a ser por empresa, bastava a uma
+  empresa criar um papel chamado `Platform_Admin` e atribuí-lo a si própria para **escalar
+  de inquilino a administrador da plataforma**, com acesso cross-tenant a tudo. O
+  middleware, o seeder e a atribuição de papéis passaram todos a decidir por `escopo`. O
+  prefixo `Platform_` continua proibido a inquilinos (`nomeDePapelReservado`), mas já não
+  decide autorização nenhuma — é só para o nome não induzir em erro quem lê um ecrã de
+  gestão ou uma linha de auditoria. Testes em `papel_por_empresa.spec.ts` e
+  `admin_only_middleware.spec.ts`.
+- **Unicidade**: `unique(empresa_id, nome)` NÃO servia — no MySQL os NULL contam como
+  distintos num índice único, portanto dois `Platform_Admin` passariam ambos. Resolvido com
+  a coluna gerada `chave_escopo = COALESCE(empresa_id, escopo)` + `unique(chave_escopo,
+  nome)`, que cobre os três casos de uma vez. `deleted_at` NÃO entra no índice (mesmo
+  problema dos NULL: duas linhas activas com o mesmo nome passariam ambas); um papel
+  apagado é **revivido** ao ser recriado com o mesmo nome, como já se faz em
+  `domain_user_papel.assign()`.
+- **A coluna gerada tem de ser `VIRTUAL`, não `STORED`.** `STORED` obriga o InnoDB a
+  reconstruir a tabela, e isso falha com `ER_CANNOT_ADD_FOREIGN` numa tabela envolvida em
+  chaves estrangeiras (`papel.empresa_id`, mais `user_papel`/`papel_permissao` a apontar
+  para cá). Apanhado a correr a migração: como o MySQL não faz DDL transaccional, a versão
+  `STORED` deixou as colunas criadas e a migração por registar, e a corrida seguinte falhou
+  com "Duplicate column name". **Se voltar a acontecer noutra tabela, é este o motivo.**
+- `CHECK papel_escopo_empresa_chk` garante o invariante na BD: `escopo='empresa'` se e só se
+  `empresa_id NOT NULL`. Nenhum caminho de código consegue gravar a combinação errada.
+
+#### Migração e backfill
+
+`1784662475791_alter_papel_por_empresa` (esquema) + `1784662475792_backfill_papel_por_empresa`
+(dados). O backfill **não apaga nada** (os padrões ficam como `modelo`) e **aborta** se
+sobrar uma única atribuição a apontar para um `modelo` — uma migração de acessos que falha
+em silêncio descobre-se quando alguém não consegue trabalhar, ou pior, quando alguém
+consegue o que não devia. É idempotente. Verificado contra os dados reais de dev: 2
+empresas, 20 papéis clonados, 1504 ligações, as 20 atribuições activas preservadas, 0
+órfãs.
+
+#### O que mudou no código
+
+- **`clonarPapeisPadrao(empresaId, trx)`** (`app/helpers/papeis_da_empresa.ts`) — chamado em
+  `empresa_repository` DENTRO da transacção de registo e ANTES de `giveRoleToUser(user,
+  'Admin')`: sem os clones não existe "Admin" no âmbito da empresa e o registo rebenta (de
+  propósito). Faz **5 idas à BD** independentemente do número de papéis — a primeira versão
+  fazia uma consulta por papel e tornava a suite impraticável (~350 empresas por corrida).
+  Os ids são gerados em Node (`randomUUID`, v4) e não com o `UUID()` do MySQL, que produz
+  v1: há validadores e parâmetros de rota que exigem o formato v4.
+- **`giveRoleToUser`** resolve o papel no âmbito DO UTILIZADOR (a sua empresa, ou plataforma
+  se não tiver). O `?.id || ''` anterior produzia um erro de chave estrangeira sem relação
+  visível com a causa; agora **lança**. Dar plataforma a alguém que também tem empresa exige
+  `{ escopo: 'plataforma' }` explícito — não é fallback automático, senão bastaria conseguir
+  passar "Platform_Admin" como nome de papel para escalar.
+- **`apenasPapeisUtilizaveis`** (segunda tranca, em `userHasPermission`/`getUserPermissions`/
+  `getUserRoles`): um papel de outra empresa não concede nada, um `modelo` nunca conta, e
+  **`papel.deleted_at` passou a filtrar** — um papel apagado continuava a conceder as suas
+  permissões, o que não fazia diferença enquanto ninguém podia apagar papéis.
+- **`domain_user_papel.assign`** verificava `nome.startsWith('Platform_')`; passou a
+  `papel.pertenceA(empresa.id)`, que recusa de uma vez os de plataforma, os `modelo` **e os
+  de outra empresa** — este último passava sem nada a assinalar, porque tem nome de
+  inquilino e o `papel_id` vem do corpo do pedido. `listAssignableRoles` passou a exigir o
+  `company_alias` (devolvia todos os papéis de inquilino da plataforma).
+- **`papel_repository` (plataforma)** restringe `baseQuery()` a `empresa_id IS NULL`. Além
+  de a listagem não ficar enterrada em cópias de inquilinos, fecha um buraco: `update` e
+  `softDelete` dessa rota não têm — nem faz sentido terem — noção de empresa, portanto um
+  `PUT api/papel/<id>` com o id de um papel de um inquilino renomeava-o. `papel_validator`
+  passou a verificar unicidade só no espaço de nomes da plataforma (antes procurava em toda
+  a tabela, o que impediria criar um modelo só porque alguma empresa já usara o nome).
+- **`auth_validator`**: o `papel` do registo de funcionário era uma `vine.enum` com sete
+  nomes fixos — bloquearia qualquer papel criado pela empresa. Passou a `.exists()` contra
+  a BD, restrito a `escopo='empresa'` e a esta empresa: mais flexível E mais apertado. Nota:
+  a lista fixa excluía "Admin"/"Gerente"/"Supervisor", mas **não era uma fronteira de
+  segurança** — quem tem `domain_auth.register` também tem `domain_user_papel.store` e
+  sempre pôde fazê-lo em dois passos.
+
+#### Recurso novo: `api/:company_alias/papeis` (`domain_papel.*`)
+
+CRUD dos papéis da própria empresa + `GET papeis/permissoes-disponiveis` (catálogo, só
+leitura, **só `domain_*`** — mostrar permissões de plataforma a um inquilino seria oferecer
+nomes que ele nunca deve poder conceder). Registada ANTES do resource, mesmo motivo de
+`caixas/meu`. Controller sem try/catch (padrão do handler global). Permissões novas
+atribuídas a Admin (tudo) e a AdminVisualizador/AdminUserManager/AdminUserVisualizador
+(leitura) — **estes três já referenciavam `domain_papel.index/show` no seeder como nomes
+órfãos**, silenciosamente ignorados por a permissão não existir no catálogo.
+
+- **`assertNaoFicaSemGestao`**: a empresa nunca pode ficar sem ninguém com
+  `domain_papel.update`. É o footgun óbvio de delegar esta gestão — o Admin tira a si
+  próprio a permissão (ou apaga o papel) e a empresa fica trancada fora da sua própria
+  gestão de acessos, só destrancável por intervenção manual do dono da plataforma. Corre
+  DEPOIS da alteração, dentro da transacção: pergunta "como fica isto?" em vez de tentar
+  prever todos os caminhos que lá chegam. A regra é "não ficar sem gestão", não "o Admin é
+  intocável" — uma empresa que organize os papéis de outra maneira não fica presa.
+- Substituir permissões **apaga** as ligações em vez de soft delete (`unique(papel_id,
+  permissao_id)` bloquearia a reatribuição futura), e um nome de permissão desconhecido é
+  **recusado**, não ignorado — um ecrã de permissões que mente é pior do que um erro.
+
+#### ATENÇÃO — consequência operacional que não pode ser esquecida
+
+Conceder uma permissão ao papel `modelo` só afecta empresas criadas **a partir de então**.
+As que já existem têm as suas cópias e não mudam. Por isso `permissao:conceder` e
+`permissao:revogar` ganharam âmbito:
+
+```
+node ace permissao:conceder <perm> <papel>                    # modelos + plataforma
+node ace permissao:conceder <perm> <papel> --todas-empresas   # a cópia em TODAS as empresas
+node ace permissao:conceder <perm> <papel> --empresa <alias>  # só nessa empresa
+```
+
+Sem `--todas-empresas`, cada regra de negócio nova que exija uma permissão nova volta a
+passar ao lado dos inquilinos já registados, e o sintoma aparece como um 403 que ninguém
+relaciona com a causa. **Já aconteceu três vezes** neste projecto com o catálogo mantido à
+mão (secções 7.6, 7.8 e 7.12 — esta última deixou os vendedores sem conseguir fechar uma
+única venda).
+
+#### Fixtures
+
+`createEmpresa()` passou a clonar os padrões, como uma empresa real. Não é conveniência:
+uma empresa sem papéis é uma empresa que não pode existir em produção, e uma fixture que
+produzisse esse estado deixaria testes a passar sobre uma realidade que o registo nunca
+cria. `createEmpresa({ comPapeis: false })` para quem quiser mesmo uma empresa nua.
+**`Papel.findByOrFail('nome', X)` deixou de identificar um papel** — nos testes, resolver
+sempre pela empresa (ver o helper `papelDaEmpresa` em `domain_user_papel.spec.ts` e em
+`rbac_permissoes_helper.spec.ts`).
+
+- Suite completa: **674 testes** (eram 642), `tsc --noEmit` sem erros. Migrations corridas
+  em dev e em teste; permissões novas aplicadas em dev com `permissao:conceder` (nos
+  modelos e com `--todas-empresas`) e em teste via `db:fresh:seed`.
+
+### 7.14 Décima terceira sessão — as duas auditorias do backlog (7.10), fechadas
+
+Ambas estavam listadas em 7.10 como "vale a pena numa sessão futura". Cada uma escondia
+bugs vivos, não só arrumação.
+
+#### Colunas fantasma — 26 encontradas, 3 endpoints partidos
+
+Um `@column()` declarado num model para uma coluna que a tabela não tem. É inerte enquanto
+ninguém a escreve (o Lucid só insere atributos atribuídos, e `SELECT *` simplesmente não a
+traz) e um 500 "Unknown column" no dia em que um validador a aceitar. A origem é sempre a
+mesma: a linha existe na migração, **comentada** — havia 38 dessas linhas.
+
+A auditoria NÃO foi feita por grep aos comentários, mas comparando o que cada model declara
+com `information_schema` — encontra todos os casos, incluindo os que nunca tiveram uma linha
+comentada. Resultado:
+
+| coluna | alcançável? | resolução |
+|---|---|---|
+| `cobranca.data_emissao` | **sim, e obrigatória no validador** | coluna criada |
+| `pessoa.ativo` | **sim** (aceite em create e update) | coluna criada |
+| `enabled` em 24 models | não (nenhum validador a aceitava, salvo `vendas`, que a descartava) | **retirada dos models** |
+| `app/models/example.ts` | ficheiro de 0 bytes, tabela inexistente | apagado |
+
+- **`POST api/:company_alias/cobranca` estava completamente inutilizável**: `data_emissao` é
+  obrigatória em `cobranca_validator`, portanto todos os pedidos a enviavam e todos
+  rebentavam. `relatorios_plataforma_repository` já contornava isto a usar `created_at`.
+- `enabled` foi **retirada** e não criada, ao contrário das outras duas: duplicaria
+  `deleted_at`, que é o que este projecto usa em todo o lado para activar/desactivar (o
+  `softDelete` da BaseRepository é um toggle). Criar 24 colunas que ninguém lê seria trocar
+  um problema por outro maior. Retirada de 24 models, 25 DTOs e das 2 regras em
+  `vendas_validator` que ainda a aceitavam do cliente.
+- **A rede que impede o regresso**: `tests/functional/colunas_fantasma.spec.ts` compara
+  TODOS os models com o esquema real. Falha no momento em que alguém acrescenta um
+  `@column()` sem a migração — quando custa um minuto, em vez de um 500 em produção.
+- Migration `1784662475793_alter_colunas_fantasma`. `data_emissao` é nullable e as cobranças
+  existentes ficam com `created_at` (a melhor aproximação verdadeira; inventar uma data
+  seria pior do que a ausência dela).
+
+#### `exists !== undefined` — 33 regras que nunca rejeitavam nada
+
+`db.from(...).first()` devolve `null` quando não há linha, e `null !== undefined` é `true`.
+Todas estas regras `.exists()` devolviam sempre `true`. Corrigidas para `!!exists` em 14
+validadores. Verificado caso a caso: **nenhuma tinha um filtro extra (tenant, etc.) a ser
+silenciosamente ignorado** — eram todas verificações simples de existência por id, portanto
+o efeito era um 500 de chave estrangeira em vez de um 400 legível. Continua a valer a pena
+rever se algum destes `.exists()` DEVIA ter filtro por empresa (ex.:
+`produto_media_validator` aceita qualquer `produtos.id`, sem verificar de quem é) — isso é
+uma questão diferente e fica em aberto.
+
+#### `POST api/papel-permissao` rejeitava sempre — três defeitos sobrepostos
+
+Encontrado ao rever o `exists`. No mesmo validador:
+
+1. o `.unique()` consultava **`user_papel`**, a tabela errada — perguntava se o utilizador X
+   tem o papel Y para decidir se o papel Y já tem a permissão Z;
+2. `!(await db.from(...).where(...))` **sem `.first()`**: esperar por um query builder
+   devolve um ARRAY, e um array vazio é truthy em JS, portanto o `!` dava sempre `false`
+   ("não é único") e a validação rejeitava **qualquer** par, incluindo um inteiramente novo;
+3. o `.exists()` ao lado aceitava tudo (o bug acima).
+
+Os defeitos 2 e 3 cancelavam-se na aparência — um rejeitava tudo, o outro aceitava tudo — o
+que é provavelmente a razão de nenhum ter sido notado. Reescrito num helper `parNaoExiste`
+que consulta `papel_permissao` com `.first()`. Não filtra `deleted_at`, tal como a constraint
+`unique(papel_id, permissao_id)` da BD não filtra. 5 testes em
+`papel_permissao_validator.spec.ts`.
+
+**Lição a reter**: `!(await queryBuilder)` sem `.first()`/`.count()` é sempre um bug — vale
+um grep periódico por `!(await db`.
+
+- Suite completa: **682 testes** (eram 674), `tsc --noEmit` sem erros. Migration corrida em
+  dev e em teste.
+
+#### Continua em aberto (identificado, não corrigido) — **resolvido em 7.15**
+
+**Não há forma de suspender uma empresa.** `ValidateCompanyAliasMiddleware` verifica o
+alias, o dono e o `verified` — nunca `empresa.status`, `inadiplente` ou `deleted_at`. Um
+botão "suspender" no backoffice seria decorativo, e hoje não há como cortar o acesso a um
+inquilino comprometido ou em dívida. Não corrigido de propósito: `status` é um boolean sem
+semântica documentada (activa? aprovada?), e inventar o significado de uma coluna numa
+fronteira de acesso é como se partem sistemas em produção. Precisa de decisão explícita
+sobre o que cada flag significa, e da acção correspondente no backoffice — incluindo revogar
+os tokens vivos, senão a suspensão só vale para quem voltar a autenticar-se.
+
+### 7.15 Décima quarta sessão — suspender uma empresa deixa de ser impossível
+
+Fecha o item que 7.14 deixou explicitamente em aberto ("não há forma de suspender uma
+empresa"). Era o bloqueador do backoffice: sem ponto de aplicação, qualquer botão
+"suspender" seria decorativo.
+
+#### Colunas novas, e não `status`/`inadiplente`
+
+A decisão que 7.14 recusou tomar sozinha. `status` e `inadiplente` já existem, e é
+precisamente esse o problema: são booleans sem semântica escrita em lado nenhum
+(`status` significa "activa"? "aprovada"? "a pagar"?), com valores já gravados sob a
+interpretação de quem os escreveu na altura. Dar-lhes agora significado numa **fronteira
+de acesso** seria decidir retroactivamente quem fica de fora, a partir de dados que nunca
+quiseram dizer isso.
+
+`suspensa_em` (+ `suspensa_motivo`, `suspensa_por`) não tem esse passado: NULL é "não
+suspensa" para toda a gente, incluindo para as linhas que já existiam, e nenhum
+comportamento actual muda de sentido por baixo de código que depende das outras duas.
+Migração `1784662475794_alter_empresa_suspensao`.
+
+- `CHECK empresa_suspensao_chk` garante que `suspensa_em` e `suspensa_motivo` andam
+  sempre juntos. Uma suspensão sem motivo é uma que ninguém consegue explicar nem
+  reverter com confiança três meses depois. `suspensa_por` fica de fora do invariante de
+  propósito: uma suspensão feita por comando ace ou por rotina de cobrança não tem
+  utilizador para apontar, e recusá-la por isso seria pior.
+- `suspensa_por` é FK para `user` com `ON DELETE SET NULL` — apagar o administrador que
+  suspendeu não pode reactivar a empresa que ele suspendeu.
+- Ao contrário da coluna gerada de 7.13, acrescentar colunas normais + CHECK a uma tabela
+  com chaves estrangeiras não reconstrói a tabela e correu à primeira nas duas bases.
+
+#### Os quatro pontos onde a suspensão morde
+
+1. **`ValidateCompanyAliasMiddleware`** — o portão por onde passam TODAS as rotas de
+   inquilino. Uma verificação cobre o produto inteiro; a alternativa era repeti-la por
+   repositório e bastaria esquecer um. **403, não 404**: quem bate à porta é o próprio
+   inquilino, e fingir que a empresa não existe transforma um corte deliberado num "a
+   aplicação avariou" — que acaba num pedido de suporte em vez de num telefonema a tratar
+   da causa. O motivo gravado não vai na resposta.
+   O `select` passou a ser explícito: a consulta trazia `*` das três tabelas achatadas num
+   objecto, e `suspensa_em` só não colidia com nada por sorte.
+2. **`auth_repository.login()`** — sem isto, o login continuava a entregar um bearer token
+   válido a quem está cortado, e o frontend deixava a pessoa entrar para depois bater em
+   403 a cada clique. A verificação é pelo `empresa_id` do **utilizador**, não pelo
+   `company_alias` do pedido: esse é opcional nesta rota, e bastaria omiti-lo para
+   contornar uma verificação feita sobre ele.
+3. **Revogação das sessões vivas**, na mesma transacção da suspensão. É o ponto que 7.14
+   já tinha antecipado: sem ele a suspensão só valeria para quem voltasse a autenticar-se.
+   Mesmo caminho de `auth_repository.update()` — `User.accessTokens` não aceita a
+   transacção, portanto apaga-se por `auth_access_tokens` directamente.
+4. **Catálogo público** (`catalogo_produtos_query.ts`) — a única superfície onde os
+   produtos de um inquilino continuavam visíveis depois do corte. Deixar lá a montra de
+   uma empresa suspensa por fraude é continuar a fazer-lhe publicidade.
+
+#### Decisões que valem a pena reter
+
+- **`suspender` é idempotente e não reescreve a suspensão original.** Um segundo clique
+  não muda a data nem o motivo (quem quiser corrigir reactiva e volta a suspender, e fica
+  tudo em `security_logs`), mas **revoga as sessões na mesma**: o invariante que interessa
+  é "empresa suspensa não tem sessões vivas", e um segundo clique é a coisa mais natural
+  do mundo para quem desconfie que o primeiro não pegou.
+- **`reactivar` não devolve sessões a ninguém.** Quem tinha um token perdeu-o e volta a
+  autenticar-se — uma reactivação não pode ressuscitar a sessão do portátil roubado que
+  motivou a suspensão.
+- **`SuspenderPropriaEmpresaException`** (409): um administrador de plataforma que também
+  pertença a uma empresa não a pode suspender — revogaria a sua própria sessão e fecharia
+  a porta com a chave lá dentro. A verificação vive no repositório, não no controller,
+  porque um comando ace chega por outro caminho e o footgun é o mesmo. Mesmo espírito de
+  `assertNaoFicaSemGestao` (7.13).
+- Rotas: `POST api/empresas/:id/suspender` e `.../reactivar`, no grupo `adminOnly`. POST e
+  não PATCH: não é a edição de um campo, é uma acção com efeitos colaterais e motivo
+  obrigatório. `actor_id` vem sempre de `auth.user`, nunca do corpo do pedido.
+- **O que a suspensão NÃO corta**, deliberadamente: o painel do promotor. Um promotor não
+  é utilizador da empresa e o que ele vê é o histórico das suas próprias comissões —
+  suspender um cliente não apaga vendas que aconteceram.
+
+- Suite completa: **693 testes** (eram 682), `tsc --noEmit` sem erros. Migração corrida em
+  dev e em teste. Testes em `tests/functional/empresa_suspensao.spec.ts`.
+
+### 7.16 Auditoria do KYC — qualquer pessoa regista o NIF de qualquer empresa
+
+Revisão pedida na mesma sessão. **A camada 1 foi corrigida em 7.17** (pontos 3, 4 e 5
+abaixo); o resto continua em aberto e precisa de decisão de produto. O resumo: **o NIF não
+é verificado em lado nenhum no registo**. Nada prova que quem regista
+tem alguma relação com a empresa cujo NIF escreve.
+
+#### O que o registo faz hoje
+
+`CreateCompanyWithUserAndStartACompanyDetalhes` valida `empresa_nif` com uma única regra:
+não existir já na tabela. Não há formato, não há comprimento, não há consulta ao portal.
+
+- **O verificador existe e não é chamado.** `helpers/Utils.ts` tem `companyExists(nif)`,
+  que consulta um portal externo, e dois validadores que o usam
+  (`createempresaValidator`, `CreateCompanyWithUserAndStartACompany`) — **nenhum dos dois
+  está ligado a rota nenhuma**. É código morto. Pior: chama
+  `http://consulta.edgarsingui.ao` em **HTTP simples**, um terceiro fixo no código, e
+  devolve `false` em qualquer erro (portal em baixo = "empresa não existe").
+- **O serviço bom também não é chamado.** `NifRepository`/`api/nif/:nif` fala com o portal
+  do Minfin, tem cache, timeout e distingue "não existe" de "não conseguimos consultar" —
+  e devolve o **nome oficial**, o estado e o regime de IVA. O registo nunca lhe toca.
+- **No frontend é enfeite, e está escrito no código**: "Conveniência, NUNCA um requisito".
+  O formulário mostra o nome oficial ao lado do campo; o backend aceita o que lhe
+  mandarem, venha do formulário ou de um `curl`.
+
+#### Consequências, por ordem de gravidade
+
+1. **Facturação com o NIF de outra empresa.** `empresa.nif` e `empresa.nome` saem nas
+   facturas, que são documentos fiscais. Hoje qualquer pessoa abre uma conta com o NIF de
+   uma empresa real e emite facturas em nome dela.
+2. **Ocupação de nome (squatting) sem forma de disputa.** `nome` e `company_alias` têm
+   unicidade a sério na BD. Quem registar primeiro o NIF/nome de uma empresa real
+   impede-a de se registar, para sempre — e como `empresa:clean:expired` só apaga contas
+   **não activadas**, basta ao ocupante confirmar o seu próprio email para o lugar ficar
+   dele. Não existe processo de reclamação.
+3. **`nif` NÃO tem índice único na base de dados** (`nome` e `company_alias` têm).
+   Verificado com `SHOW INDEX FROM empresa`. A unicidade é só do validador, o que a torna
+   uma corrida: dois registos simultâneos com o mesmo NIF passam os dois.
+4. **A unicidade do validador contorna-se com um espaço.** `empresa_nif` não tem `.trim()`.
+   Verificado contra a coluna real: `nif = '5000000000'` devolve 1 linha, `' 5000000000'` e
+   `'5000000000 '` devolvem 0 — ambas passam o `.unique()` e ficam gravadas como NIFs
+   diferentes.
+5. **Sem `maxLength`.** A coluna é `varchar(255)` e o `sql_mode` tem `STRICT_TRANS_TABLES`:
+   um NIF com 300 caracteres é um erro 1406 do MySQL que o controller devolve como 500.
+6. **`api/resend-company-activation-email` é um oráculo de enumeração.** O validador
+   rejeita `nif_ou_company_alias` que não exista, portanto a resposta diz se um dado NIF
+   está registado na plataforma. Tem `emailActionThrottle`, o que limita o ritmo mas não
+   fecha o oráculo.
+7. **`empresa_regime_iva` é auto-declarado** e decide o cálculo de IVA nos relatórios.
+
+#### A resposta à pergunta "faz sentido registar por NIF?"
+
+Faz — o NIF é a identidade fiscal certa e é o que tem de sair na factura. O que não faz
+sentido é **tratá-lo como um campo de texto**. Um NIF é uma afirmação sobre uma entidade
+real, e hoje é aceite sem prova nenhuma. As três camadas, por ordem de custo:
+
+1. **Barato e sem decisão de produto** (defeitos puros): `.trim()`, `maxLength`, formato, e
+   **índice único na BD**. Nada disto muda regras de negócio.
+2. **O NIF tem de existir no portal**, com o `nome` a bater certo com o oficial (o
+   `NifRepository` já devolve ambos). Exige decidir o que fazer quando o portal está em
+   baixo: bloquear o registo, ou deixar entrar em estado "por verificar" com acesso
+   limitado. **Recomendo o segundo** — o portal esteve 4-14s a responder nos testes e um
+   registo que falha por causa dele é receita perdida.
+3. **Prova de posse**, que é a única que fecha mesmo: documento de constituição carregado e
+   aprovado no backoffice, ou email num domínio verificado da empresa. Isto é um fluxo de
+   KYC com revisão humana — cabe no backoffice que está por construir, e é aí que se liga
+   à suspensão de 7.15: enquanto não houver prova, a suspensão é o remédio para o caso que
+   escapar.
+
+Enquanto (2) e (3) não existirem, **7.15 é a única contenção**: dá para cortar uma empresa
+registada de má fé, mas só depois de alguém reparar.
+
+### 7.17 Camada 1 do KYC + o terreno para o backoffice
+
+Fecha a camada 1 de 7.16 e prepara o backend para um segundo frontend.
+
+#### `empresa.nif` — os defeitos puros, corrigidos
+
+Só o que não exige decisão de produto. Continua a não haver verificação nenhuma de que
+o NIF existe ou é de quem o escreve — 7.16 mantém-se em aberto nos pontos 1, 2, 6 e 7.
+
+- **`.trim()` no validador de registo.** Era o buraco mais fácil de explorar: sem ele,
+  `' 5000000000'` é outra string para o MySQL, passava o `.unique()` e ficava gravada
+  como um NIF distinto. Verificado contra a coluna real antes e depois.
+- **`minLength(5)`, `maxLength(20)` e `[A-Za-z0-9]+`.** O alfabeto é o mesmo que a rota
+  de consulta já aceita. **Não** se fixou o formato exacto de propósito: um NIF de
+  empresa tem 10 dígitos, mas o de um particular é o número do BI (dígitos + duas letras
+  + dígitos), e recusar um NIF válido é pior do que aceitar um mal formado — que a
+  consulta ao portal apanharia, se algum dia for ligada.
+- **Índice único `empresa_nif_unique`** (`1784662475795_alter_empresa_nif_unico`).
+  `nome` e `company_alias` sempre tiveram um; `nif` não. Sem ele a unicidade era só uma
+  regra do validador — logo, uma corrida entre dois registos simultâneos, e nula para
+  qualquer caminho que não passe por lá (comando ace, seeder, correcção à mão).
+  A migração **normaliza com `TRIM()` primeiro e aborta com a lista de repetidos** se
+  algum sobrar: escolher qual das empresas duplicadas fica com o NIF é decisão de
+  negócio, não de migração.
+- Maiúsculas não precisaram de normalização: a coluna é `utf8mb4_0900_ai_ci`, portanto o
+  `.unique()` do validador e o índice concordam a ignorá-las. O que não podia acontecer
+  era um discordar do outro.
+- 6 testes em `tests/functional/empresa_registo_nif.spec.ts`.
+
+#### As rotas de plataforma passam a poder não existir
+
+Decisão tomada com o utilizador: o backoffice **não** ganha um backend próprio. O grupo
+`adminOnly` já existe aqui, e copiá-lo significaria duas bases de código sobre **uma só
+base de dados** — com a pergunta por responder de quem é dono de `database/migrations`, e
+com models/DTOs/validadores a divergir em silêncio (a rede do `colunas_fantasma` só
+protege a cópia onde corre).
+
+O argumento de segurança para separar era sobre a **origem no browser**: um XSS no lado do
+inquilino a correr na mesma origem que a sessão do administrador. Isso é uma propriedade
+do frontend — uma API não tem fronteira de origem, tem autenticação e `adminOnly`.
+
+`PLATFORM_ROUTES_ENABLED=false` faz com que o grupo inteiro **não chegue a ser
+registado**: 404, como um caminho inventado. O mesmo build vai para duas instâncias — a
+pública com isto desligado, a restrita (VPN/lista de IPs) com isto ligado. Verificado com
+`list:routes`: 45 rotas `platform_*` passam a 0, e as 212 `domain_*` ficam intactas.
+
+Ausente = ligado, para nenhum deploy actual mudar de comportamento ao actualizar. **Não é
+uma fronteira de acesso por si** — registadas ou não, estas rotas continuam a exigir
+autenticação e um papel de escopo `plataforma`. Reduz superfície; não substitui o portão.
+
+#### `ApenasBffMiddleware` conhece dois segredos
+
+Um segundo frontend seria recusado por um middleware que só conhecia um. Agora
+`BFF_SHARED_SECRET` (app dos inquilinos) e `BFF_SHARED_SECRET_BACKOFFICE`.
+
+- **Duas variáveis, não uma lista separada por vírgulas.** Um segredo é texto arbitrário
+  e uma vírgula lá dentro partiria a lista em silêncio. Assim cada frontend também se
+  roda sem tocar no outro.
+- **Sem `find`/`some` no ciclo de comparação**, de propósito: esses param no primeiro que
+  casa, e o número de comparações passaria a depender de qual dos segredos acertou. O
+  ciclo compara sempre contra todos.
+- Continua a falhar aberto quando nenhum está configurado — activar é deliberado.
+- 7 testes em `tests/functional/apenas_bff_middleware.spec.ts`. O middleware nunca tivera
+  nenhum; um frontend novo é exactamente o tipo de mudança que parte um portão em
+  silêncio, nos dois sentidos.
+- `CORS_ORIGINS` não precisou de código: já aceita várias origens por vírgula.
+
+#### O projecto do backoffice
+
+`taesic-backoffice` criado por cópia de `alaragest-webpage` (sem `.git`, sem
+`node_modules`, sem `.env`), com `git init` próprio e **sem remote** — repositório não
+partilhado, como pedido. Copiar em vez de começar do zero leva o design system, o BFF e a
+canalização da sessão, que é a parte cara; a poda dos ecrãs de inquilino é o trabalho.
+
+- Suite completa: **706 testes** (eram 693), `tsc --noEmit` sem erros. Migração corrida em
+  dev e em teste.

@@ -66,6 +66,43 @@ const existeNoDominio = async (db: Database, value: string, field: FieldContext)
   return !!linha
 }
 
+/**
+ * O papel indicado existe NESTA empresa?
+ *
+ * Isto era uma `vine.enum([...])` com sete nomes escritos no código. Enquanto os
+ * papeis eram partilhados por todos os inquilinos, uma lista fixa descrevia mesmo
+ * o universo possivel. Deixou de descrever: a empresa passou a poder criar os seus
+ * papeis, e um "Chefe de Turno" criado por ela seria recusado no registo do
+ * funcionario — a gestao ficaria pela metade.
+ *
+ * A verificacao passa a ser contra a base de dados, restrita a `escopo = empresa` e
+ * a esta empresa. E mais flexivel E mais apertada do que a lista fixa: um nome de
+ * papel de outra empresa, um `modelo` ou um `Platform_*` nao passam aqui, e a lista
+ * fixa nunca os teria excluido por si — excluia-os por acaso, por serem nomes que
+ * nao constavam dela.
+ *
+ * Nota sobre o que MUDA de facto: a lista fixa nao incluia "Admin", "Gerente" nem
+ * "Supervisor". Nao era uma fronteira de seguranca — quem tem `domain_auth.register`
+ * tambem tem `domain_user_papel.store`, portanto sempre pode registar o funcionario e
+ * atribuir-lhe o papel a seguir, em dois passos. O que a lista fazia era tornar isso
+ * incoerente, nao impossivel.
+ */
+const papelDestaEmpresa = async (db: Database, value: string, field: FieldContext) => {
+  const companyAlias = (field.data as any)?.params?.company_alias
+
+  const linha = await db
+    .from('papel')
+    .join('empresa', 'empresa.id', 'papel.empresa_id')
+    .where('empresa.company_alias', companyAlias ?? '')
+    .where('papel.escopo', 'empresa')
+    .where('papel.nome', value)
+    .whereNull('papel.deleted_at')
+    .select('papel.id')
+    .first()
+
+  return !!linha
+}
+
 export const UsersCreateValidator = vine.compile(
   vine.object({
     username: vine.string().escape().trim().unique(uniqueNoDominio('username')).maxLength(255),
@@ -80,17 +117,7 @@ export const UsersCreateValidator = vine.compile(
       .maxLength(255)
       .unique(uniqueNoDominio('email')),
     papel: vine
-      .array(
-        vine.enum([
-          'Estoquista',
-          'EstoquistaVisualizador',
-          'Vendedor',
-          'VendedorVisualizador',
-          'AdminVisualizador',
-          'AdminUserManager',
-          'AdminUserVisualizador',
-        ])
-      )
+      .array(vine.string().trim().maxLength(80).exists(papelDestaEmpresa))
       .distinct(),
     // password: vine.string().trim().escape().minLength(6),
   })

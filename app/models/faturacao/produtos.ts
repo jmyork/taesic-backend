@@ -37,8 +37,6 @@ export default class produtos extends BaseModel {
   @column.dateTime()
   declare deletedAt: DateTime | null
 
-  @column()
-  declare enabled: boolean
 
   @beforeCreate()
   static uuid(model: produtos) {

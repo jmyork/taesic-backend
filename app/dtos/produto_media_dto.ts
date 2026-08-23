@@ -14,14 +14,12 @@ export interface ProdutoImagemQueryDTO {
   produto_id?: string
 }
 export interface Createproduto_mediaDTO {
-  enabled?: boolean
   media: MultipartFile | MultipartFile[]
   produto_id: string
   company_alias?: string
   empresa_id?: string
 }
 export interface Updateproduto_mediaDTO {
-  enabled?: boolean
   imagem_url?: string
   produto_id?: string
 }

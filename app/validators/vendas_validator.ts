@@ -44,7 +44,6 @@ export const CreateVendaValidator = vine.compile(
     data_venda: vine.date({ formats: ['iso8601'] }).beforeOrEqual('today').optional(),
     total: vine.number().min(0).optional(),
     fechado: vine.boolean().optional(),
-    enabled: vine.boolean().optional(),
     // Cria a venda já com status 'proforma' em vez de 'aberta' — uma cotação com
     // histórico real, mas que nunca passa por close() (sem pagamento/stock).
     proforma: vine.boolean().optional(),
@@ -93,7 +92,6 @@ export const UpdateVendaValidator = vine.compile(
     caixa_id: vine.string().uuid().escape().optional(),
     data_venda: vine.date({ formats: ['iso8601'] }).optional(),
     cliente_presencial_id: vine.string().uuid().escape().optional(),
-    cliente_online_id: vine.string().uuid().escape().optional(),
-    enabled: vine.boolean().optional()
+    cliente_online_id: vine.string().uuid().escape().optional()
   })
 )

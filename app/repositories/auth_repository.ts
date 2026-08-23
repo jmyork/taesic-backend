@@ -34,6 +34,7 @@ import { Exception } from '@adonisjs/core/exceptions'
 import db from '@adonisjs/lucid/services/db'
 import VerificationTokenHash from '#models/verification_token_hash'
 import InvalidTokenException from '#exceptions/invalid_token_exception'
+import EmpresaSuspensaException from '#exceptions/empresa_suspensa_exception'
 
 export default class authRepository {
   baseQuery(trx?: TransactionClientContract) {
@@ -71,6 +72,24 @@ export default class authRepository {
       throw new Error('Credenciais inválidas')
     }
     const userModel = await User.findOrFail(user.id)
+
+    // Uma empresa suspensa não emite sessões novas.
+    //
+    // O portão das rotas de inquilino já recusa tudo o que venha desta empresa, mas
+    // deixar o login passar entregava na mesma um token válido a quem está cortado — e
+    // é o token que o frontend usa para decidir o que mostrar, portanto a pessoa
+    // entrava e só depois batia em 403 a cada clique.
+    //
+    // A verificação é pelo `empresa_id` do UTILIZADOR, não pelo `company_alias` do
+    // pedido: esse é opcional nesta rota, e bastaria omiti-lo para contornar uma
+    // verificação feita sobre ele.
+    if (userModel.empresa_id) {
+      const empresa = await Empresa.find(userModel.empresa_id)
+      if (empresa?.estaSuspensa) {
+        throw new EmpresaSuspensaException()
+      }
+    }
+
     const token = await User.accessTokens.create(userModel)
 
     return {

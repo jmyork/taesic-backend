@@ -13,12 +13,10 @@ export interface ProdutoFormatoQueryDTO {
 }
 
 export interface Createpapel_permissaoDTO {
-  enabled?: boolean
   permissao_id: string
   papel_id: string
 }
 export interface Updatepapel_permissaoDTO {
-  enabled?: boolean
   permissao_id?: string
   papel_id?: string
 }

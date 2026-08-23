@@ -139,9 +139,33 @@ export const CreateCompanyWithUserAndStartACompanyDetalhes = vine.compile(
       .optional(),
 
     // EMPRESA
-    empresa_nif: vine.string().unique(async (db, value) => {
-      return !(await db.from('empresa').where('nif', value).first())
-    }),
+    // O `.trim()` NÃO é cosmético: sem ele, `' 5000000000'` é uma string diferente de
+    // `'5000000000'` para o MySQL e passava o `.unique()` aqui em baixo, ficando gravada
+    // como um NIF distinto. Verificado contra a coluna real — a versão com espaço
+    // devolvia 0 linhas. A unicidade a sério passou a estar também na base de dados
+    // (`empresa_nif_unique`), porque uma regra que só vive no validador é uma corrida
+    // entre dois registos simultâneos e não cobre caminho nenhum que não passe por aqui.
+    //
+    // Maiúsculas não precisam de normalização: a coluna é `utf8mb4_0900_ai_ci`, portanto
+    // esta consulta e o índice único concordam a ignorá-las.
+    //
+    // O formato fica-se por "letras e dígitos", o mesmo alfabeto que a rota de consulta
+    // aceita (`api/nif/:nif`). Um NIF de empresa em Angola tem 10 dígitos, mas o de um
+    // particular é o número do BI (dígitos + duas letras + dígitos) — fixar um formato
+    // exacto arriscava recusar NIFs válidos, e recusar um NIF válido é pior do que
+    // aceitar um mal formado, que a consulta ao portal apanha.
+    //
+    // ATENÇÃO ao que isto NÃO faz: nada aqui verifica que o NIF existe, e muito menos
+    // que é de quem o está a escrever. Ver CLAUDE.md §7.16.
+    empresa_nif: vine
+      .string()
+      .trim()
+      .minLength(5)
+      .maxLength(20)
+      .regex(/^[A-Za-z0-9]+$/)
+      .unique(async (db, value) => {
+        return !(await db.from('empresa').where('nif', value).first())
+      }),
     // Tem de corresponder exactamente ao matcher usado pelas rotas de tenant em
     // start/companydomainroutes.ts (`.where('company_alias', ...)`) — caso contrário uma
     // empresa registada com um alias inválido para essas rotas nunca conseguiria aceder
@@ -184,6 +208,25 @@ export const SetupCompanyValidator = vine.compile(
       .optional(),
     ponto_de_venda: vine.string().trim().optional(),
     caixa: vine.string().trim().optional(),
+  })
+)
+
+/**
+ * Suspender uma empresa exige um motivo escrito.
+ *
+ * Não é burocracia: a suspensão corta o acesso a um cliente inteiro e revoga as
+ * sessões de todos os seus utilizadores. Quem for atender o telefonema que se
+ * segue precisa de saber porquê, e quem reactivar precisa de saber o que tinha de
+ * ficar resolvido antes. O CHECK da base de dados impõe o mesmo invariante do
+ * lado de lá (`empresa_suspensao_chk`), para que nenhum outro caminho de código
+ * consiga gravar uma suspensão muda.
+ *
+ * `minLength(10)` é o suficiente para excluir o "x" e o "teste" sem obrigar a
+ * escrever um relatório: "Fraude NIF" passa.
+ */
+export const SuspenderEmpresaValidator = vine.compile(
+  vine.object({
+    motivo: vine.string().trim().minLength(10).maxLength(255),
   })
 )
 

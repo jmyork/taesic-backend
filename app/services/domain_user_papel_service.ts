@@ -8,8 +8,8 @@ export default class DomainUserPapelService {
     return this.repo.list(data)
   }
 
-  listAssignableRoles() {
-    return this.repo.listAssignableRoles()
+  listAssignableRoles(companyAlias: string) {
+    return this.repo.listAssignableRoles(companyAlias)
   }
 
   assign(data: CreateDomainUserPapelDTO) {

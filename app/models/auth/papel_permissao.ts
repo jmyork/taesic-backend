@@ -20,8 +20,6 @@ export default class papel_permissao extends BaseModel {
   @column.dateTime()
   declare deletedAt: DateTime | null
 
-  @column()
-  declare enabled: boolean
 
   @beforeCreate()
   static uuid(model: papel_permissao) {

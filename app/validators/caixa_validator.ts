@@ -54,7 +54,7 @@ export const createcaixaValidator = vine.compile(
       .escape()
       .exists(async (db, value, __) => {
         const exists = await db.from('user').where('id', value).first()
-        return exists !== undefined
+        return !!exists
       }),
     data_abertura: vine.date({ formats: ['iso8601'] }),
     data_fecho: vine.date({ formats: ['iso8601'] }),
@@ -73,7 +73,7 @@ export const updatecaixaValidator = vine.compile(
       .escape()
       .exists(async (db, value, __) => {
         const exists = await db.from('user').where('id', value).first()
-        return exists !== undefined
+        return !!exists
       })
       .optional(),
     data_abertura: vine.date({ formats: ['iso8601'] }).optional(),

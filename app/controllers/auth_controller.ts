@@ -10,6 +10,7 @@ import {
 } from '#validators/auth_validator'
 import User from '#models/user'
 import InvalidTokenException from '#exceptions/invalid_token_exception'
+import EmpresaSuspensaException from '#exceptions/empresa_suspensa_exception'
 import { logSecurityEvent } from '../helpers/security_logger.js'
 
 export default class AuthController {
@@ -23,6 +24,23 @@ export default class AuthController {
       logSecurityEvent('login_succeeded', { uid: data.uid, company_alias: data.company_alias }, ctx)
       return response.ok({ data: loginData, message: 'Login realizado com sucesso' })
     } catch (error: any) {
+      // Antes do ramo das credenciais: a empresa suspensa não é um problema de
+      // credenciais, e responder 401 mandaria a pessoa tentar outra password para
+      // sempre. 403 com código próprio deixa o frontend dizer o que se passa.
+      if (error instanceof EmpresaSuspensaException) {
+        logSecurityEvent(
+          'login_bloqueado_empresa_suspensa',
+          { uid: request.input('uid'), company_alias: request.input('company_alias') },
+          ctx
+        )
+        return response.forbidden({
+          data: null,
+          message: error.message,
+          status: 403,
+          code: 'EMPRESA_SUSPENSA',
+        })
+      }
+
       if (error.message === 'Credenciais inválidas') {
         logSecurityEvent(
           'login_failed',

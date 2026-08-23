@@ -22,10 +22,12 @@ export default class DomainUserPapelController {
   }
 
   // ==================== PAPEIS DISPONÍVEIS ====================
-  // Papéis que este tenant pode atribuir aos seus próprios utilizadores (nunca papéis de plataforma).
-  async papeisDisponiveis({ response }: HttpContext) {
+  // Papéis desta empresa. Já não é "todos menos os de plataforma": com papéis por
+  // empresa, essa lista incluiria os papéis das OUTRAS empresas — e o `store`
+  // aceitava-os, porque o id vinha do corpo do pedido.
+  async papeisDisponiveis({ response, params }: HttpContext) {
     try {
-      const data = await this.service.listAssignableRoles()
+      const data = await this.service.listAssignableRoles(params.company_alias)
       return response.ok({ data, message: 'Listagem realizada com sucesso', status: 200 })
     } catch (error) {
       console.error('Erro ao listar papéis disponíveis:', error)

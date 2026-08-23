@@ -196,6 +196,20 @@ router
         router.get('papeis-disponiveis', [controllers.DomainUserPapel, 'papeisDisponiveis'])
             .as('domain_user_papel.papeis_disponiveis')
 
+        // Gestão dos PAPÉIS da própria empresa (criar, editar, apagar, e escolher
+        // que permissões cada um tem). Antes só o dono da plataforma mexia em
+        // papéis — e mexia nos de todos ao mesmo tempo, porque eram partilhados.
+        //
+        // TEM de vir antes do resource: senão `papeis/:id` apanha
+        // `papeis/permissoes-disponiveis` e trata "permissoes-disponiveis" como um
+        // id (mesmo problema já documentado para `caixas/meu` e `produtos/catalogo`).
+        router.get('papeis/permissoes-disponiveis', [controllers.DomainPapel, 'permissoesDisponiveis'])
+            .as('domain_papel.permissoes_disponiveis')
+
+        router.resource('papeis', controllers.DomainPapel)
+            .apiOnly()
+            .as('domain_papel')
+
         // Métricas/controlo: dashboard, desempenho por posto e por vendedor. Não existia
         // nenhum endpoint de agregação/relatório na API antes destes três.
         router.get('metricas/resumo', [controllers.Metricas, 'resumo']).as('domain_metricas.resumo')

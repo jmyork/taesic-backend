@@ -6,7 +6,7 @@ export const createproject_permissionValidator = vine.compile(
       .trim()
       .exists(async (db, value, __) => {
         const exists = await db.from('project').where('id', value).first()
-        return exists !== undefined
+        return !!exists
       }),
     name: vine.string().trim(),
     descricao: vine.string().trim(),
@@ -18,7 +18,7 @@ export const updateproject_permissionValidator = vine.compile(
       .string()
       .exists(async (db, value, __) => {
         const exists = await db.from('project').where('id', value).first()
-        return exists !== undefined
+        return !!exists
       })
       .optional(),
     name: vine.string().trim().optional(),

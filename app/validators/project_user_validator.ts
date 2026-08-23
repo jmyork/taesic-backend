@@ -10,7 +10,7 @@ export const createproject_userValidator = vine.compile(
       .trim()
       .exists(async (db, value, __) => {
         const exists = await db.from('project').where('id', value).first()
-        return exists !== undefined
+        return !!exists
       }),
   })
 )

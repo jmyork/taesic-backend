@@ -47,68 +47,93 @@ export default class extends BaseSeeder {
     ])
 
     // ================= CRIAR PAPÉIS =================
-    // ===== DOMÍNIO ESPECÍFICO (Tenant-based) =====
+    //
+    // Os papéis de inquilino nascem como MODELO, nao como papeis utilizaveis.
+    // Nenhum utilizador os recebe: cada empresa ganha a SUA copia no registo (ver
+    // `clonarPapeisPadrao()`), e e a copia que e atribuida. E isso que permite a
+    // uma empresa mudar o seu "Vendedor" sem mudar o Vendedor de todas as outras.
+    //
+    // Afinar um modelo aqui so afecta empresas criadas A PARTIR DE ENTAO. Para
+    // alcancar as que ja existem:
+    //   node ace permissao:conceder <permissao> <papel> --todas-empresas
+    //
+    // ===== MODELOS DE DOMINIO (clonados por empresa) =====
     await Papel.createMany([
       {
         nome: 'Admin',
         descricao: 'Administrador do domínio/empresa',
+        escopo: 'modelo',
       },
       {
         nome: 'Estoquista',
         descricao: 'Responsável por gerenciar o estoque do domínio',
+        escopo: 'modelo',
       },
       {
         nome: 'EstoquistaVisualizador',
         descricao: 'Visualizador de estoque do domínio',
+        escopo: 'modelo',
       },
       {
         nome: 'Vendedor',
         descricao: 'Responsável por gerenciar as vendas do domínio',
+        escopo: 'modelo',
       },
       {
         nome: 'VendedorVisualizador',
         descricao: 'Visualizador de vendas do domínio',
+        escopo: 'modelo',
       },
       {
         nome: 'AdminVisualizador',
         descricao: 'Visualizador geral do domínio (read-only)',
+        escopo: 'modelo',
       },
       {
         nome: 'AdminUserManager',
         descricao: 'Gerenciador de usuários do domínio',
+        escopo: 'modelo',
       },
       {
         nome: 'AdminUserVisualizador',
         descricao: 'Visualizador de usuários do domínio',
+        escopo: 'modelo',
       },
       {
         nome: 'Gerente',
         descricao: 'Gerente do domínio/empresa',
+        escopo: 'modelo',
       },
       {
         nome: 'Supervisor',
         descricao: 'Supervisor do domínio/empresa',
+        escopo: 'modelo',
       },
       // ===== PLATAFORMA (Global) =====
       {
         nome: 'Platform_Admin',
         descricao: 'Administrador da plataforma (acesso total)',
+        escopo: 'plataforma',
       },
       {
         nome: 'Platform_Manager',
         descricao: 'Gerente da plataforma (gestão de empresas/usuários)',
+        escopo: 'plataforma',
       },
       {
         nome: 'Platform_User',
         descricao: 'Usuário normal da plataforma (consulta apenas)',
+        escopo: 'plataforma',
       },
       {
         nome: 'Platform_Manager_Visualizer',
         descricao: 'Gerente de plataforma com acesso read-only',
+        escopo: 'plataforma',
       },
       {
         nome: 'Platform_Admin_Visualizer',
         descricao: 'Administrador de plataforma com acesso read-only',
+        escopo: 'plataforma',
       },
     ])
 
@@ -243,6 +268,20 @@ export default class extends BaseSeeder {
       { nome: 'domain_user_pos.show', descricao: 'Ver associação user-pos' },
       { nome: 'domain_user_pos.store', descricao: 'Associar utilizador a um pos' },
       { nome: 'domain_user_pos.destroy', descricao: 'Remover associação user-pos' },
+
+      // ==================== PAPEIS DA PROPRIA EMPRESA ====================
+      // A empresa gere os SEUS papeis: cria, edita, apaga e escolhe que permissoes
+      // cada um tem. Nao existia — papeis eram partilhados por todos os inquilinos e
+      // so o dono da plataforma lhes tocava.
+      { nome: 'domain_papel.index', descricao: 'Listar os papéis da empresa' },
+      { nome: 'domain_papel.show', descricao: 'Ver um papel da empresa' },
+      { nome: 'domain_papel.store', descricao: 'Criar um papel na empresa' },
+      { nome: 'domain_papel.update', descricao: 'Editar um papel da empresa e as suas permissões' },
+      { nome: 'domain_papel.destroy', descricao: 'Remover/Repor um papel da empresa' },
+      {
+        nome: 'domain_papel.permissoes_disponiveis',
+        descricao: 'Listar o catálogo de permissões atribuíveis',
+      },
 
       // ==================== USER-PAPEL DOMAIN ====================
       { nome: 'domain_user_papel.index', descricao: 'Listar associações usuário-papel' },
@@ -650,6 +689,18 @@ export default class extends BaseSeeder {
       'domain_produto_recomendacoes.store',
       'domain_produto_recomendacoes.update',
       'domain_produto_recomendacoes.destroy',
+
+      // Papéis da própria empresa (6 perms) — criar, editar, apagar e escolher as
+      // permissões de cada papel. Só o Admin escreve: `domain_papel.update` é
+      // também a chave que `assertNaoFicaSemGestao` exige que alguém na empresa
+      // continue a ter, para nenhuma empresa se conseguir trancar fora da sua
+      // própria gestão de acessos.
+      'domain_papel.index',
+      'domain_papel.show',
+      'domain_papel.store',
+      'domain_papel.update',
+      'domain_papel.destroy',
+      'domain_papel.permissoes_disponiveis',
 
       // User-Papel (6 perms)
       'domain_user_papel.index',
@@ -1623,6 +1674,7 @@ export default class extends BaseSeeder {
       // Papel (read only)
       'domain_papel.index',
       'domain_papel.show',
+      'domain_papel.permissoes_disponiveis',
 
       // Permissão (read only)
       'domain_permissao.index',
@@ -1719,6 +1771,7 @@ export default class extends BaseSeeder {
       // Papel (gerenciar)
       'domain_papel.index',
       'domain_papel.show',
+      'domain_papel.permissoes_disponiveis',
 
       // User-Papel (gerenciar) — 'domain_auth_papel.index' era um typo sem rota
       // correspondente (permissão órfã); o nome certo é 'domain_user_papel.index'.
@@ -1756,6 +1809,7 @@ export default class extends BaseSeeder {
       // Papel (read only)
       'domain_papel.index',
       'domain_papel.show',
+      'domain_papel.permissoes_disponiveis',
 
       // Permissão (read only)
       'domain_permissao.index',
@@ -1778,9 +1832,12 @@ export default class extends BaseSeeder {
     // whereNot('nome', 'domain_%') faz igualdade exata (<>), não LIKE — usar o comparador
     // explícito para de facto excluir as permissões de tenant (domain_*) do papel de plataforma.
     const allPermissions = await Permissao.query().whereNot('nome', 'like', 'domain_%')
+    // 'plataforma' explicito: o valor por omissao de `givePermissionsToRole` e
+    // 'modelo', e sem isto as permissoes de plataforma iriam para o papel errado.
     await givePermissionsToRole(
       'Platform_Admin',
-      allPermissions.map((p) => p.nome)
+      allPermissions.map((p) => p.nome),
+      'plataforma'
     )
 
     // registrar como administradores de plataforma apenas os utilizadores criados por este
@@ -1792,7 +1849,11 @@ export default class extends BaseSeeder {
       'carlamorais@gmail.com',
     ]
     const users = await Users.query().whereIn('email', seededEmails)
-    const permissions = await Papel.query().where("nome", 'like', "Platform_%")
+    // Por `escopo`, nao pelo prefixo do nome — a mesma correccao feita no
+    // `admin_only_middleware`: com papeis por empresa, um inquilino pode criar um
+    // papel chamado "Platform_Admin", e decidir pelo nome era o caminho para
+    // escalar de inquilino a administrador da plataforma.
+    const permissions = await Papel.query().where('escopo', 'plataforma')
     const permissionsMap = permissions.map(f => f.nome)
 
     for (const user of users) {

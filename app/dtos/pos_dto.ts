@@ -20,7 +20,6 @@ export interface PosQueryDTO {
 }
 
 export interface CreateposDTO {
-  enabled?: boolean
   email: string
   contacto: string
   localizacao: string
@@ -29,7 +28,6 @@ export interface CreateposDTO {
   company_alias?: string
 }
 export interface UpdateposDTO {
-  enabled?: boolean
   empresa_id?: string
   email?: string
   contacto?: string

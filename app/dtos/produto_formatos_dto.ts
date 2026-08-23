@@ -13,14 +13,12 @@ export interface ProdutoFormatoQueryDTO {
 }
 
 export interface Createproduto_formatosDTO {
-  enabled?: boolean
   descricao?: string
   nome: string
   empresa_id?: string
   company_alias?: string
 }
 export interface Updateproduto_formatosDTO {
-  enabled?: boolean
   descricao?: string
   nome?: string
 }

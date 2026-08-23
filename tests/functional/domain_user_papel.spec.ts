@@ -3,24 +3,40 @@ import testUtils from '@adonisjs/core/services/test_utils'
 import DomainUserPapelRepository from '#repositories/domain_user_papel_repository'
 import UserNotInCompanyException from '#exceptions/user_not_in_company_exception'
 import CannotAssignPlatformRoleException from '#exceptions/cannot_assign_platform_role_exception'
-import Papel from '#models/auth/papel'
+import Papel, { ESCOPO_PAPEL } from '#models/auth/papel'
 import UserPapel from '#models/auth/user_papel'
+import Empresa from '#models/empresa'
 import { createEmpresa, createUser } from '../helpers/fixtures.js'
 
 /**
  * A gestão de papéis (user_papel) só existia como recurso platform-only — um Admin de uma
  * empresa cliente não tinha nenhuma forma de atribuir/revogar papéis aos seus próprios
- * funcionários. Este repositório/rota tenant-scoped fecha essa lacuna, com duas garantias que
- * a versão platform-only não precisa de ter: o utilizador alvo tem de pertencer à mesma
- * empresa, e nunca se pode atribuir um papel de plataforma (Platform_*) a partir daqui.
+ * funcionários. Este repositório/rota tenant-scoped fecha essa lacuna.
+ *
+ * Depois de os papéis passarem a pertencer a uma empresa, as garantias mudaram de forma.
+ * Antes eram duas: o utilizador alvo pertence à empresa, e o papel não é de plataforma
+ * (verificado pelo NOME). Agora são as mesmas duas mais uma terceira que a versão anterior
+ * não podia sequer expressar: o papel tem de ser DESTA empresa. Um `papel_id` vem sempre do
+ * corpo do pedido, e enquanto a verificação era `nome.startsWith('Platform_')`, o papel de
+ * outra empresa passava — tinha nome de inquilino.
  */
+
+/** O papel desta empresa com este nome. `findByOrFail('nome', ...)` já não serve: há um por empresa. */
+function papelDaEmpresa(empresa: Empresa, nome: string) {
+  return Papel.query()
+    .where('empresa_id', empresa.id)
+    .where('escopo', ESCOPO_PAPEL.empresa)
+    .where('nome', nome)
+    .firstOrFail()
+}
+
 test.group('domain_user_papel_repository', (group) => {
   group.each.setup(() => testUtils.db().withGlobalTransaction())
 
   test('atribui um papel de domínio a um utilizador da mesma empresa', async ({ assert }) => {
     const empresa = await createEmpresa()
     const user = await createUser(empresa)
-    const vendedor = await Papel.findByOrFail('nome', 'Vendedor')
+    const vendedor = await papelDaEmpresa(empresa, 'Vendedor')
 
     const repo = new DomainUserPapelRepository()
     const assignment = await repo.assign({
@@ -37,7 +53,7 @@ test.group('domain_user_papel_repository', (group) => {
     const empresaA = await createEmpresa()
     const empresaB = await createEmpresa()
     const userDaEmpresaB = await createUser(empresaB)
-    const vendedor = await Papel.findByOrFail('nome', 'Vendedor')
+    const vendedor = await papelDaEmpresa(empresaA, 'Vendedor')
 
     const repo = new DomainUserPapelRepository()
     try {
@@ -52,32 +68,102 @@ test.group('domain_user_papel_repository', (group) => {
     }
   })
 
-  test('rejeita atribuir um papel de plataforma (Platform_*) a partir de uma rota de tenant', async ({ assert }) => {
+  test('rejeita atribuir um papel de plataforma (Platform_*) a partir de uma rota de tenant', async ({
+    assert,
+  }) => {
     const empresa = await createEmpresa()
     const user = await createUser(empresa)
-    const platformAdmin = await Papel.findByOrFail('nome', 'Platform_Admin')
+    const platformAdmin = await Papel.query()
+      .where('escopo', ESCOPO_PAPEL.plataforma)
+      .where('nome', 'Platform_Admin')
+      .firstOrFail()
 
     const repo = new DomainUserPapelRepository()
     try {
-      await repo.assign({ user_id: user.id, papel_id: platformAdmin.id, company_alias: empresa.company_alias })
+      await repo.assign({
+        user_id: user.id,
+        papel_id: platformAdmin.id,
+        company_alias: empresa.company_alias,
+      })
       assert.fail('deveria ter rejeitado')
     } catch (error) {
       assert.instanceOf(error, CannotAssignPlatformRoleException)
     }
   })
 
-  test('listAssignableRoles nunca inclui papéis Platform_*', async ({ assert }) => {
+  test('rejeita atribuir o papel de OUTRA empresa a um utilizador seu', async ({ assert }) => {
+    // O caso que a verificação por nome não apanhava: "Vendedor" da empresa B tem nome
+    // de inquilino, portanto passava o `startsWith('Platform_')` sem nada a assinalar.
+    const empresaA = await createEmpresa()
+    const empresaB = await createEmpresa()
+    const userDaEmpresaA = await createUser(empresaA)
+    const vendedorDaB = await papelDaEmpresa(empresaB, 'Vendedor')
+
     const repo = new DomainUserPapelRepository()
-    const roles = await repo.listAssignableRoles()
-    assert.isTrue(roles.length > 0)
-    assert.isFalse(roles.some((r) => r.nome.startsWith('Platform_')))
+    try {
+      await repo.assign({
+        user_id: userDaEmpresaA.id,
+        papel_id: vendedorDaB.id,
+        company_alias: empresaA.company_alias,
+      })
+      assert.fail('deveria ter rejeitado o papel de outra empresa')
+    } catch (error) {
+      assert.instanceOf(error, CannotAssignPlatformRoleException)
+    }
   })
 
-  test('revoke só remove a atribuição se o utilizador pertencer a esta empresa', async ({ assert }) => {
+  test('rejeita atribuir um papel "modelo" (existe para ser clonado, não usado)', async ({
+    assert,
+  }) => {
+    const empresa = await createEmpresa()
+    const user = await createUser(empresa)
+    const modelo = await Papel.query()
+      .where('escopo', ESCOPO_PAPEL.modelo)
+      .where('nome', 'Vendedor')
+      .firstOrFail()
+
+    const repo = new DomainUserPapelRepository()
+    try {
+      await repo.assign({
+        user_id: user.id,
+        papel_id: modelo.id,
+        company_alias: empresa.company_alias,
+      })
+      assert.fail('deveria ter rejeitado um papel modelo')
+    } catch (error) {
+      assert.instanceOf(error, CannotAssignPlatformRoleException)
+    }
+  })
+
+  test('listAssignableRoles devolve só os papéis DESTA empresa', async ({ assert }) => {
+    const empresaA = await createEmpresa()
+    const empresaB = await createEmpresa()
+
+    const repo = new DomainUserPapelRepository()
+    const roles = await repo.listAssignableRoles(empresaA.company_alias)
+
+    assert.isTrue(roles.length > 0, 'a empresa nasce com a sua cópia dos padrões')
+    assert.isTrue(
+      roles.every((r) => r.empresa_id === empresaA.id),
+      'nenhum papel de outra empresa'
+    )
+    assert.isFalse(
+      roles.some((r) => r.nome.startsWith('Platform_')),
+      'nenhum papel de plataforma'
+    )
+    assert.isFalse(
+      roles.some((r) => r.empresa_id === empresaB.id),
+      'a lista não atravessa para a empresa B'
+    )
+  })
+
+  test('revoke só remove a atribuição se o utilizador pertencer a esta empresa', async ({
+    assert,
+  }) => {
     const empresaA = await createEmpresa()
     const empresaB = await createEmpresa()
     const userA = await createUser(empresaA)
-    const vendedor = await Papel.findByOrFail('nome', 'Vendedor')
+    const vendedor = await papelDaEmpresa(empresaA, 'Vendedor')
 
     const repo = new DomainUserPapelRepository()
     const assignment = await repo.assign({
@@ -87,27 +173,45 @@ test.group('domain_user_papel_repository', (group) => {
     })
 
     // a empresa B não consegue revogar uma atribuição de um utilizador que não é seu
-    await repo.revoke({ id: assignment.id, company_alias: empresaB.company_alias }).catch((error) => {
-      assert.equal(error.code, 'E_ROW_NOT_FOUND')
-    })
+    await repo
+      .revoke({ id: assignment.id, company_alias: empresaB.company_alias })
+      .catch((error) => {
+        assert.equal(error.code, 'E_ROW_NOT_FOUND')
+      })
 
-    const stillActive = await UserPapel.query().where('id', assignment.id).whereNull('deleted_at').first()
+    const stillActive = await UserPapel.query()
+      .where('id', assignment.id)
+      .whereNull('deleted_at')
+      .first()
     assert.isNotNull(stillActive, 'a atribuição não deve ter sido revogada pela empresa errada')
 
     // a própria empresa consegue revogar
     await repo.revoke({ id: assignment.id, company_alias: empresaA.company_alias })
-    const revoked = await UserPapel.query().where('id', assignment.id).whereNull('deleted_at').first()
+    const revoked = await UserPapel.query()
+      .where('id', assignment.id)
+      .whereNull('deleted_at')
+      .first()
     assert.isNull(revoked, 'a atribuição deve ficar revogada (soft-deleted)')
   })
 
-  test('atribuir o mesmo papel duas vezes é idempotente (não duplica a atribuição)', async ({ assert }) => {
+  test('atribuir o mesmo papel duas vezes é idempotente (não duplica a atribuição)', async ({
+    assert,
+  }) => {
     const empresa = await createEmpresa()
     const user = await createUser(empresa)
-    const vendedor = await Papel.findByOrFail('nome', 'Vendedor')
+    const vendedor = await papelDaEmpresa(empresa, 'Vendedor')
 
     const repo = new DomainUserPapelRepository()
-    await repo.assign({ user_id: user.id, papel_id: vendedor.id, company_alias: empresa.company_alias })
-    await repo.assign({ user_id: user.id, papel_id: vendedor.id, company_alias: empresa.company_alias })
+    await repo.assign({
+      user_id: user.id,
+      papel_id: vendedor.id,
+      company_alias: empresa.company_alias,
+    })
+    await repo.assign({
+      user_id: user.id,
+      papel_id: vendedor.id,
+      company_alias: empresa.company_alias,
+    })
 
     const count = await UserPapel.query()
       .where('user_id', user.id)
@@ -130,7 +234,7 @@ test.group('domain_user_papel — reatribuir depois de revogar', (group) => {
   test('reatribuir um papel revogado revive a linha, sem ER_DUP_ENTRY', async ({ assert }) => {
     const empresa = await createEmpresa()
     const user = await createUser(empresa, [])
-    const papel = await Papel.findByOrFail('nome', 'Vendedor')
+    const papel = await papelDaEmpresa(empresa, 'Vendedor')
     const repo = new DomainUserPapelRepository()
 
     const atribuido = await repo.assign({
@@ -159,11 +263,19 @@ test.group('domain_user_papel — reatribuir depois de revogar', (group) => {
   test('atribuir um papel já activo é idempotente', async ({ assert }) => {
     const empresa = await createEmpresa()
     const user = await createUser(empresa, [])
-    const papel = await Papel.findByOrFail('nome', 'Estoquista')
+    const papel = await papelDaEmpresa(empresa, 'Estoquista')
     const repo = new DomainUserPapelRepository()
 
-    const a = await repo.assign({ user_id: user.id, papel_id: papel.id, company_alias: empresa.company_alias } as any)
-    const b = await repo.assign({ user_id: user.id, papel_id: papel.id, company_alias: empresa.company_alias } as any)
+    const a = await repo.assign({
+      user_id: user.id,
+      papel_id: papel.id,
+      company_alias: empresa.company_alias,
+    } as any)
+    const b = await repo.assign({
+      user_id: user.id,
+      papel_id: papel.id,
+      company_alias: empresa.company_alias,
+    } as any)
 
     assert.equal(a.id, b.id)
     assert.lengthOf(await UserPapel.query().where('user_id', user.id).where('papel_id', papel.id), 1)

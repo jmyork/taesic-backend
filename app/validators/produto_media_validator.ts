@@ -47,7 +47,7 @@ export const updateproduto_mediaValidator = vine.compile(
       .escape()
       .exists(async (db, value, __) => {
         const exists = await db.from('produtos').where('id', value).first()
-        return exists !== undefined
+        return !!exists
       })
       .optional(),
     imagem_url: vine

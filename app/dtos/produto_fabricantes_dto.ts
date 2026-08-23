@@ -15,7 +15,6 @@ export interface ProdutoFabricanteQueryDTO {
   company_alias?: string
 }
 export interface Createproduto_fabricantesDTO {
-  enabled?: boolean
   endereco: string
   telefone: string
   email: string
@@ -24,7 +23,6 @@ export interface Createproduto_fabricantesDTO {
   company_alias?: string
 }
 export interface Updateproduto_fabricantesDTO {
-  enabled?: boolean
   endereco?: string
   telefone?: string
   email?: string

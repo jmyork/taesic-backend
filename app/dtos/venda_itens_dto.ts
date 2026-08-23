@@ -18,7 +18,6 @@ export interface VendaItensQueryDTO {
 }
 
 export interface Createvenda_itensDTO {
-  enabled?: boolean
   preco_unitario?: number
   quantidade: number
   lote_produto_id: string
@@ -31,7 +30,6 @@ export interface Createvenda_itensDTO {
   company_alias?: string | null
 }
 export interface Updatevenda_itensDTO {
-  enabled?: boolean
   preco_unitario?: number
   quantidade?: number
   lote_produto_id?: string
