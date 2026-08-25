@@ -54,37 +54,38 @@ router.get('/verification-token/company/:empresaId', [
 // e nunca devem ser expostos sem essas duas camadas de proteção.
 
 /**
- * O que resta do grupo de plataforma neste backend: UMA rota.
+ * Não há aqui nenhuma rota de plataforma. Zero.
  *
- * Todo o resto — `papel`, `permissao`, `papel_permissao`, `user_papel`, `plano`,
- * `taxa_iva`, `relatorios_plataforma` e as acções de suspender/reactivar uma
- * empresa — mudou-se para `taesic-backoffice-api`, por decisão do dono do produto:
- * os endpoints da plataforma vivem no backend do backoffice, não aqui.
+ * `papel`, `permissao`, `papel_permissao`, `user_papel`, `plano`, `taxa_iva`,
+ * `relatorios_plataforma` e as acções de suspender/reactivar uma empresa mudaram-se
+ * para `taesic-backoffice-api`, por decisão do dono do produto: os endpoints da
+ * plataforma vivem no backend do backoffice.
  *
- * `platform_cupom` ficou, e ficou ASSINALADO, porque a premissa não se confirma.
- * A ideia era que os cupões de plataforma fossem de quem promove a PLATAFORMA e
- * ganha sobre a venda de pacotes de assinatura. Isso não existe no esquema:
- * `cupom_id` só aparece em `vendas`, e `subscricao`/`cobranca` não têm ligação
- * nenhuma a cupões — o painel do promotor calcula ganhos por `vendas` → `cupom` →
- * `empresa`, ou seja, sobre vendas DENTRO de uma empresa. Esta rota é, hoje, CRUD
- * cross-tenant sobre os cupões de desconto dos inquilinos. Levá-la para o
- * backoffice seria mudar a coisa errada com o nome certo.
+ * A ÚLTIMA a sair foi `platform_cupom`, e vale a pena registar porquê.
  *
- * Fica aqui até haver decisão: ou se apaga (cada empresa já gere os seus por
- * `domain_cupom`), ou se desenha a funcionalidade que falta — cupão ligado a
- * `subscricao`/`cobranca`, com comissão — e essa nasce no backoffice, em tabelas
- * próprias.
+ * Estava assinalada há muito como premissa por confirmar: dizia-se que era o CRUD
+ * dos cupões de quem promove a PLATAFORMA e ganha sobre assinaturas, mas o que
+ * fazia era CRUD **cross-tenant sobre a tabela `cupom` dos inquilinos** — a que
+ * desconta produtos dentro de uma loja e cujo `cupom_id` só aparece em `vendas`.
+ * Levá-la para o backoffice teria sido mudar a coisa errada com o nome certo: dava
+ * ao dono da plataforma uma consola para editar os descontos dos clientes dele.
  *
- * `AdminOnlyMiddleware` e `userHasPlatformRole()` continuam neste projecto SÓ por
- * causa desta rota. Quando ela sair, saem com ela.
+ * A funcionalidade que faltava existe agora, e nasceu onde devia: tabelas próprias
+ * (`plataforma_cupom`, `plataforma_cupom_uso`, criadas pela migração
+ * `create_plataforma_cupom` — este projecto continua a ser o dono do esquema) e
+ * rotas no `taesic-backoffice-api`. Os cupões dos inquilinos continuam onde sempre
+ * estiveram, em `api/:company_alias/cupom` (`domain_cupom`), geridos por cada
+ * empresa.
+ *
+ * `AdminOnlyMiddleware` e `userHasPlatformRole()` FICAM, ao contrário do que a nota
+ * anterior previa. Não é esquecimento: a definição de "papel de plataforma" é
+ * `papel.escopo = 'plataforma'` na tabela `papel`, que os dois projectos partilham,
+ * e é aqui que vivem os testes que a guardam — `admin_only_middleware.spec.ts` e a
+ * verificação de escalada de privilégios em `papel_por_empresa.spec.ts`. Apagar o
+ * helper obrigava a apagar esses testes, e trocar uma rota a menos por uma defesa
+ * a menos não é arrumação. O middleware fica registado no kernel, sem rota a usá-lo
+ * neste projecto — é barato, e está testado.
  */
-router
-  .group(() => {
-    router.resource('cupom', controllers.Cupom).apiOnly().as('platform_cupom')
-  })
-  .prefix('api')
-  .use(middleware.auth({ guards: ['api'] }))
-  .use(middleware.adminOnly())
 
 /**
  * Documentação da API — NÃO registada em produção, por omissão.

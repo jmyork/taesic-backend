@@ -473,7 +473,7 @@ export class PapelSchema extends BaseModel {
   static $columns = ['chaveEscopo', 'createdAt', 'deletedAt', 'descricao', 'empresaId', 'escopo', 'id', 'nome', 'updatedAt'] as const
   $columns = PapelSchema.$columns
   @column()
-  declare chaveEscopo: string | null
+  declare chaveEscopo: string
   @column.dateTime({ autoCreate: true })
   declare createdAt: DateTime
   @column.dateTime()
@@ -596,6 +596,64 @@ export class PlanoSchema extends BaseModel {
   declare preco: string | null
   @column.dateTime({ autoCreate: true, autoUpdate: true })
   declare updatedAt: DateTime
+}
+
+export class PlataformaCupomSchema extends BaseModel {
+  static $columns = ['activo', 'codigo', 'comissaoPercentagem', 'createdAt', 'deletedAt', 'descontoPercentagem', 'descricao', 'id', 'limiteUtilizacoes', 'promotorId', 'updatedAt', 'validade'] as const
+  $columns = PlataformaCupomSchema.$columns
+  @column()
+  declare activo: boolean
+  @column()
+  declare codigo: string
+  @column()
+  declare comissaoPercentagem: string
+  @column.dateTime({ autoCreate: true })
+  declare createdAt: DateTime
+  @column.dateTime()
+  declare deletedAt: DateTime | null
+  @column()
+  declare descontoPercentagem: string
+  @column()
+  declare descricao: string | null
+  @column({ isPrimary: true })
+  declare id: string
+  @column()
+  declare limiteUtilizacoes: number | null
+  @column()
+  declare promotorId: string
+  @column.dateTime({ autoCreate: true, autoUpdate: true })
+  declare updatedAt: DateTime
+  @column.dateTime()
+  declare validade: DateTime | null
+}
+
+export class PlataformaCupomUsoSchema extends BaseModel {
+  static $columns = ['createdAt', 'cupomId', 'deletedAt', 'empresaId', 'id', 'moeda', 'registadoPor', 'subscricaoId', 'updatedAt', 'valorBase', 'valorComissao', 'valorDesconto'] as const
+  $columns = PlataformaCupomUsoSchema.$columns
+  @column.dateTime({ autoCreate: true })
+  declare createdAt: DateTime
+  @column()
+  declare cupomId: string
+  @column.dateTime()
+  declare deletedAt: DateTime | null
+  @column()
+  declare empresaId: string
+  @column({ isPrimary: true })
+  declare id: string
+  @column()
+  declare moeda: string
+  @column()
+  declare registadoPor: string | null
+  @column()
+  declare subscricaoId: string
+  @column.dateTime({ autoCreate: true, autoUpdate: true })
+  declare updatedAt: DateTime
+  @column()
+  declare valorBase: string
+  @column()
+  declare valorComissao: string
+  @column()
+  declare valorDesconto: string
 }
 
 export class PoSchema extends BaseModel {

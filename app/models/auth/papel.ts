@@ -88,13 +88,23 @@ export default class Papel extends BaseModel {
   @column()
   declare escopo: EscopoPapel
 
-  // NOTA: a tabela tem ainda `chave_escopo`, uma coluna GERADA
-  // (`COALESCE(empresa_id, escopo)`) que serve o índice único dos três âmbitos —
-  // `unique(empresa_id, nome)` não servia, porque no MySQL dois NULL contam como
-  // distintos e dois `Platform_Admin` passariam ambos. NÃO é declarada aqui de
-  // propósito: o MySQL recusa qualquer INSERT/UPDATE que lhe atribua valor, e
-  // bastava um `merge()` distraído com a linha inteira para partir a gravação.
-  // Não sendo conhecida do modelo, não há como isso acontecer.
+  // NOTA: a tabela tem ainda `chave_escopo VARCHAR(64) NOT NULL`, que serve o
+  // índice único dos três âmbitos — `unique(empresa_id, nome)` não servia, porque
+  // no MySQL dois NULL contam como distintos e dois `Platform_Admin` passariam
+  // ambos.
+  //
+  // É preenchida por GATILHO (`papel_chave_escopo_bi`/`_bu`, BEFORE INSERT e
+  // BEFORE UPDATE), com `COALESCE(empresa_id, escopo)`. Foi uma coluna GERADA até
+  // o servidor de qualidade recusar o índice sobre ela ("Function or expression
+  // 'coalesce(...)' cannot be used in the GENERATED ALWAYS AS clause") — o motor
+  // de lá não é o mesmo do ambiente de desenvolvimento. Ver a migração
+  // `..._796_alter_papel_chave_escopo_sem_coluna_gerada`.
+  //
+  // NÃO é declarada aqui de propósito. O gatilho sobrepõe-se a qualquer valor que
+  // se lhe atribua, portanto declará-la só criaria a ilusão de que se pode
+  // escrever nela. O gatilho é também a razão de isto ser um gatilho e não um
+  // `@beforeSave`: esta tabela é escrita por dois projectos, pelos seeders e por
+  // SQL à mão, e um hook do model não cobria nenhum desses caminhos.
 
   get ehDePlataforma(): boolean {
     return this.escopo === ESCOPO_PAPEL.plataforma

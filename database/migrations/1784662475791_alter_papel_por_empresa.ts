@@ -100,28 +100,20 @@ export default class extends BaseSchema {
         await db.rawQuery('DROP INDEX papel_nome_unique ON papel')
       }
 
-      // VIRTUAL, não STORED — e não é indiferente. Uma coluna gerada STORED obriga
-      // o InnoDB a reconstruir a tabela (ALGORITHM=COPY), e essa reconstrução falha
-      // com `ER_CANNOT_ADD_FOREIGN` numa tabela envolvida em chaves estrangeiras:
-      // `papel.empresa_id` acabou de ganhar uma, e `user_papel.papel_id` e
-      // `papel_permissao.papel_id` apontam para cá. Apanhado a correr esta migração,
-      // não por leitura — e foi essa falha que deixou o DDL a meio da primeira vez.
+      // `chave_escopo` e o índice único NÃO nascem aqui — nascem em
+      // `..._796_alter_papel_chave_escopo_sem_coluna_gerada`, e há uma razão de peso.
       //
-      // VIRTUAL não reconstrói a tabela e o MySQL 8 aceita um índice único sobre ela
-      // — o índice materializa o valor, que é tudo o que aqui é preciso.
-      if (!(await temColuna(db, 'papel', 'chave_escopo'))) {
-        await db.rawQuery(
-          `ALTER TABLE papel
-             ADD COLUMN chave_escopo VARCHAR(64)
-             GENERATED ALWAYS AS (COALESCE(empresa_id, escopo)) VIRTUAL`
-        )
-      }
-
-      if (!(await temIndice(db, 'papel', 'papel_escopo_nome_unique'))) {
-        await db.rawQuery(
-          'CREATE UNIQUE INDEX papel_escopo_nome_unique ON papel (chave_escopo, nome)'
-        )
-      }
+      // Esta migração criava uma coluna GERADA (`GENERATED ALWAYS AS
+      // (COALESCE(empresa_id, escopo)) VIRTUAL`) e indexava-a. Funciona no MySQL 8,
+      // que é o que corre em desenvolvimento. **No servidor não funciona**: o
+      // `CREATE UNIQUE INDEX` é recusado com "Function or expression
+      // 'coalesce(`empresa_id`,`escopo`)' cannot be used in the GENERATED ALWAYS AS
+      // clause of `chave_escopo`" — a coluna é aceite, indexá-la não.
+      //
+      // Ou seja: a mesma migração passava em dev e parava o deploy. Passou a ser
+      // uma coluna normal mantida por gatilho, que qualquer motor aceita. Ver a
+      // migração 796 para o desenho completo e para a conversão das bases que já
+      // ficaram com a coluna gerada.
 
       // O invariante deixa de depender de nenhum programador o respeitar: um papel
       // de empresa TEM empresa, um de plataforma ou modelo NÃO tem. Nenhum caminho
@@ -145,14 +137,6 @@ export default class extends BaseSchema {
     this.defer(async (db) => {
       if (await temRestricao(db, 'papel', 'papel_escopo_empresa_chk')) {
         await db.rawQuery('ALTER TABLE papel DROP CONSTRAINT papel_escopo_empresa_chk')
-      }
-
-      if (await temIndice(db, 'papel', 'papel_escopo_nome_unique')) {
-        await db.rawQuery('DROP INDEX papel_escopo_nome_unique ON papel')
-      }
-
-      if (await temColuna(db, 'papel', 'chave_escopo')) {
-        await db.rawQuery('ALTER TABLE papel DROP COLUMN chave_escopo')
       }
 
       if (await temRestricao(db, 'papel', 'papel_empresa_id_foreign')) {

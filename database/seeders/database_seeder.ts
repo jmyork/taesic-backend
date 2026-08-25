@@ -530,12 +530,24 @@ export default class extends BaseSeeder {
       { nome: 'domain_reembolso_consultar', descricao: 'Listar reembolsos' },
       { nome: 'domain_reembolso_consultar_id', descricao: 'Ver reembolsos de uma venda' },
 
-      // ==================== CUPOM ====================
-      { nome: 'platform_cupom.index', descricao: 'Listar cupons' },
-      { nome: 'platform_cupom.show', descricao: 'Ver cupom específico' },
-      { nome: 'platform_cupom.store', descricao: 'Criar cupom' },
-      { nome: 'platform_cupom.update', descricao: 'Editar cupom' },
-      { nome: 'platform_cupom.destroy', descricao: 'Remover/Recuperar cupom' },
+      // ==================== CUPÕES DE PLATAFORMA ====================
+      // Estes nomes descreviam o CRUD cross-tenant sobre a tabela `cupom` dos
+      // inquilinos, que era o que a rota `platform_cupom` deste projecto fazia. Essa
+      // rota foi removida (ver start/routes.ts) e os mesmos nomes passam a designar o
+      // que sempre deviam ter designado: os cupões de quem promove a PLATAFORMA, em
+      // `plataforma_cupom`, servidos pelo `taesic-backoffice-api`. Os cupões dos
+      // inquilinos são `domain_cupom.*`, mais acima.
+      { nome: 'platform_cupom.index', descricao: 'Listar cupões de plataforma' },
+      { nome: 'platform_cupom.show', descricao: 'Ver um cupão de plataforma' },
+      { nome: 'platform_cupom.store', descricao: 'Criar um cupão de plataforma' },
+      { nome: 'platform_cupom.update', descricao: 'Editar um cupão de plataforma' },
+      { nome: 'platform_cupom.destroy', descricao: 'Remover/Recuperar um cupão de plataforma' },
+      { nome: 'platform_cupom.resumo', descricao: 'Ver o resumo de cupões e comissões' },
+      { nome: 'platform_cupom.promotores', descricao: 'Listar os promotores de plataforma' },
+      { nome: 'platform_cupom.subscricoes_sem_cupao', descricao: 'Listar as subscrições ainda não atribuídas a um cupão' },
+      { nome: 'platform_cupom.resgates', descricao: 'Ver os resgates de um cupão de plataforma' },
+      { nome: 'platform_cupom.registar_resgate', descricao: 'Atribuir uma subscrição a um cupão (gera comissão)' },
+      { nome: 'platform_cupom.anular_resgate', descricao: 'Anular um resgate atribuído por engano' },
 
       // ==================== PLANO ====================
       { nome: 'platform_plano.index', descricao: 'Listar planos' },

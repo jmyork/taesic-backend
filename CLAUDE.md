@@ -1794,7 +1794,7 @@ Saíram também as acções `empresas/:id/suspender|reactivar` e o que só elas 
 - `commands/permissao_conceder.ts` e `permissao_revogar.ts` — são ferramentas do dono do
   esquema e trabalham sobre os models, não sobre os repositórios que saíram.
 
-#### `platform_cupom` — a excepção, e porque não foi movida
+#### `platform_cupom` — a excepção, e como acabou resolvida
 
 Foi levantada a hipótese de que os cupões de plataforma fossem de quem promove a
 **plataforma** e ganha sobre a venda de pacotes de assinatura. **Isso não existe no
@@ -1805,11 +1805,50 @@ esquema**, e confirmá-lo antes de mover evitou levar a coisa errada com o nome 
 - `promotor_painel_repository` calcula ganhos por `vendas` → `cupom` → `empresa`, ou seja,
   sobre vendas feitas DENTRO de uma empresa.
 
-Logo, `platform_cupom` é hoje CRUD cross-tenant sobre os cupões de desconto dos inquilinos.
-Fica onde está, assinalado no próprio `routes.ts`, até haver decisão: ou se apaga (cada
-empresa já gere os seus por `domain_cupom`), ou se desenha a funcionalidade em falta —
-cupão ligado a `subscricao`/`cobranca`, com comissão — e essa nasce no backoffice, em
-tabelas próprias.
+Logo, `platform_cupom` era CRUD cross-tenant sobre os cupões de desconto dos INQUILINOS.
+Ficou aqui, assinalado no próprio `routes.ts`, até haver decisão. **A decisão foi tomada:
+desenhou-se a funcionalidade em falta**, e a rota saiu.
+
+O dono do produto confirmou a premissa — promotores da PLATAFORMA que ganham sobre as
+assinaturas que trazem. O que não existia era o sítio onde isso viver:
+
+| o quê | onde | quem serve |
+|---|---|---|
+| `plataforma_cupom` | migração `1784662475797_create_plataforma_cupom`, **neste** projecto | `taesic-backoffice-api` |
+| `plataforma_cupom_uso` | idem | idem |
+| as rotas (`api/cupoes-plataforma`, resgates, promotores) | `taesic-backoffice-api` | o ecrã `/painel/cupoes` |
+
+**As tabelas nascem aqui e as rotas nascem lá, e isso não é incoerência.** O dono do
+esquema é este projecto, e os dois apontam para a mesma base de dados: dois projectos a
+correr migrações contra ela partilhariam `adonis_schema`, os lotes intercalavam-se, e um
+`migration:rollback` de um lado desfazia trabalho do outro sem aviso. O backoffice
+continua sem `database/`.
+
+O promotor de plataforma **já existia** (`promotor.empresa_id IS NULL`, com o getter
+`isPlataforma` e auto-registo público em `api/promotores/registo`). Não se inventou
+conceito nenhum — deu-se-lhe algo que ele pudesse promover.
+
+Duas decisões de desenho que valem por si:
+
+- **Os valores em dinheiro ficam congelados no resgate.** `valor_base`, `valor_desconto` e
+  `valor_comissao` são gravados em `plataforma_cupom_uso`, e não recalculados a partir do
+  preço do plano. Uma comissão ganha é uma dívida a uma pessoa; recalculá-la a cada leitura
+  seria reescrever a história de quanto se deve quando o preço de um plano mudasse.
+- **`subscricao_id` é único, e o índice ignora `deleted_at`.** É ele que garante que uma
+  subscrição é ganha uma vez só — a verificação em código não chega, porque entre o SELECT
+  e o INSERT cabe outro pedido. Consequência assumida: anular um resgate é um DELETE a
+  sério, não um soft delete (senão a subscrição ficava inatribuível para sempre); o rasto
+  fica em `security_logs`.
+
+Os cupões dos inquilinos continuam intactos em `api/:company_alias/cupom` (`domain_cupom`).
+
+**`AdminOnlyMiddleware` e `userHasPlatformRole()` FICARAM**, ao contrário do que a nota do
+`routes.ts` previa. Não é esquecimento: a definição de "papel de plataforma" é
+`papel.escopo = 'plataforma'` na tabela `papel`, partilhada pelos dois projectos, e é aqui
+que vivem os testes que a guardam (`admin_only_middleware.spec.ts` e a verificação de
+escalada de privilégios em `papel_por_empresa.spec.ts`). Apagar o helper obrigava a apagar
+esses testes — trocar uma rota a menos por uma defesa a menos não é arrumação. O middleware
+fica registado no kernel sem rota a usá-lo neste projecto.
 
 #### Ajustes colaterais
 
@@ -1827,6 +1866,17 @@ tabelas próprias.
   toda e sem resto: **35** do `modules_load.spec.ts` (7 conjuntos × 5 pastas que ele varre)
   e **22** dos testes que foram com o código. Verificado com `list:routes`: as rotas
   `platform_*` passaram de 45 a 6 (só `cupom`), e as 212 `domain_*` ficaram intactas.
+  **Actualização:** com a saída de `platform_cupom` (acima), as `platform_*` são agora
+  **zero** — não há uma única rota de plataforma neste backend (`list:routes`: 0
+  `platform_*`, 191 `domain_*`, 210 no total). As de inquilino não foram tocadas, e
+  isso é verificável e não uma afirmação: o único ficheiro de rotas alterado foi
+  `start/routes.ts`; `companydomainroutes.ts` não tem uma linha mudada. A suite está em
+  **662 testes**.
+
+  (A contagem de 212 `domain_*` escrita acima, da sessão da separação, não é
+  reproduzível hoje com este método de contagem — conta-se aqui por NOME de rota
+  começado em `domain_`. Fica registada a divergência em vez de se ajustar um número
+  para trás sem saber o que ele media.)
 
 ---
 
@@ -1935,3 +1985,75 @@ E ter presente que, **em produção, um `migration:run` que falhe não se resolv
 tentativa e erro.** Com as migrações idempotentes resolve-se por reexecução; sem elas,
 resolve-se a olhar para o `information_schema` e a completar o que falta à mão — que é
 onde nasce a próxima avaria.
+
+#### 7.19.1 A segunda falha do mesmo deploy: o motor do servidor não é o de dev
+
+Com as migrações já idempotentes, o deploy seguinte foi mais longe — e parou noutro
+sítio:
+
+```
+[ error ] CREATE UNIQUE INDEX papel_escopo_nome_unique ON papel (chave_escopo, nome)
+          - Function or expression 'coalesce(`empresa_id`,`escopo`)' cannot be used
+            in the GENERATED ALWAYS AS clause of `chave_escopo`
+```
+
+Repare-se onde falha. A COLUNA gerada foi aceite (a guarda criou-a); o ÍNDICE sobre ela
+é que não. O motor revalida a expressão com regras mais apertadas ao indexá-la.
+
+**A mesma instrução passa no MySQL 8.4 local, nos testes, e falha no servidor.** É essa
+a conclusão que importa, muito mais do que o erro: **o ambiente de desenvolvimento e o
+servidor não correm o mesmo motor de base de dados.** Enquanto isso for verdade,
+qualquer migração pode passar em dev, passar na suite, e parar o deploy — e nenhuma
+quantidade de testes locais o apanha.
+
+**Regra que daqui resulta: nada de funcionalidades específicas de um motor no caminho
+crítico.** Colunas geradas indexadas são exactamente isso. Varrido o resto das 120
+migrações à procura de mais: não há mais nenhuma coluna gerada, nenhum índice funcional,
+e as *window functions* de `..._782` a `..._788` já correram no servidor sem problema
+(estão em `completed`). As duas restrições `CHECK` também.
+
+##### O que substituiu a coluna gerada
+
+`..._796_alter_papel_chave_escopo_sem_coluna_gerada`: `chave_escopo` passa a
+`VARCHAR(64) NOT NULL` normal, preenchida por dois gatilhos
+(`papel_chave_escopo_bi`/`_bu`, BEFORE INSERT e BEFORE UPDATE) com
+`COALESCE(empresa_id, escopo)`.
+
+**Gatilho e não um `@beforeSave` do Lucid**, e a razão é estrutural: `papel` é escrita
+por DOIS projectos (mesma base de dados), pelos seeders, pelo `multiInsert` da migração
+792 e por SQL à mão. Um hook do model cobre um desses caminhos. O gatilho cobre-os
+todos — a mesma garantia que a coluna gerada dava, com uma funcionalidade que qualquer
+motor suporta.
+
+O preço é a invisibilidade: quem lê o model não vê o gatilho. Compensado por
+`tests/functional/papel_chave_escopo.spec.ts` (9 testes), que verifica os dois gatilhos,
+o índice, a escrita em bruto sem passar pelo model, **e varre a tabela inteira** à
+procura de linhas onde `chave_escopo <> COALESCE(empresa_id, escopo)`. Um desses testes
+falha de propósito se alguém reintroduzir a coluna como gerada.
+
+A 791 deixou de criar `chave_escopo` e o índice — passaram os dois para a 796. Assim as
+três situações convergem no mesmo estado sem duplicar lógica nenhuma:
+
+| ponto de partida | 791 | 796 |
+|---|---|---|
+| base nova | cria colunas, FK, CHECK | cria chave_escopo normal + gatilhos + índice |
+| dev/teste (791 completa, coluna gerada) | já registada, não corre | converte: larga índice e coluna, recria normal |
+| servidor (791 pendente, coluna gerada sem índice) | salta o que existe, regista-se | converte |
+
+##### Verificado, e como reverificar
+
+Numa base descartável, os dois cenários — instalação de raiz e o estado EXACTO do
+servidor (coluna gerada presente, índice ausente, seis migrações por registar) —
+acabaram idênticos: `chave_escopo varchar(64) NOT NULL` sem `GENERATED`, os dois
+gatilhos, `papel_escopo_nome_unique` sobre `(chave_escopo, nome)`, zero linhas
+dessincronizadas, e um `INSERT` em SQL puro a sair com a chave correcta.
+
+Suites depois da conversão de dev e de teste: **662** no `taesic-backend` (eram 653),
+**138** no `taesic-backoffice-api`, `tsc --noEmit` limpo nos dois.
+
+##### Por resolver
+
+**Falta saber que motor corre no servidor** (`SELECT VERSION();`). A mensagem de erro é
+a do MariaDB, não a do MySQL 8, mas isso é dedução — e a divergência entre ambientes é
+um problema por si, independente de qual dos dois é o "certo". Enquanto não for
+alinhada, o `migration:status` antes de cada deploy é a única rede que resta.

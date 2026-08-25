@@ -47,8 +47,29 @@ function simularFetch(resposta: { ok?: boolean; status?: number; corpo?: any; er
   return { estado, restaurar: () => { globalThis.fetch = original } }
 }
 
-test.group('consulta de NIF — cache e resiliência', (group) => {
+/**
+ * A cache tem de começar VAZIA — senão o teste depende da máquina em que corre.
+ *
+ * A transacção global desfaz o que os testes escrevem, mas não desfaz o que já lá
+ * estava: uma consulta a sério feita em desenvolvimento deixa a linha do NIF em
+ * `nif_consulta` COMMITADA, e a cache vale 30 dias (`NIF_CACHE_DIAS`). A partir
+ * daí, `consultar()` servia da cache e o `fetch` simulado nunca chegava a ser
+ * chamado — 8 testes deste ficheiro falhavam com "expected +0 to equal 1" numa BD
+ * de desenvolvimento e passavam numa BD limpa, sem nada no código ter mudado.
+ *
+ * O `delete` corre DENTRO da transacção global (por isso o `setup` vem a seguir
+ * ao que a abre, e não antes): é desfeito no fim como tudo o resto, e a cache real
+ * de quem está a desenvolver fica intacta.
+ */
+function cacheVazia(group: Parameters<Parameters<typeof test.group>[1]>[0]) {
   group.each.setup(() => testUtils.db().withGlobalTransaction())
+  group.each.setup(async () => {
+    await NifConsulta.query().delete()
+  })
+}
+
+test.group('consulta de NIF — cache e resiliência', (group) => {
+  cacheVazia(group)
 
   test('consulta bem sucedida guarda em cache e deriva o tipo de cliente', async ({ assert }) => {
     const { estado, restaurar } = simularFetch({ corpo: RESPOSTA_BKNKV })
@@ -242,7 +263,7 @@ test.group('consulta de NIF — cache e resiliência', (group) => {
 })
 
 test.group('consulta de NIF — rota pública (registo de empresa)', (group) => {
-  group.each.setup(() => testUtils.db().withGlobalTransaction())
+  cacheVazia(group)
 
   /**
    * O registo de empresa acontece antes de existir conta, por isso não pode usar o

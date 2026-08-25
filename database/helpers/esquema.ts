@@ -42,6 +42,25 @@ async function existe(db: QueryClientContract, sql: string, valores: string[]) {
   return (linhas as unknown[]).length > 0
 }
 
+/**
+ * A tabela existe?
+ *
+ * `BASE TABLE` e não qualquer entrada de `TABLES`: uma VIEW com o mesmo nome
+ * apareceria na mesma consulta, e o que a pergunta quer saber é se há aqui algo
+ * onde escrever. Um `CREATE TABLE IF NOT EXISTS` resolveria o caso simples, mas
+ * não dá resposta às perguntas que vêm a seguir — se a tabela ficou a meio, quais
+ * das suas chaves estrangeiras chegaram a ser criadas.
+ */
+export function temTabela(db: QueryClientContract, tabela: string) {
+  return existe(
+    db,
+    `SELECT 1 FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND TABLE_TYPE = 'BASE TABLE'
+      LIMIT 1`,
+    [tabela]
+  )
+}
+
 /** A coluna existe nesta tabela? */
 export function temColuna(db: QueryClientContract, tabela: string, coluna: string) {
   return existe(
@@ -89,4 +108,35 @@ export function temRestricao(db: QueryClientContract, tabela: string, restricao:
       LIMIT 1`,
     [tabela, restricao]
   )
+}
+
+/** O gatilho existe, com este nome? */
+export function temGatilho(db: QueryClientContract, gatilho: string) {
+  return existe(
+    db,
+    `SELECT 1 FROM information_schema.TRIGGERS
+      WHERE TRIGGER_SCHEMA = DATABASE() AND TRIGGER_NAME = ?
+      LIMIT 1`,
+    [gatilho]
+  )
+}
+
+/**
+ * A coluna é GERADA (`GENERATED ALWAYS AS`), virtual ou armazenada?
+ *
+ * Serve para distinguir uma coluna que o motor calcula de uma coluna normal com
+ * o mesmo nome — que é precisamente a conversão que a migração
+ * `alter_papel_chave_escopo_sem_coluna_gerada` tem de fazer, e que não pode ser
+ * decidida só por `temColuna()`.
+ */
+export async function colunaEGerada(db: QueryClientContract, tabela: string, coluna: string) {
+  const [linhas] = await db.rawQuery(
+    `SELECT EXTRA FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?
+      LIMIT 1`,
+    [tabela, coluna]
+  )
+
+  const extra = (linhas as { EXTRA?: string }[])[0]?.EXTRA ?? ''
+  return extra.toUpperCase().includes('GENERATED')
 }

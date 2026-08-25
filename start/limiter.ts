@@ -36,15 +36,48 @@ import { logSecurityEvent } from '../app/helpers/security_logger.js'
  * `X-Forwarded-For` do cliente original — o `trustProxy` em config/app.ts confia
  * em loopback, por isso o valor reencaminhado é respeitado. Os limitadores
  * abaixo que usam `.usingKey()` são indiferentes a isso, de propósito.
+ *
+ * O `espaco` É UM PARÂMETRO À PARTE, E NÃO MAIS UMA PARTE. Isto não é
+ * arrumação — era o bug.
+ *
+ * A assinatura anterior era `chaveDoAlvo(ctx, ...partes)` e todos os chamadores
+ * passavam o nome do espaço ('login', 'email_action', ...) como primeira parte.
+ * Como esse nome é uma constante e nunca vem vazio, sobrevivia sempre ao
+ * `filter`, `identificado.length` nunca era zero, e o ramo do IP era código
+ * morto — nunca correu uma única vez.
+ *
+ * A consequência: um pedido em que nenhuma parte identificava o alvo (campo com
+ * outro nome, corpo em falta, corpo que a validação ainda vai recusar) produzia
+ * a chave `email_action`, igual para toda a gente. O contador deixava de ser por
+ * pessoa e passava a ser um contador ÚNICO da plataforma inteira: bastavam 5
+ * pedidos, de quem quer que fossem, para o 6.º utilizador do mundo levar 429 — e
+ * o seguinte, e o seguinte. Era exactamente o sintoma relatado: "todos os
+ * dispositivos são barrados pelo mesmo erro".
+ *
+ * E não era teórico. Em `api/resend-company-activation-email` a rota não tem
+ * `:company_alias` no caminho e o corpo chama-se `nif_ou_company_alias` (ver
+ * ResendVerificationEmailValidator), por isso as três partes que o
+ * `emailActionThrottle` procurava vinham TODAS indefinidas. Aquela rota estava,
+ * na prática, com um limite global de 5 pedidos por 5 minutos para o planeta.
+ *
+ * Com o espaço fora da lista, uma chave sem alvo cai no IP. O limite continua a
+ * existir — quem faz o disparate continua a pagá-lo —, mas paga-o sozinho.
  */
-function chaveDoAlvo(ctx: HttpContext, ...partes: (string | undefined | null)[]): string {
+function chaveDoAlvo(
+  ctx: HttpContext,
+  espaco: string,
+  ...partes: (string | undefined | null)[]
+): string {
   const identificado = partes
     .map((parte) => (parte ?? '').toString().trim().toLowerCase())
     .filter((parte) => parte.length > 0)
 
   // Sem nada que identifique o alvo (pedido malformado, validação ainda por
-  // correr), cai no IP em vez de ficar sem chave — nunca desligar o limite.
-  return identificado.length > 0 ? identificado.join('|') : `ip:${ctx.request.ip()}`
+  // correr), cai no IP em vez de ficar sem chave — nunca desligar o limite, mas
+  // também nunca o transformar num limite global.
+  return identificado.length > 0
+    ? `${espaco}|${identificado.join('|')}`
+    : `${espaco}|ip:${ctx.request.ip()}`
 }
 
 export const throttle = limiter.define('global', () => {
@@ -108,6 +141,19 @@ export const signupThrottle = limiter.define('signup', (ctx) => {
  * alheia só sabendo o email/company_alias.
  *
  * A chave é a CONTA DE DESTINO, não a origem: é a vítima que se está a proteger.
+ *
+ * O `nif_ou_company_alias` faz parte da lista porque é o ÚNICO campo que
+ * identifica o alvo em `api/resend-company-activation-email` — a rota não tem
+ * `:company_alias` no caminho e o corpo não traz `email` nem `uid` (ver
+ * ResendVerificationEmailValidator em app/validators/empresa_validator.ts). Sem
+ * ele, TODOS os pedidos de reenvio partilhavam a mesma chave, e o limite de 5
+ * por 5 minutos era um limite da plataforma inteira em vez de um limite por
+ * empresa.
+ *
+ * Cada rota que passe a usar este limitador tem de trazer pelo menos um destes
+ * campos. Se não trouxer, o limite ainda funciona — cai no IP, ver
+ * `chaveDoAlvo` — mas deixa de proteger a vítima, que é o ponto do limitador.
+ * O teste em tests/functional/limiter_chaves.spec.ts trava a regressão.
  */
 export const emailActionThrottle = limiter.define('email_action', (ctx) => {
   return comLogDeBloqueio(
@@ -121,7 +167,9 @@ export const emailActionThrottle = limiter.define('email_action', (ctx) => {
           ctx,
           'email_action',
           ctx.params?.company_alias,
-          ctx.request.input('email') ?? ctx.request.input('uid')
+          ctx.request.input('email') ??
+            ctx.request.input('uid') ??
+            ctx.request.input('nif_ou_company_alias')
         )
       )
   )
