@@ -119,8 +119,12 @@ export default class extends BaseSchema {
               '  A aplicação preenche `papel.chave_escopo` por si (ver app/models/auth/papel.ts),\n' +
               '  por isso isto NÃO impede o funcionamento. Fica sem cobertura quem escreva na\n' +
               '  tabela `papel` por fora — o taesic-backoffice-api e o SQL à mão.\n' +
-              '  Para corrigir: conceder o privilégio TRIGGER ao utilizador da base de dados e\n' +
-              '  voltar a correr esta migração.'
+              '  Para corrigir, conforme o erro acima:\n' +
+              '    · "SUPER privilege ... binary logging" (1419) -> pôr\n' +
+              '      log_bin_trust_function_creators = 1 na secção [mysqld] da configuração\n' +
+              '      do motor, e reiniciá-lo;\n' +
+              '    · "command denied ... TRIGGER" (1142) -> GRANT TRIGGER ao utilizador da BD.\n' +
+              '  Depois, voltar a correr esta migração (é idempotente).'
           )
         }
       }

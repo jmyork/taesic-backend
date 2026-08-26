@@ -331,7 +331,7 @@ São duas causas possíveis, e o texto do erro diz qual é:
 
 | erro | o que falta |
 |---|---|
-| `You do not have the SUPER privilege and binary logging is enabled` (1419) | `SUPER`, ou `log_bin_trust_function_creators = 1` |
+| `You do not have the SUPER privilege and binary logging is enabled` (1419) | `log_bin_trust_function_creators = 1` — **foi este o erro em `api-qua`** |
 | `command denied to user ... TRIGGER` (1142) | o privilégio `TRIGGER`, que é concedido à parte dos outros |
 
 ```bash

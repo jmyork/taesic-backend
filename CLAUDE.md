@@ -2056,14 +2056,29 @@ Suites depois da conversão de dev e de teste: **662** no `taesic-backend` (eram
 A pergunta que ficou aqui em aberto ("falta saber que motor corre no servidor") tem
 resposta nos documentos de provisionamento deste repositório:
 
-| ambiente | motor | onde está dito |
+| ambiente | motor | prova |
 |---|---|---|
 | desenvolvimento | **MySQL 8.4.3** | `SELECT VERSION()` na base local |
-| servidor | **MariaDB** | `sudo apt install mariadb-server -y` — `servidor-runbook-comandos.md` §B3 e `servidor-resumo-e-plano.md` §4.3; `deploy-doc.md` §4 fala da "MariaDB" no diagnóstico |
+| servidor | **por confirmar — os indícios contradizem-se** | ver abaixo |
 
-A dedução a partir da mensagem de erro estava certa: a recusa de indexar a coluna gerada
-é do MariaDB. **A versão exacta continua por confirmar** — isso pede um `SELECT
-VERSION();` no servidor, que ninguém correu.
+**AS PROVAS DO SERVIDOR NÃO CONCORDAM, e isto ficou aqui escrito como certeza que não
+era.** Do lado do MariaDB: o provisionamento instala `mariadb-server`
+(`servidor-runbook-comandos.md` §B3, `servidor-resumo-e-plano.md` §4.3), o
+`deploy-doc.md` §4 fala da "MariaDB", e há sessões `sudo mariadb` abertas. Do lado do
+MySQL: o `systemctl status` do servidor mostra a unidade a correr como **`mysql.service`
+com `/usr/sbin/mysqld`** — o MariaDB no Ubuntu chama-se `mariadb.service` e corre
+`mariadbd`.
+
+Pode ser uma instalação que começou MariaDB e acabou MySQL, ou o contrário, ou as duas
+coisas em alturas diferentes. **Não se decide por dedução — decide-se com uma linha:**
+
+```bash
+sudo mysql -e "SELECT VERSION(), @@version_comment;"
+```
+
+Enquanto isso não for corrido, tratar o motor do servidor como DESCONHECIDO. O que não
+depende de saber qual é: os dois ambientes comportam-se de maneira diferente, e é isso
+que interessa às regras abaixo.
 
 **A consequência não muda por a causa estar identificada.** Enquanto os dois ambientes
 forem motores diferentes, uma migração pode passar em dev, passar na suite, e parar o
