@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { TransactionClientContract } from '@adonisjs/lucid/types/database'
 import db from '@adonisjs/lucid/services/db'
-import Papel, { ESCOPO_PAPEL, PREFIXO_PLATAFORMA } from '#models/auth/papel'
+import Papel, { ESCOPO_PAPEL, chaveEscopoDe, PREFIXO_PLATAFORMA } from '#models/auth/papel'
 
 /**
  * Dá a uma empresa nova a sua própria cópia dos papéis padrão.
@@ -84,6 +84,12 @@ export async function clonarPapeisPadrao(
       descricao: modelo.descricao,
       empresa_id: empresaId,
       escopo: ESCOPO_PAPEL.empresa,
+      // Escrita à mão porque este `multiInsert` não passa pelo model, e portanto
+      // não passa pelo `@beforeSave` que a preencheria. Não confiar no gatilho
+      // aqui não é desconfiança abstracta: foi ESTE insert que parou o registo de
+      // empresas em `api-qua` com "Field 'chave_escopo' doesn't have a default
+      // value", porque o gatilho nunca chegou a ser criado naquele servidor.
+      chave_escopo: chaveEscopoDe({ empresa_id: empresaId, escopo: ESCOPO_PAPEL.empresa }),
       created_at: agora,
       updated_at: agora,
     }

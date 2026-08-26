@@ -2051,9 +2051,213 @@ dessincronizadas, e um `INSERT` em SQL puro a sair com a chave correcta.
 Suites depois da conversão de dev e de teste: **662** no `taesic-backend` (eram 653),
 **138** no `taesic-backoffice-api`, `tsc --noEmit` limpo nos dois.
 
-##### Por resolver
+##### Resolvido: são motores DIFERENTES, e está escrito na própria documentação
 
-**Falta saber que motor corre no servidor** (`SELECT VERSION();`). A mensagem de erro é
-a do MariaDB, não a do MySQL 8, mas isso é dedução — e a divergência entre ambientes é
-um problema por si, independente de qual dos dois é o "certo". Enquanto não for
-alinhada, o `migration:status` antes de cada deploy é a única rede que resta.
+A pergunta que ficou aqui em aberto ("falta saber que motor corre no servidor") tem
+resposta nos documentos de provisionamento deste repositório:
+
+| ambiente | motor | onde está dito |
+|---|---|---|
+| desenvolvimento | **MySQL 8.4.3** | `SELECT VERSION()` na base local |
+| servidor | **MariaDB** | `sudo apt install mariadb-server -y` — `servidor-runbook-comandos.md` §B3 e `servidor-resumo-e-plano.md` §4.3; `deploy-doc.md` §4 fala da "MariaDB" no diagnóstico |
+
+A dedução a partir da mensagem de erro estava certa: a recusa de indexar a coluna gerada
+é do MariaDB. **A versão exacta continua por confirmar** — isso pede um `SELECT
+VERSION();` no servidor, que ninguém correu.
+
+**A consequência não muda por a causa estar identificada.** Enquanto os dois ambientes
+forem motores diferentes, uma migração pode passar em dev, passar na suite, e parar o
+deploy — e nenhuma quantidade de testes locais o apanha. As duas regras que daqui saem
+continuam a valer inteiras:
+
+1. **Nada de funcionalidades específicas de um motor no caminho crítico.** Colunas
+   geradas indexadas, índices funcionais, tipos próprios de um motor.
+2. **`node ace migration:status` antes de cada deploy**, e migrações idempotentes (7.19)
+   para que uma falha a meio se recupere por reexecução.
+
+Alinhar os dois ambientes — MariaDB em dev, ou MySQL no servidor — é o que remove a
+classe inteira de problema. Até lá, é isto que resta.
+
+---
+
+### 7.20 ⚠️ Um campo novo tem de ter valor por omissão ou ser opcional
+
+**Regra dada pelo dono do produto, classificada como crítica.** Duas partes:
+
+1. **Todo o campo novo tem de ter valor por omissão ou ser anulável.**
+2. **Se um campo é obrigatório, a obrigatoriedade impõe-se no VALIDATOR, não na base de
+   dados em primeira instância.** A restrição na BD é a última defesa, não a primeira.
+
+O `NOT NULL` da BD recusa a escrita com um erro do motor (`ER_NO_DEFAULT_FOR_FIELD`,
+`ER_BAD_NULL_ERROR`) que chega ao utilizador como 500 e não diz sequer que campo falta. O
+validator recusa com 400 e uma mensagem por campo, antes de a transacção abrir.
+Restrições que a aplicação não pode garantir sozinha — chaves estrangeiras, `CHECK` de
+invariantes entre colunas, índices únicos — continuam a fazer sentido na BD;
+obrigatoriedade de preenchimento, não.
+
+#### O incidente que a originou
+
+`api-qua`, criar empresa. No journal (`journalctl -u api-qua`):
+
+```
+ER_NO_DEFAULT_FOR_FIELD (1364)
+Field 'chave_escopo' doesn't have a default value
+insert into `papel` (`created_at`, `descricao`, `empresa_id`, `escopo`, `id`, `nome`, `updated_at`) values (...)
+```
+
+O `INSERT` é o de `app/helpers/papeis_da_empresa.ts`, que clona os 10 papéis padrão para
+a empresa nova. Não menciona `chave_escopo` porque nunca precisou: quem a preenchia era o
+gatilho `papel_chave_escopo_bi` (ver 7.19.1).
+
+**Naquele servidor o gatilho não existe.** A migração 796 faz, por esta ordem:
+
+```
+4. ALTER TABLE papel MODIFY chave_escopo VARCHAR(64) NOT NULL
+5. CREATE TRIGGER papel_chave_escopo_bi ...
+```
+
+O MySQL não faz DDL transaccional (7.19). O passo 5 falhar — `CREATE TRIGGER` exige o
+privilégio `TRIGGER`, concedido à parte do resto — deixa o passo 4 feito. O que fica é uma
+coluna obrigatória, sem valor por omissão, sem ninguém a preenchê-la. **A partir daí
+nenhuma escrita em `papel` passa: não é o registo de empresas que fica degradado, é a
+tabela inteira que fica só de leitura.**
+
+O `NOT NULL` tinha sido posto com boa intenção — o comentário da 796 dizia "se algum dia
+um caminho os contornar, o erro aparece na escrita em vez de uma linha silenciosamente
+fora do índice". Escolheu falhar a escrita em vez de a deixar passar. O preço dessa
+escolha foi uma paragem total; o da outra teria sido uma linha mal indexada.
+
+#### A correcção — três defesas, nenhuma sozinha
+
+`1784662475798_alter_papel_chave_escopo_anulavel`: a coluna passa a **anulável**.
+
+**Anulável e não com valor por omissão**: não há default que sirva. A chave é
+`COALESCE(empresa_id, escopo)` — depende da linha. Um `DEFAULT ''` fixo poria todas as
+linhas por preencher na mesma entrada do índice único, e duas empresas com um papel
+"Admin" cada passariam a colidir. Trocava-se um erro por outro.
+
+A unicidade não se perde porque a coluna deixou de depender só do gatilho:
+
+| quem preenche | cobre |
+|---|---|
+| `@beforeSave` em `app/models/auth/papel.ts` | `Papel.create`, `createMany`, seeders |
+| valor à mão no `multiInsert` de `papeis_da_empresa.ts` | o clone de papéis do registo de empresa |
+| `@beforeSave` no model do `taesic-backoffice-api` | tudo o que o outro backend escreve |
+| os gatilhos | SQL à mão, restauros, o que ninguém previu |
+
+Os três primeiros usam `chaveEscopoDe()`, exportada do model — uma só definição. O NULL
+passa a ser o que devia sempre ter sido: o sinal de que algo escreveu por um caminho não
+previsto, visível numa consulta, e não uma paragem.
+
+#### Ordem dos passos numa migração
+
+Ao contrário da 796, **o que pode falhar vem DEPOIS do que desbloqueia a escrita**.
+Primeiro a coluna fica anulável; a partir daí a tabela é escrevível, aconteça o que
+acontecer a seguir.
+
+E a criação dos gatilhos na 798 **não pára a migração se falhar** — avisa no log e
+continua. Antes a aplicação dependia deles e engoli-los seria esconder uma avaria; agora
+são a terceira das três defesas, e uma migração que rebente ali bloqueia todas as
+migrações seguintes em todos os deploys por causa de uma salvaguarda de que a aplicação
+já não precisa.
+
+#### A lacuna de teste que deixou isto chegar a produção
+
+`papel_chave_escopo.spec.ts` corria **com os gatilhos no sítio** — portanto não
+distinguia "a aplicação preenche a chave" de "o gatilho preenche a chave", e passava na
+mesma se a aplicação não fizesse nada. Em dev os gatilhos existem sempre.
+
+Ganhou um segundo grupo, **`papel — chave_escopo sem os gatilhos (o estado de api-qua)`**,
+que os larga no `group.setup` e os repõe no teardown (DDL fora da transacção de cada
+teste: um `CREATE`/`DROP TRIGGER` faz commit implícito). Verificado que tem dentes:
+reposta a coluna a `NOT NULL` e revertido o preenchimento pela aplicação, **6 dos 15
+testes falham com o erro exacto do journal de produção**, incluindo o `INSERT` do clone
+de papéis.
+
+> **Sempre que a correcção de um bug de produção depender de um objecto de BD que pode
+> não existir (gatilho, índice, restrição), o teste tem de correr SEM esse objecto.** Um
+> teste que corre no ambiente onde o objecto existe não prova nada sobre o ambiente onde
+> ele falta — que é sempre o ambiente onde o bug aparece.
+
+- Suite: **675 testes** no `taesic-backend` (eram 662, +13: 6 do grupo novo, 1 da coluna
+  anulável, 6 dos testes do NIF que passaram a poder correr — ver abaixo), **181** no
+  `taesic-backoffice-api`. `tsc --noEmit` limpo nos dois. Migração corrida em dev.
+
+#### Na mesma passagem: os testes do NIF dependiam da máquina onde corriam
+
+8 testes de `nif_consulta.spec.ts` falhavam numa base de desenvolvimento e passavam numa
+base limpa, sem nada no código ter mudado. A transacção global desfaz o que os testes
+escrevem, mas não o que já lá estava: uma consulta a sério feita em desenvolvimento deixa
+a linha do NIF em `nif_consulta` **committada**, a cache vale 30 dias (`NIF_CACHE_DIAS`),
+e `consultar()` servia dela — o `fetch` simulado nunca chegava a ser chamado
+("expected +0 to equal 1").
+
+Os grupos passaram a esvaziar a cache **dentro** da transacção global (helper `cacheVazia`),
+portanto o `delete` é desfeito no fim e a cache real de quem está a desenvolver fica
+intacta. Verificado: as 3 linhas reais sobreviveram à corrida.
+
+#### 7.20.1 A correcção não era alcançável — a 796 tinha de ser corrigida também
+
+Erro meu, apanhado quando o `migration:status` de `api-qua` foi visto de verdade:
+
+```
+1784662475795_alter_empresa_nif_unico                     completed  5
+1784662475796_alter_papel_chave_escopo_sem_coluna_gerada  pending    NA
+1784662475797_create_plataforma_cupom                     pending    NA
+```
+
+A **796 estava (e está) pendente naquele servidor**, e a 798 — a reparação — vem depois
+dela na ordem de execução. `migration:run` corre por ordem de nome: a 796 rebentava no
+`CREATE TRIGGER`, ficava por registar, e **a 797 e a 798 nunca chegavam a correr**. A
+migração que repara o problema era inalcançável no único sítio onde era precisa.
+
+**Regra geral que daqui sai:** uma migração de reparação escrita DEPOIS da que partiu o
+sistema só serve se a que partiu conseguir completar. Quando a que partiu ainda está
+pendente no ambiente afectado, é ela que tem de ser corrigida — não basta acrescentar
+outra a seguir.
+
+A 796 passou portanto a:
+
+1. **não tornar a coluna `NOT NULL`** (o passo 4 é agora `MODIFY ... NULL`, que também
+   solta a coluna numa base onde a versão antiga já ficou a meio);
+2. **tolerar a falha do `CREATE TRIGGER`** — avisa no log e continua.
+
+A 798 mantém-se: é ela que repara os ambientes onde a 796 **já completou** com o `NOT
+NULL` aplicado (dev, e qualquer outro que tenha corrido a versão antiga).
+
+##### A causa real da falha do gatilho, reproduzida
+
+A hipótese era o privilégio `TRIGGER`. Ao reproduzir com um utilizador restrito, o motor
+deu outra coisa:
+
+```
+You do not have the SUPER privilege and binary logging is enabled
+(you *might* want to use the less safe log_bin_trust_function_creators variable)   -- 1419
+```
+
+São **duas** causas possíveis, e o texto do erro diz qual é. As duas estão no
+`deploy-doc.md` §4 com o comando respectivo (`GRANT TRIGGER`, ou
+`log_bin_trust_function_creators = 1`).
+
+##### Verificado numa base descartável, nos dois pontos de partida
+
+Como manda a 7.19, e com um utilizador **sem** poder criar gatilhos:
+
+| ponto de partida | resultado |
+|---|---|
+| instalação de raiz | 796/797/798 completam; coluna anulável, índice único criado, 0 dessincronizados; `INSERT` passa |
+| estado exacto de `api-qua` (796 meia aplicada: coluna `NOT NULL`, sem gatilhos, sem índice, três migrações por registar) | `INSERT` falhava com `ER_NO_DEFAULT_FOR_FIELD` antes; depois do `migration:run --force` as três completam (lote 2), a coluna fica anulável, o índice é criado, e o `INSERT` do registo de empresas volta a passar |
+
+Nos dois casos o aviso dos gatilhos apareceu no log e **não** parou nada.
+
+##### `--force` não é opcional fora de desenvolvimento
+
+O `migration:status` do servidor terminou com:
+
+```
+❯ You are in production environment. Want to continue running migrations? (y/N) ‣ false
+```
+
+Sem `--force`, o Adonis pergunta e, num pipeline sem terminal interactivo, a resposta é
+sempre não: a migração não corre e o comando parece ter passado. Todos os exemplos do
+`deploy-doc.md` passaram a levá-lo.

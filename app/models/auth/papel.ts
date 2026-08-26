@@ -1,5 +1,12 @@
 import { DateTime } from 'luxon'
-import { BaseModel, column, beforeCreate, belongsTo, manyToMany } from '@adonisjs/lucid/orm'
+import {
+  BaseModel,
+  column,
+  beforeCreate,
+  beforeSave,
+  belongsTo,
+  manyToMany,
+} from '@adonisjs/lucid/orm'
 import { randomUUID } from 'node:crypto'
 import permissao from './permissao.js'
 import Empresa from '../empresa.js'
@@ -43,6 +50,24 @@ export type EscopoPapel = (typeof ESCOPO_PAPEL)[keyof typeof ESCOPO_PAPEL]
  */
 export const PREFIXO_PLATAFORMA = 'Platform_'
 
+/**
+ * A chave que sustenta o índice único dos três âmbitos.
+ *
+ * `unique(empresa_id, nome)` não servia: no MySQL dois NULL contam como
+ * distintos num índice único, portanto dois `Platform_Admin` com `empresa_id`
+ * NULL passariam ambos. `COALESCE(empresa_id, escopo)` dá uma chave sempre
+ * preenchida e cobre os três casos: (<uuid-da-empresa>,'Vendedor'),
+ * ('plataforma','Platform_Admin') e ('modelo','Vendedor').
+ *
+ * EXPORTADA, e não escondida no hook, porque há caminhos de escrita que não
+ * passam pelo model — os `multiInsert` em `papeis_da_empresa.ts` e na migração
+ * do backfill. Uma só definição, usada por todos, é o que impede que um deles
+ * calcule a chave de outra maneira.
+ */
+export function chaveEscopoDe(papel: { empresa_id?: string | null; escopo: EscopoPapel }): string {
+  return papel.empresa_id ?? papel.escopo
+}
+
 export default class Papel extends BaseModel {
   static table = 'papel'
 
@@ -57,7 +82,6 @@ export default class Papel extends BaseModel {
 
   @column.dateTime()
   declare deletedAt: DateTime | null
-
 
   @beforeCreate()
   static uuid(model: Papel) {
@@ -88,23 +112,45 @@ export default class Papel extends BaseModel {
   @column()
   declare escopo: EscopoPapel
 
-  // NOTA: a tabela tem ainda `chave_escopo VARCHAR(64) NOT NULL`, que serve o
-  // índice único dos três âmbitos — `unique(empresa_id, nome)` não servia, porque
-  // no MySQL dois NULL contam como distintos e dois `Platform_Admin` passariam
-  // ambos.
-  //
-  // É preenchida por GATILHO (`papel_chave_escopo_bi`/`_bu`, BEFORE INSERT e
-  // BEFORE UPDATE), com `COALESCE(empresa_id, escopo)`. Foi uma coluna GERADA até
-  // o servidor de qualidade recusar o índice sobre ela ("Function or expression
-  // 'coalesce(...)' cannot be used in the GENERATED ALWAYS AS clause") — o motor
-  // de lá não é o mesmo do ambiente de desenvolvimento. Ver a migração
-  // `..._796_alter_papel_chave_escopo_sem_coluna_gerada`.
-  //
-  // NÃO é declarada aqui de propósito. O gatilho sobrepõe-se a qualquer valor que
-  // se lhe atribua, portanto declará-la só criaria a ilusão de que se pode
-  // escrever nela. O gatilho é também a razão de isto ser um gatilho e não um
-  // `@beforeSave`: esta tabela é escrita por dois projectos, pelos seeders e por
-  // SQL à mão, e um hook do model não cobria nenhum desses caminhos.
+  /**
+   * Serve o índice único dos três âmbitos. Ver `chaveEscopoDe` acima.
+   *
+   * PASSOU A SER DECLARADA AQUI, e o hook abaixo passou a preenchê-la. Antes não
+   * era — o comentário que estava neste sítio dizia que declará-la "só criaria a
+   * ilusão de que se pode escrever nela", porque o gatilho se sobrepõe a
+   * qualquer valor atribuído. O raciocínio estava certo e a conclusão estava
+   * errada, e custou o registo de empresas inteiro em `api-qua`:
+   *
+   *     Field 'chave_escopo' doesn't have a default value  (ER_NO_DEFAULT_FOR_FIELD)
+   *
+   * O gatilho não existia naquele servidor. A migração 796 tornava a coluna
+   * NOT NULL no passo 4 e criava os gatilhos no passo 5; como o MySQL não faz DDL
+   * transaccional, o passo 5 falhar deixa o passo 4 feito — coluna obrigatória,
+   * sem valor por omissão e sem ninguém a preenchê-la. A partir daí NENHUMA
+   * escrita em `papel` passava, e criar uma empresa deixou de ser possível.
+   *
+   * A lição, e a regra que fica: **um campo novo tem de ter valor por omissão ou
+   * ser opcional.** Uma coluna derivada, que existe para arrumação interna, nunca
+   * pode ser o motivo de uma escrita de negócio falhar. A coluna passou a
+   * anulável (migração 797) e a aplicação passa a preenchê-la ela própria.
+   *
+   * O gatilho CONTINUA a existir, e continua a valer a pena: cobre os caminhos
+   * que não passam por aqui — o `taesic-backoffice-api`, que escreve na mesma
+   * tabela, e o SQL à mão. Deixou é de ser a única coisa entre a aplicação e uma
+   * paragem total. Onde os dois actuam, escrevem o mesmo valor.
+   */
+  @column()
+  declare chave_escopo: string | null
+
+  /**
+   * Corre em criação E em actualização, tal como os dois gatilhos: mudar o
+   * `escopo` ou o `empresa_id` de um papel muda a chave, e uma chave velha punha
+   * a linha no sítio errado do índice único.
+   */
+  @beforeSave()
+  static preencherChaveEscopo(model: Papel) {
+    model.chave_escopo = chaveEscopoDe(model)
+  }
 
   get ehDePlataforma(): boolean {
     return this.escopo === ESCOPO_PAPEL.plataforma

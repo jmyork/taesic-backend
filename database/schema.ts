@@ -473,7 +473,7 @@ export class PapelSchema extends BaseModel {
   static $columns = ['chaveEscopo', 'createdAt', 'deletedAt', 'descricao', 'empresaId', 'escopo', 'id', 'nome', 'updatedAt'] as const
   $columns = PapelSchema.$columns
   @column()
-  declare chaveEscopo: string
+  declare chaveEscopo: string | null
   @column.dateTime({ autoCreate: true })
   declare createdAt: DateTime
   @column.dateTime()

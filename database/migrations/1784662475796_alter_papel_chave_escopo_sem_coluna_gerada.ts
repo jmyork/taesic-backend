@@ -29,9 +29,13 @@ import { colunaEGerada, temColuna, temGatilho, temIndice } from '../helpers/esqu
  *
  * ── O desenho novo ─────────────────────────────────────────────────────────────
  *
- *   chave_escopo  VARCHAR(64) NOT NULL   — coluna normal
+ *   chave_escopo  VARCHAR(64) NULL   — coluna normal, ANULÁVEL
  *   dois gatilhos BEFORE INSERT / BEFORE UPDATE que a preenchem com
  *   COALESCE(empresa_id, escopo)
+ *
+ * A coluna nasceu aqui `NOT NULL`, e isso deitou abaixo o registo de empresas em
+ * `api-qua` — ver o passo 4 do `up()` para o relato inteiro. Fica anulável, e quem
+ * a preenche passou a ser (também) a aplicação.
  *
  * **Gatilho e não um hook do model**, e isto é o ponto que decide: a tabela
  * `papel` é escrita por DOIS projectos (`taesic-backend` e `taesic-backoffice-api`,
@@ -65,15 +69,17 @@ export default class extends BaseSchema {
       // 1. Se a coluna existe mas é gerada, tem de sair. Não há `ALTER ... MODIFY`
       //    que converta uma coluna gerada em normal preservando o valor, e o índice
       //    depende dela, por isso o índice sai primeiro.
-      if ((await temColuna(db, 'papel', 'chave_escopo')) && (await colunaEGerada(db, 'papel', 'chave_escopo'))) {
+      if (
+        (await temColuna(db, 'papel', 'chave_escopo')) &&
+        (await colunaEGerada(db, 'papel', 'chave_escopo'))
+      ) {
         if (await temIndice(db, 'papel', 'papel_escopo_nome_unique')) {
           await db.rawQuery('DROP INDEX papel_escopo_nome_unique ON papel')
         }
         await db.rawQuery('ALTER TABLE papel DROP COLUMN chave_escopo')
       }
 
-      // 2. A coluna normal. Nasce anulável para o backfill poder acontecer; passa a
-      //    NOT NULL no passo 4.
+      // 2. A coluna normal, ANULÁVEL — e assim fica. Ver o passo 4.
       if (!(await temColuna(db, 'papel', 'chave_escopo'))) {
         await db.rawQuery('ALTER TABLE papel ADD COLUMN chave_escopo VARCHAR(64) NULL')
       }
@@ -86,25 +92,63 @@ export default class extends BaseSchema {
           WHERE NOT (chave_escopo <=> COALESCE(empresa_id, escopo))`
       )
 
-      // 4. NOT NULL. Os gatilhos garantem que nunca fica vazia; isto garante que,
-      //    se algum dia um caminho os contornar, o erro aparece na escrita em vez de
-      //    uma linha silenciosamente fora do índice.
-      await db.rawQuery('ALTER TABLE papel MODIFY chave_escopo VARCHAR(64) NOT NULL')
+      // 4. A coluna FICA ANULÁVEL. Aqui esteve um
+      //    `MODIFY chave_escopo VARCHAR(64) NOT NULL`, e foi ele que deitou abaixo
+      //    o registo de empresas em `api-qua`.
+      //
+      //    O raciocínio original era: "os gatilhos garantem que nunca fica vazia;
+      //    o NOT NULL garante que, se algum caminho os contornar, o erro aparece na
+      //    escrita em vez de uma linha silenciosamente fora do índice". O que
+      //    aconteceu foi o passo 5 falhar — reproduzido: "You do not have the SUPER
+      //    privilege and binary logging is enabled" (erro 1419), e o privilégio
+      //    `TRIGGER` é outra causa possível — e, como o MySQL/MariaDB não faz DDL
+      //    transaccional, este passo 4 ficou feito. Coluna obrigatória, sem valor
+      //    por omissão, sem ninguém a preenchê-la: a tabela `papel` inteira ficou
+      //    só de leitura, e criar uma empresa deixou de ser possível.
+      //
+      //    Um campo novo tem de ter valor por omissão ou ser opcional. Uma coluna
+      //    derivada, de arrumação interna, nunca pode ser o motivo de uma escrita de
+      //    negócio falhar. Quem a preenche passou a ser a aplicação (o `@beforeSave`
+      //    em app/models/auth/papel.ts, nos dois backends, e o valor à mão no
+      //    `multiInsert` de papeis_da_empresa.ts); os gatilhos ficam para quem
+      //    escreve por fora. Ver a migração 798 e a secção 7.20 do CLAUDE.md.
+      //
+      //    O `MODIFY` explícito não é decorativo: numa base onde esta migração já
+      //    correu na versão antiga e ficou a meio, é ele que solta a coluna.
+      await db.rawQuery('ALTER TABLE papel MODIFY chave_escopo VARCHAR(64) NULL')
 
       // 5. Os gatilhos. Uma instrução só por gatilho, portanto sem `BEGIN...END` e
       //    sem mexer no delimitador — que não é sequer possível por esta via.
-      if (!(await temGatilho(db, 'papel_chave_escopo_bi'))) {
-        await db.rawQuery(
-          `CREATE TRIGGER papel_chave_escopo_bi BEFORE INSERT ON papel
-             FOR EACH ROW SET NEW.chave_escopo = COALESCE(NEW.empresa_id, NEW.escopo)`
-        )
-      }
+      //
+      //    FALHAR AQUI NÃO PÁRA A MIGRAÇÃO, e é essa a diferença que desbloqueia o
+      //    deploy. Enquanto isto rebentava, a migração ficava por registar e
+      //    NENHUMA das seguintes corria — o que prendeu `api-qua` na 796 e tornou
+      //    inalcançável a própria migração que repara isto. A aplicação já não
+      //    depende dos gatilhos; um deploy inteiro não pode ficar refém de uma
+      //    salvaguarda para terceiros.
+      for (const [nome, momento] of [
+        ['papel_chave_escopo_bi', 'BEFORE INSERT'],
+        ['papel_chave_escopo_bu', 'BEFORE UPDATE'],
+      ]) {
+        if (await temGatilho(db, nome)) continue
 
-      if (!(await temGatilho(db, 'papel_chave_escopo_bu'))) {
-        await db.rawQuery(
-          `CREATE TRIGGER papel_chave_escopo_bu BEFORE UPDATE ON papel
-             FOR EACH ROW SET NEW.chave_escopo = COALESCE(NEW.empresa_id, NEW.escopo)`
-        )
+        try {
+          await db.rawQuery(
+            `CREATE TRIGGER ${nome} ${momento} ON papel
+               FOR EACH ROW SET NEW.chave_escopo = COALESCE(NEW.empresa_id, NEW.escopo)`
+          )
+        } catch (erro: any) {
+          console.warn(
+            [
+              `[migração] não foi possível criar o gatilho ${nome}: ${erro?.sqlMessage ?? erro?.message}`,
+              '  A aplicação preenche `papel.chave_escopo` por si (ver app/models/auth/papel.ts),',
+              '  por isso isto NÃO impede o funcionamento. Fica sem cobertura quem escreva na',
+              '  tabela `papel` por fora — o taesic-backoffice-api e o SQL à mão.',
+              '  Para corrigir: conceder o privilégio TRIGGER ao utilizador da base de dados e',
+              '  voltar a correr esta migração.',
+            ].join('\n')
+          )
+        }
       }
 
       // 6. E finalmente o índice, agora sobre uma coluna normal.

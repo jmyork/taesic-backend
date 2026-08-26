@@ -246,6 +246,112 @@ Causas mais comuns:
 | `ECONNREFUSED` na base de dados | Password do `.env` fora de sincronia com a MariaDB |
 | Arranca e morre em ciclo | Ver `journalctl` — quase sempre `start/env.ts` a validar algo em falta |
 
+## `Field 'X' doesn't have a default value` — a tabela ficou só de leitura
+
+Sintoma no `journalctl`: uma operação de negócio falha, e o erro é do motor e não da
+aplicação.
+
+```
+ER_NO_DEFAULT_FOR_FIELD (1364)
+Field 'chave_escopo' doesn't have a default value
+insert into `papel` (...) values (...)
+```
+
+**Causa**: uma migração que torna uma coluna `NOT NULL` e cria a seguir o objecto que a
+preenche (gatilho, valor por omissão). O MariaDB/MySQL **não faz DDL transaccional**: se o
+segundo passo falhar, o primeiro fica feito. A coluna fica obrigatória, sem valor por
+omissão e sem ninguém a preenchê-la — e **todas** as escritas naquela tabela passam a
+falhar, não só a operação onde o erro apareceu.
+
+Aconteceu em `api-qua` com `papel.chave_escopo`: criar empresa deixou de funcionar porque
+o clone dos papéis padrão não passava. Ver a secção 7.20 do `CLAUDE.md`.
+
+**Isto prende o deploy inteiro.** A migração fica por registar, e `migration:run` volta a
+bater nela em cada publicação — nenhuma das migrações seguintes corre, incluindo a que
+repara o problema. Em `api-qua` foi o que aconteceu: a 796 ficou pendente e a 798, que é a
+reparação, era inalcançável.
+
+### 1. Ver em que estado está
+
+As bases são `taesic_prd_db` e `taesic_qua_db`.
+
+```bash
+sudo mysql taesic_qua_db -e "
+  SELECT COLUMN_NAME, IS_NULLABLE, COLUMN_DEFAULT
+    FROM information_schema.COLUMNS
+   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'papel'
+     AND COLUMN_NAME = 'chave_escopo';
+  SELECT TRIGGER_NAME FROM information_schema.TRIGGERS
+   WHERE TRIGGER_SCHEMA = DATABASE();
+  SELECT COUNT(*) AS papeis_dessincronizados FROM papel
+   WHERE NOT (chave_escopo <=> COALESCE(empresa_id, escopo));
+"
+```
+
+Estado saudável: `IS_NULLABLE = YES` e zero dessincronizados. Os gatilhos
+(`papel_chave_escopo_bi`/`_bu`) são desejáveis mas **não** são necessários — ver o ponto 3.
+
+### 2. Publicar e correr as migrações
+
+A reparação vem no código, portanto o primeiro passo é publicá-lo:
+
+```bash
+sudo deploy-app api-qua --force
+```
+
+O `deploy-app` já corre as migrações (passo 8 da secção 2). Para as correr à mão:
+
+```bash
+cd /srv/apps/api-qua && sudo -H -u deploy node ace migration:status
+cd /srv/apps/api-qua && sudo -H -u deploy node ace migration:run --force
+```
+
+**O `--force` é obrigatório fora de desenvolvimento.** Sem ele o Adonis pergunta *"You are
+in production environment. Want to continue running migrations? (y/N)"* e, num pipeline sem
+terminal interactivo, a resposta é sempre não — a migração não corre e o comando parece ter
+passado.
+
+As migrações envolvidas deixaram de poder prender o deploy: a coluna fica anulável **antes**
+de qualquer passo que possa falhar, e a criação dos gatilhos avisa em vez de rebentar.
+Verificado numa base descartável, a partir do estado exacto de `api-qua` e com um utilizador
+sem privilégios para criar gatilhos: as três migrações completam e a tabela volta a aceitar
+escritas.
+
+### 3. Se os gatilhos não tiverem sido criados
+
+A migração avisa no log e continua:
+
+```
+[migração] não foi possível criar o gatilho papel_chave_escopo_bi: You do not have the
+SUPER privilege and binary logging is enabled (you *might* want to use the less safe
+log_bin_trust_function_creators variable)
+```
+
+São duas causas possíveis, e o texto do erro diz qual é:
+
+| erro | o que falta |
+|---|---|
+| `You do not have the SUPER privilege and binary logging is enabled` (1419) | `SUPER`, ou `log_bin_trust_function_creators = 1` |
+| `command denied to user ... TRIGGER` (1142) | o privilégio `TRIGGER`, que é concedido à parte dos outros |
+
+```bash
+sudo mysql -e "SHOW GRANTS FOR 'taesic_qua_user'@'localhost';"
+
+# se for o privilégio TRIGGER que falta:
+sudo mysql -e "GRANT TRIGGER ON taesic_qua_db.* TO 'taesic_qua_user'@'localhost'; FLUSH PRIVILEGES;"
+
+# se for o 1419 (binlog + sem SUPER) — em /etc/mysql/mariadb.conf.d/50-server.cnf, em [mysqld]:
+#   log_bin_trust_function_creators = 1
+# e a seguir: sudo systemctl restart mariadb
+
+cd /srv/apps/api-qua && sudo -H -u deploy node ace migration:run --force   # idempotente
+```
+
+**Sem os gatilhos a aplicação funciona à mesma.** Os dois backends preenchem
+`papel.chave_escopo` por si (`@beforeSave` no model, mais o valor à mão no `multiInsert` de
+`papeis_da_empresa.ts`). O que fica descoberto é o SQL à mão e os restauros — e o sinal
+disso é a terceira consulta do ponto 1 deixar de dar zero.
+
 ## Verificar o atalho do `.env`
 
 ```bash

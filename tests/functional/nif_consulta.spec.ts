@@ -19,11 +19,11 @@ const RESPOSTA_BKNKV = {
   found: true,
   message: 'Consulta realizada com sucesso.',
   data: {
-    NIF: '5002889978',
-    Nome: 'BKNKV - COMÉRCIO E PRESTAÇÃO DE SERVIÇOS, LDA',
-    Tipo: 'COLECTIVO - Empresa',
-    Estado: 'Activo',
-    Inadimplente: 'Não',
+    'NIF': '5002889978',
+    'Nome': 'BKNKV - COMÉRCIO E PRESTAÇÃO DE SERVIÇOS, LDA',
+    'Tipo': 'COLECTIVO - Empresa',
+    'Estado': 'Activo',
+    'Inadimplente': 'Não',
     'Regime de IVA': 'Sem actividade em IVA (Não factura IVA)',
   },
 }
@@ -44,7 +44,12 @@ function simularFetch(resposta: { ok?: boolean; status?: number; corpo?: any; er
     } as any
   }) as any
 
-  return { estado, restaurar: () => { globalThis.fetch = original } }
+  return {
+    estado,
+    restaurar: () => {
+      globalThis.fetch = original
+    },
+  }
 }
 
 /**
@@ -94,7 +99,9 @@ test.group('consulta de NIF — cache e resiliência', (group) => {
     }
   })
 
-  test('segunda consulta vem da cache, sem voltar a chamar o serviço externo', async ({ assert }) => {
+  test('segunda consulta vem da cache, sem voltar a chamar o serviço externo', async ({
+    assert,
+  }) => {
     const { estado, restaurar } = simularFetch({ corpo: RESPOSTA_BKNKV })
     try {
       const repo = new NifRepository()
@@ -249,7 +256,12 @@ test.group('consulta de NIF — cache e resiliência', (group) => {
       corpo: {
         found: true,
         message: 'ok',
-        data: { NIF: '00000000LA000', Nome: 'Fulano', Tipo: 'SINGULAR - Particular', Estado: 'Activo' },
+        data: {
+          NIF: '00000000LA000',
+          Nome: 'Fulano',
+          Tipo: 'SINGULAR - Particular',
+          Estado: 'Activo',
+        },
       },
     })
     try {
