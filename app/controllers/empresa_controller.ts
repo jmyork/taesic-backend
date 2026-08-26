@@ -195,9 +195,13 @@ export default class empresasController {
     } catch (error: any) {
       console.error('Erro ao ativar empresa:', error)
 
+      // A mensagem do erro NÃO vai na resposta. Aqui cai o que não foi previsto
+      // — falha de BD, de rede, um `TypeError` — e o texto desses erros nomeia
+      // tabelas, colunas e ficheiros. Quem clicou no link de activação não tem
+      // nada a fazer com isso; o detalhe fica no log acima, que é onde serve.
       return response.badRequest({
         data: null,
-        message: error.message || 'Erro ao ativar empresa',
+        message: 'Não foi possível activar a empresa. Peça um novo link de activação.',
         status: 400,
       })
     }

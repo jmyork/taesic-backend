@@ -197,10 +197,12 @@ export async function definicaoDaColuna(
  *
  * E é fácil chegar lá sem reparar. Um `CREATE TABLE ... DEFAULT CHARSET=utf8mb4`
  * **sem `COLLATE`** não herda a collation da BASE DE DADOS: fica com a collation
- * por omissão DO CHARSET, que é `utf8mb4_0900_ai_ci` no MySQL 8 e outra no
- * MariaDB. As tabelas criadas pelo knex, essas, não declaram charset nenhum e
- * herdam a da base. Bastam as duas coisas no mesmo esquema para as chaves
- * deixarem de poder ser criadas — e só no motor onde as omissões não coincidem.
+ * por omissão DO CHARSET. As tabelas criadas pelo knex, essas, não declaram
+ * charset nenhum e herdam a da base. Bastam as duas coisas no mesmo esquema para
+ * as chaves deixarem de poder ser criadas — e só onde as duas omissões não
+ * coincidem, ou seja, numa base criada com uma collation explícita diferente da
+ * omissão do charset. Não é preciso mudar de motor para isto acontecer: basta a
+ * base do servidor ter sido criada de outra maneira que a de desenvolvimento.
  *
  * Foi assim que a migração `..._797_create_plataforma_cupom` parou o deploy de
  * `api-qua` sem nunca ter dado problema em desenvolvimento.

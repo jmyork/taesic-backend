@@ -1,7 +1,11 @@
 import vine, { SimpleMessagesProvider } from "@vinejs/vine"
 
 export const messages = {
-    'string': 'O campo {{ field }} deve ser uma string',
+    // "string" e "UUID" são palavras de quem escreve o código, não de quem
+    // preenche o formulário. O `uuid` chega sempre de uma escolha numa lista
+    // (o id de um produto, de um cliente, de um método de pagamento), por isso
+    // o que falhou foi a opção escolhida, não um formato que alguém escreveu.
+    'string': 'O campo {{ field }} deve ser texto',
     'email': 'O campo {{ field }} deve ser um endereço de email válido',
     'regex': 'O formato do campo {{ field }} é inválido',
     'url': 'O campo {{ field }} deve ser uma URL válida',
@@ -19,7 +23,7 @@ export const messages = {
     'in': 'O campo {{ field }} selecionado é inválido',
     'notIn': 'O campo {{ field }} selecionado é inválido',
     'ipAddress': 'O campo {{ field }} deve ser um endereço IP válido',
-    'uuid': 'O campo {{ field }} deve ser um UUID válido',
+    'uuid': 'A opção escolhida em {{ field }} não é válida',
     'ascii': 'O campo {{ field }} deve conter apenas caracteres ASCII',
     'creditCard': 'O campo {{ field }} deve ser um número de cartão de {{ providersList }} válido',
     'hexCode': 'O campo {{ field }} deve ser um código de cor hexadecimal válido',
@@ -65,6 +69,118 @@ export const messages = {
     // passar a exigir NIF/email únicos.
     'nif.database.unique': 'Já existe um registo com este NIF nesta empresa.',
     'email.database.unique': 'Já existe um registo com este email nesta empresa.',
+
+    // ── Registo de empresa ────────────────────────────────────────────────────
+    // O `regex` genérico ("O formato do campo X é inválido") não diz que forma é
+    // esperada, e este é o campo que mais confusão causa no registo: é um
+    // identificador, é permanente e o formato não se adivinha. Aqui diz-se a
+    // regra e dá-se um exemplo válido.
+    'empresa_company_alias.regex':
+        'O nome curto da empresa só pode ter letras minúsculas e hífens — por exemplo, "minha-empresa".',
+    'empresa_nif.regex': 'O NIF só pode conter letras e números, sem espaços nem pontuação.',
+    'empresa_nif.database.unique': 'Já existe uma empresa registada com este NIF.',
+    'empresa_nome.database.unique': 'Já existe uma empresa registada com este nome.',
+    'user_email.database.unique': 'Já existe uma conta com este email.',
+    'user_username.database.unique': 'Este nome de utilizador já está a ser usado.',
 }
 
-vine.messagesProvider = new SimpleMessagesProvider(messages)
+/**
+ * Nome do campo tal como o utilizador o vê, para o `{{ field }}` das mensagens.
+ *
+ * Sem isto, um erro de validação do registo chega ao ecrã como "O formato do
+ * campo empresa_company_alias é inválido" — o nome da chave do payload, que
+ * desenha a API a quem só quer saber que linha do formulário corrigir. O
+ * frontend tem o mesmo mapa como última rede (src/lib/mensagens-erro.ts), mas o
+ * sítio certo para o texto nascer correcto é aqui.
+ */
+export const fields = {
+    // Registo de empresa (payload plano — ver empresa_validator.ts)
+    user_username: 'nome de utilizador',
+    user_email: 'email',
+    user_password: 'palavra-passe',
+    dados_nome: 'nome',
+    dados_sobrenome: 'sobrenome',
+    dados_foto: 'fotografia',
+    empresa_nif: 'NIF',
+    empresa_company_alias: 'nome curto da empresa',
+    empresa_nome: 'nome da empresa',
+    empresa_contacto: 'contacto',
+    empresa_localizacao: 'localização',
+    empresa_tamanho: 'dimensão da empresa',
+    empresa_regime_iva: 'regime de IVA',
+
+    // Transversais
+    company_alias: 'nome curto da empresa',
+    uid: 'email ou nome de utilizador',
+    username: 'nome de utilizador',
+    password: 'palavra-passe',
+    senha: 'palavra-passe',
+    nome: 'nome',
+    sobrenome: 'sobrenome',
+    razao_social: 'razão social',
+    nome_fantasia: 'nome comercial',
+    descricao: 'descrição',
+    telefone: 'telefone',
+    telefone_secundario: 'telefone alternativo',
+    contacto: 'contacto',
+    endereco: 'endereço',
+    localizacao: 'localização',
+    codigo_postal: 'código postal',
+    data_nascimento: 'data de nascimento',
+    genero: 'género',
+    estado_civil: 'estado civil',
+    profissao: 'profissão',
+    observacao: 'observação',
+
+    // Produtos e stock
+    produto_id: 'produto',
+    lote_id: 'lote',
+    lote_produto_id: 'lote',
+    marca_id: 'marca',
+    formato_id: 'formato',
+    fabricante_id: 'fabricante',
+    fornecedor_id: 'fornecedor',
+    produto_categoria_id: 'categoria',
+    is_service: 'tipo (produto ou serviço)',
+    disponivel: 'disponibilidade',
+    quantidade: 'quantidade',
+    quantidade_em_estoque: 'quantidade em stock',
+    preco_compra: 'preço de compra',
+    preco_venda: 'preço de venda',
+    preco_unitario: 'preço unitário',
+    data_fabrico: 'data de fabrico',
+    data_validade: 'data de validade',
+    qr_code: 'código de barras',
+    media: 'imagens',
+    propriedade: 'característica',
+    descricao_detalhada: 'detalhe',
+
+    // Vendas, caixa e pagamentos
+    venda_id: 'venda',
+    venda_item_id: 'item da venda',
+    caixa_id: 'caixa',
+    pos_id: 'ponto de venda',
+    cliente_id: 'cliente',
+    cliente_presencial_id: 'cliente',
+    cliente_online_id: 'cliente',
+    metodo_pagamento_id: 'método de pagamento',
+    valor: 'valor',
+    valor_inicial: 'valor inicial',
+    referencia: 'referência',
+    motivo: 'motivo',
+    data_venda: 'data da venda',
+    cupom_codigo: 'código do cupão',
+    codigo: 'código',
+    desconto: 'desconto',
+    validade: 'validade',
+
+    // Acessos
+    user_id: 'utilizador',
+    papel: 'perfil',
+    papel_id: 'perfil',
+    permissoes: 'permissões',
+    ativo: 'estado',
+    data_despesa: 'data da despesa',
+}
+
+vine.messagesProvider = new SimpleMessagesProvider(messages, fields)

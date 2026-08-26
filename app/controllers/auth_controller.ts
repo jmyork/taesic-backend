@@ -58,7 +58,13 @@ export default class AuthController {
           status: 400,
         })
       }
-      return response.badRequest({ message: error.message }) // Retorna uma mensagem de erro detalhada
+      // Tudo o que chega aqui é imprevisto — falha de BD, de rede, um erro de
+      // programação. Devolver `error.message` mostrava o texto desses erros na
+      // página de login, que é a página mais exposta da aplicação e a que
+      // qualquer pessoa alcança sem sessão. Deixa-se subir ao handler global
+      // (app/exceptions/handler.ts), que responde com o envelope genérico e
+      // regista o erro — é a convenção deste projecto (CLAUDE.md §6).
+      throw error
     }
   }
 
@@ -75,7 +81,9 @@ export default class AuthController {
       })
       return response.noContent() // Retorna uma resposta sem conteúdo (logout bem-sucedido)
     } catch (error: any) {
-      return response.badRequest({ message: error.message }) // Retorna uma mensagem de erro detalhada
+      // Mesma razão do `login`: o que cai aqui é imprevisto e o seu texto
+      // descreve o sistema por dentro. Sobe ao handler global.
+      throw error
     }
   }
 

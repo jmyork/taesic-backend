@@ -10,8 +10,7 @@ import { colunaEGerada, temColuna, temGatilho, temIndice } from '../helpers/esqu
  *
  * A migração 791 criava-a como `VARCHAR(64) GENERATED ALWAYS AS
  * (COALESCE(empresa_id, escopo)) VIRTUAL` e criava um índice único sobre ela.
- * Isso funciona no MySQL 8, que é o que corre em desenvolvimento. **No servidor
- * não funciona:**
+ * Passa em desenvolvimento. **No servidor não passa:**
  *
  *     CREATE UNIQUE INDEX papel_escopo_nome_unique ON papel (chave_escopo, nome)
  *     ERROR: Function or expression 'coalesce(`empresa_id`,`escopo`)' cannot be
@@ -20,12 +19,15 @@ import { colunaEGerada, temColuna, temGatilho, temIndice } from '../helpers/esqu
  * Repare-se onde falha: a COLUNA é aceite, o ÍNDICE sobre ela é que não. O motor
  * revalida a expressão com regras mais apertadas quando a indexa, e recusa-a.
  *
- * O que isto revelou é maior do que o erro: **o motor de base de dados do
- * servidor não é o mesmo do ambiente de desenvolvimento.** Uma migração pode
- * portanto passar em dev, passar nos testes, e parar o deploy — que foi
- * exactamente o que aconteceu. Enquanto os dois ambientes não forem o mesmo
- * motor e a mesma versão, vale a regra: **nada de funcionalidades específicas de
- * um motor no caminho crítico.** Colunas geradas indexadas são precisamente isso.
+ * **NÃO é um motor diferente — é uma VERSÃO diferente do mesmo motor.** Durante
+ * algum tempo pensou-se que o servidor corria MariaDB; é MySQL 8.4.11 Community,
+ * e o desenvolvimento é MySQL 8.4.3 Community. Reproduzido nos dois: 8.4.3 cria o
+ * índice sem se queixar, 8.4.11 recusa-o. Oito versões de correcção da mesma
+ * linha LTS chegam para uma migração passar num sítio e parar o deploy no outro.
+ *
+ * A regra que daqui sai é a mesma, e não depende de qual era a causa: **nada de
+ * funcionalidades específicas de um motor ou de uma versão no caminho crítico.**
+ * Colunas geradas indexadas são precisamente isso.
  *
  * ── O desenho novo ─────────────────────────────────────────────────────────────
  *

@@ -2051,49 +2051,45 @@ dessincronizadas, e um `INSERT` em SQL puro a sair com a chave correcta.
 Suites depois da conversão de dev e de teste: **662** no `taesic-backend` (eram 653),
 **138** no `taesic-backoffice-api`, `tsc --noEmit` limpo nos dois.
 
-##### Resolvido: são motores DIFERENTES, e está escrito na própria documentação
+##### Resolvido: é o MESMO motor — muda a VERSÃO
 
-A pergunta que ficou aqui em aberto ("falta saber que motor corre no servidor") tem
-resposta nos documentos de provisionamento deste repositório:
+Esta secção afirmou durante algum tempo que o servidor corria MariaDB e o
+desenvolvimento MySQL, e que era daí que vinha tudo. **Estava errado.** Correu-se
+finalmente `SELECT VERSION(), @@version_comment;` nos dois lados:
 
-| ambiente | motor | prova |
-|---|---|---|
-| desenvolvimento | **MySQL 8.4.3** | `SELECT VERSION()` na base local |
-| servidor | **por confirmar — os indícios contradizem-se** | ver abaixo |
+| ambiente | versão |
+|---|---|
+| desenvolvimento | **MySQL 8.4.3** — Community Server |
+| servidor | **MySQL 8.4.11** — Community Server |
 
-**AS PROVAS DO SERVIDOR NÃO CONCORDAM, e isto ficou aqui escrito como certeza que não
-era.** Do lado do MariaDB: o provisionamento instala `mariadb-server`
-(`servidor-runbook-comandos.md` §B3, `servidor-resumo-e-plano.md` §4.3), o
-`deploy-doc.md` §4 fala da "MariaDB", e há sessões `sudo mariadb` abertas. Do lado do
-MySQL: o `systemctl status` do servidor mostra a unidade a correr como **`mysql.service`
-com `/usr/sbin/mysqld`** — o MariaDB no Ubuntu chama-se `mariadb.service` e corre
-`mariadbd`.
+O mesmo produto, a mesma linha LTS, oito versões de correcção de diferença. A conclusão
+"MariaDB" tinha vindo do provisionamento (`apt install mariadb-server`) e da forma da
+mensagem de erro — dois indícios, nenhuma prova. **Um `SELECT VERSION()` custava um
+segundo e teria evitado a dedução inteira.**
 
-Pode ser uma instalação que começou MariaDB e acabou MySQL, ou o contrário, ou as duas
-coisas em alturas diferentes. **Não se decide por dedução — decide-se com uma linha:**
+##### E a coluna gerada? Verificado: 8.4.3 aceita, 8.4.11 recusa
 
-```bash
-sudo mysql -e "SELECT VERSION(), @@version_comment;"
+A parte que parecia exigir motores diferentes foi reproduzida à letra em desenvolvimento —
+tabela `papel` igual, `empresa_id CHAR(36) NULL`, `escopo ENUM(...)`, coluna
+`VARCHAR(64) GENERATED ALWAYS AS (COALESCE(empresa_id, escopo)) VIRTUAL`:
+
+```
+DEV 8.4.3:  coluna gerada criada: OK
+            CREATE UNIQUE INDEX sobre ela: OK       <- passa
+SERVIDOR 8.4.11: ERROR: Function or expression 'coalesce(...)' cannot be used
+                 in the GENERATED ALWAYS AS clause of 'chave_escopo'
 ```
 
-Enquanto isso não for corrido, tratar o motor do servidor como DESCONHECIDO. O que não
-depende de saber qual é: os dois ambientes comportam-se de maneira diferente, e é isso
-que interessa às regras abaixo.
+Portanto **não era o motor: era a versão do motor.** Entre 8.4.3 e 8.4.11 a regra apertou,
+e o dev está ATRÁS do servidor. Uma migração escrita e testada em 8.4.3 pode ser recusada
+em 8.4.11 sem ninguém ter mudado uma linha.
 
-**A consequência não muda por a causa estar identificada.** Enquanto os dois ambientes
-forem motores diferentes, uma migração pode passar em dev, passar na suite, e parar o
-deploy — e nenhuma quantidade de testes locais o apanha. As duas regras que daqui saem
-continuam a valer inteiras:
+##### O que isto muda, e o que não muda
 
-1. **Nada de funcionalidades específicas de um motor no caminho crítico.** Colunas
-   geradas indexadas, índices funcionais, tipos próprios de um motor.
-2. **`node ace migration:status` antes de cada deploy**, e migrações idempotentes (7.19)
-   para que uma falha a meio se recupere por reexecução.
-
-Alinhar os dois ambientes — MariaDB em dev, ou MySQL no servidor — é o que remove a
-classe inteira de problema. Até lá, é isto que resta.
-
----
+A regra continua exactamente a mesma — **nada de funcionalidades específicas de um motor
+(ou de uma versão) no caminho crítico.** Colunas geradas indexadas são disso. O que muda é
+o remédio, e ficou mais barato do que se pensava: **alinhar as versões**, que agora é só
+actualizar o MySQL de desenvolvimento para 8.4.11. Não é migrar de produto nenhum.
 
 ### 7.20 ⚠️ Um campo novo tem de ter valor por omissão ou ser opcional
 
@@ -2298,9 +2294,11 @@ charset **e collation** iguais dos dois lados. A 797 criava as tabelas com
 ```
 
 — charset sim, **`COLLATE` não**. E `DEFAULT CHARSET=X` sem `COLLATE` **não herda a
-collation da BASE DE DADOS**: a tabela fica com a collation por omissão *do charset*, que
-é `utf8mb4_0900_ai_ci` no MySQL 8 e outra no MariaDB. As tabelas criadas pelo knex (como
-`promotor`) não declaram charset nenhum e herdam a da base.
+collation da BASE DE DADOS**: a tabela fica com a collation por omissão *do charset*
+(`utf8mb4_0900_ai_ci`). As tabelas criadas pelo knex (como `promotor`) não declaram
+charset nenhum e herdam a da base — que no servidor foi criada com uma collation
+explícita diferente dessa. Não é preciso mudar de motor: basta a base ter sido criada de
+outra maneira.
 
 Em desenvolvimento as duas omissões coincidem, e nunca deu problema. Num servidor onde a
 base foi criada com uma collation explícita, deixam de coincidir — e as chaves não podem
@@ -2337,16 +2335,25 @@ gatilhos:
 
 ##### O padrão que estas três paragens têm em comum
 
-`api-qua` parou três vezes seguidas, e sempre pelo mesmo motivo de fundo: **uma diferença
-entre o motor de desenvolvimento e o do servidor que nenhum teste local podia apanhar.**
+`api-qua` parou três vezes seguidas, e é tentador arrumar as três sob uma causa só. Foi o
+que se fez primeiro, e a causa escolhida — "o servidor é MariaDB, o dev é MySQL" — era
+falsa (ver 7.19.1). **São os dois MySQL 8.4 Community.** As causas reais são três, e
+distintas:
 
-| # | o que parou | a diferença |
+| # | o que parou | a diferença real, verificada |
 |---|---|---|
-| 7.19.1 | coluna gerada indexada | o MariaDB recusa indexá-la |
-| 7.20 | gatilho não criado + coluna `NOT NULL` | privilégios do utilizador da BD no servidor |
-| 7.20.2 | `DEFAULT CHARSET` sem `COLLATE` | collation por omissão do motor |
+| 7.19.1 | coluna gerada indexada | **versão**: 8.4.3 aceita, 8.4.11 recusa |
+| 7.20 | gatilho não criado, deixando `chave_escopo NOT NULL` sem quem a preenchesse | **configuração do servidor**: binlog ligado e o utilizador da aplicação sem `SUPER` (erro 1419). Em dev corre-se como `root` |
+| 7.20.2 | `DEFAULT CHARSET` sem `COLLATE` | **configuração da base**: a base do servidor foi criada com outra collation, e `DEFAULT CHARSET` sem `COLLATE` não a herda |
 
-Nenhuma se apanha com `node ace test`. O que as apanha é **correr as migrações numa base
-descartável que se pareça com a do servidor** — outra collation, um utilizador restrito —
-antes de publicar. Enquanto os ambientes não forem o mesmo motor, é esse o passo que
-falta ao processo de deploy.
+O que elas têm mesmo em comum não é o motor — é que **o dev não se parece com o servidor
+em nada que conte para DDL**: versão diferente, privilégios diferentes, collation
+diferente. Nenhuma se apanha com `node ace test`, porque nenhuma é um erro de lógica.
+
+O passo que as apanha é **correr as migrações numa base descartável parecida com a do
+servidor** — mesma collation, um utilizador restrito — antes de publicar. Foi assim que as
+duas últimas correcções foram validadas, e as duas vezes o problema apareceu antes do
+deploy em vez de durante.
+
+E, agora que se sabe que é o mesmo produto, há um remédio barato que antes parecia caro:
+**pôr o MySQL de desenvolvimento em 8.4.11**, a mesma versão do servidor.
