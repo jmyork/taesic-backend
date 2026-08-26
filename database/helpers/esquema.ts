@@ -140,3 +140,94 @@ export async function colunaEGerada(db: QueryClientContract, tabela: string, col
   const extra = (linhas as { EXTRA?: string }[])[0]?.EXTRA ?? ''
   return extra.toUpperCase().includes('GENERATED')
 }
+
+/** O que o `information_schema` sabe sobre uma coluna, para a poder replicar. */
+export type DefinicaoDeColuna = {
+  tipo: string
+  charset: string | null
+  collation: string | null
+  anulavel: boolean
+}
+
+/** A definição de uma coluna, ou `null` se ela não existir. */
+export async function definicaoDaColuna(
+  db: QueryClientContract,
+  tabela: string,
+  coluna: string
+): Promise<DefinicaoDeColuna | null> {
+  const [linhas] = await db.rawQuery(
+    `SELECT COLUMN_TYPE, CHARACTER_SET_NAME, COLLATION_NAME, IS_NULLABLE
+       FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?
+      LIMIT 1`,
+    [tabela, coluna]
+  )
+
+  const linha = (
+    linhas as {
+      COLUMN_TYPE: string
+      CHARACTER_SET_NAME: string | null
+      COLLATION_NAME: string | null
+      IS_NULLABLE: string
+    }[]
+  )[0]
+
+  if (!linha) return null
+
+  return {
+    tipo: linha.COLUMN_TYPE,
+    charset: linha.CHARACTER_SET_NAME,
+    collation: linha.COLLATION_NAME,
+    anulavel: linha.IS_NULLABLE === 'YES',
+  }
+}
+
+/**
+ * Põe uma coluna com o MESMO tipo, conjunto de caracteres e collation da coluna
+ * que ela vai referenciar. Chamar ANTES de criar a chave estrangeira.
+ *
+ * ── Porque é que isto é preciso ────────────────────────────────────────────────
+ *
+ * Uma chave estrangeira entre colunas de texto exige tipo, charset E collation
+ * iguais dos dois lados. Se diferirem, o motor recusa:
+ *
+ *     ER_FK_INCOMPATIBLE_COLUMNS (3780)
+ *     Referencing column 'promotor_id' and referenced column 'id' in foreign key
+ *     constraint '...' are incompatible.
+ *
+ * E é fácil chegar lá sem reparar. Um `CREATE TABLE ... DEFAULT CHARSET=utf8mb4`
+ * **sem `COLLATE`** não herda a collation da BASE DE DADOS: fica com a collation
+ * por omissão DO CHARSET, que é `utf8mb4_0900_ai_ci` no MySQL 8 e outra no
+ * MariaDB. As tabelas criadas pelo knex, essas, não declaram charset nenhum e
+ * herdam a da base. Bastam as duas coisas no mesmo esquema para as chaves
+ * deixarem de poder ser criadas — e só no motor onde as omissões não coincidem.
+ *
+ * Foi assim que a migração `..._797_create_plataforma_cupom` parou o deploy de
+ * `api-qua` sem nunca ter dado problema em desenvolvimento.
+ *
+ * Não faz nada se já estiverem alinhadas, se alguma das colunas não existir, ou
+ * se a coluna referenciada não for de texto (números não têm collation).
+ * Preserva o `NULL`/`NOT NULL` da coluna que altera.
+ */
+export async function alinharColunaComReferencia(
+  db: QueryClientContract,
+  tabela: string,
+  coluna: string,
+  tabelaReferenciada: string,
+  colunaReferenciada: string
+): Promise<void> {
+  const alvo = await definicaoDaColuna(db, tabelaReferenciada, colunaReferenciada)
+  const actual = await definicaoDaColuna(db, tabela, coluna)
+
+  if (!alvo || !actual) return
+  if (actual.tipo === alvo.tipo && actual.collation === alvo.collation) return
+
+  const texto = alvo.charset && alvo.collation
+  const declaracao = texto
+    ? `${alvo.tipo} CHARACTER SET ${alvo.charset} COLLATE ${alvo.collation}`
+    : alvo.tipo
+
+  await db.rawQuery(
+    `ALTER TABLE ${tabela} MODIFY ${coluna} ${declaracao} ${actual.anulavel ? 'NULL' : 'NOT NULL'}`
+  )
+}

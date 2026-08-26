@@ -2261,3 +2261,77 @@ O `migration:status` do servidor terminou com:
 Sem `--force`, o Adonis pergunta e, num pipeline sem terminal interactivo, a resposta é
 sempre não: a migração não corre e o comando parece ter passado. Todos os exemplos do
 `deploy-doc.md` passaram a levá-lo.
+
+#### 7.20.2 `ER_FK_INCOMPATIBLE_COLUMNS` — `DEFAULT CHARSET` sem `COLLATE`
+
+Com a 796 desbloqueada, o deploy de `api-qua` avançou e parou na seguinte:
+
+```
+❯ error database/migrations/1784662475797_create_plataforma_cupom
+ALTER TABLE plataforma_cupom
+  ADD CONSTRAINT plataforma_cupom_promotor_id_foreign
+  FOREIGN KEY (promotor_id) REFERENCES promotor (id)
+- Referencing column 'promotor_id' and referenced column 'id' in foreign key
+  constraint are incompatible.
+```
+
+**A causa, reproduzida:** uma chave estrangeira entre colunas de texto exige tipo,
+charset **e collation** iguais dos dois lados. A 797 criava as tabelas com
+
+```sql
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+```
+
+— charset sim, **`COLLATE` não**. E `DEFAULT CHARSET=X` sem `COLLATE` **não herda a
+collation da BASE DE DADOS**: a tabela fica com a collation por omissão *do charset*, que
+é `utf8mb4_0900_ai_ci` no MySQL 8 e outra no MariaDB. As tabelas criadas pelo knex (como
+`promotor`) não declaram charset nenhum e herdam a da base.
+
+Em desenvolvimento as duas omissões coincidem, e nunca deu problema. Num servidor onde a
+base foi criada com uma collation explícita, deixam de coincidir — e as chaves não podem
+ser criadas.
+
+Reproduzido localmente numa base `CREATE DATABASE ... COLLATE utf8mb4_unicode_ci`:
+`promotor.id` ficou `utf8mb4_unicode_ci`, `plataforma_cupom.promotor_id` ficou
+`utf8mb4_0900_ai_ci`, e o `ADD CONSTRAINT` deu o mesmo `ER_FK_INCOMPATIBLE_COLUMNS` do
+servidor.
+
+##### A correcção
+
+1. **O `DEFAULT CHARSET=utf8mb4` saiu** das duas tabelas. Sem ele herdam charset E
+   collation da base, exactamente como todas as outras tabelas deste esquema.
+2. **`alinharColunaComReferencia()`** (novo, em `database/helpers/esquema.ts`) põe a
+   coluna com o tipo/charset/collation exactos da coluna que vai referenciar, e é chamada
+   antes de cada uma das 5 chaves. É o que repara as bases onde as tabelas **já ficaram
+   criadas** com a collation errada — o caso de `api-qua`, onde o `CREATE TABLE` passou e
+   só a chave falhou. Não faz nada se já estiverem alinhadas.
+
+> **Regra: nunca declarar `DEFAULT CHARSET` sem `COLLATE` num `CREATE TABLE`.** Ou se
+> declaram os dois, ou nenhum. Declarar só o charset é a forma silenciosa de sair da
+> convenção da base — e o sintoma aparece a um motor de distância.
+
+##### Verificado nos dois cenários, numa base com collation divergente
+
+Base descartável criada com `COLLATE utf8mb4_unicode_ci` e utilizador **sem** poder criar
+gatilhos:
+
+| ponto de partida | resultado |
+|---|---|
+| instalação de raiz | todas as migrações completam, 0 pendentes; só os avisos dos gatilhos |
+| estado de `api-qua` (796 aplicada, tabelas da 797 criadas com collation errada, as 5 chaves por criar, 797 e 798 por registar) | `ADD CONSTRAINT` falhava com `ER_FK_INCOMPATIBLE_COLUMNS` antes; depois do `migration:run --force`, 797 e 798 completam, **as 5 chaves são criadas**, a collation fica alinhada e `papel.chave_escopo` fica anulável |
+
+##### O padrão que estas três paragens têm em comum
+
+`api-qua` parou três vezes seguidas, e sempre pelo mesmo motivo de fundo: **uma diferença
+entre o motor de desenvolvimento e o do servidor que nenhum teste local podia apanhar.**
+
+| # | o que parou | a diferença |
+|---|---|---|
+| 7.19.1 | coluna gerada indexada | o MariaDB recusa indexá-la |
+| 7.20 | gatilho não criado + coluna `NOT NULL` | privilégios do utilizador da BD no servidor |
+| 7.20.2 | `DEFAULT CHARSET` sem `COLLATE` | collation por omissão do motor |
+
+Nenhuma se apanha com `node ace test`. O que as apanha é **correr as migrações numa base
+descartável que se pareça com a do servidor** — outra collation, um utilizador restrito —
+antes de publicar. Enquanto os ambientes não forem o mesmo motor, é esse o passo que
+falta ao processo de deploy.

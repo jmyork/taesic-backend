@@ -1,6 +1,11 @@
 import { BaseSchema } from '@adonisjs/lucid/schema'
 
-import { temIndice, temRestricao, temTabela } from '../helpers/esquema.js'
+import {
+  alinharColunaComReferencia,
+  temIndice,
+  temRestricao,
+  temTabela,
+} from '../helpers/esquema.js'
 
 /**
  * Cupões de PLATAFORMA — as duas tabelas que faltavam.
@@ -75,7 +80,7 @@ export default class extends BaseSchema {
             updated_at DATETIME NOT NULL,
             deleted_at DATETIME NULL,
             PRIMARY KEY (id)
-          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+          ) ENGINE=InnoDB
         `)
       }
 
@@ -95,6 +100,16 @@ export default class extends BaseSchema {
       }
 
       if (!(await temRestricao(db, 'plataforma_cupom', 'plataforma_cupom_promotor_id_foreign'))) {
+        // Alinhar ANTES de criar a chave. Ver `alinharColunaComReferencia`: uma
+        // chave estrangeira entre colunas de texto exige tipo, charset E collation
+        // iguais, e este `CREATE TABLE` chegou a declarar `DEFAULT CHARSET=utf8mb4`
+        // sem `COLLATE` — o que NÃO herda a collation da base, ao contrário das
+        // tabelas criadas pelo knex. Em desenvolvimento as duas omissões
+        // coincidiam e ninguém deu por nada; no servidor não coincidem, e o deploy
+        // parou com ER_FK_INCOMPATIBLE_COLUMNS. O `DEFAULT CHARSET` já saiu daqui;
+        // isto repara as bases onde a tabela ficou criada com a collation errada.
+        await alinharColunaComReferencia(db, 'plataforma_cupom', 'promotor_id', 'promotor', 'id')
+
         await db.rawQuery(`
           ALTER TABLE plataforma_cupom
             ADD CONSTRAINT plataforma_cupom_promotor_id_foreign
@@ -136,7 +151,7 @@ export default class extends BaseSchema {
             updated_at DATETIME NOT NULL,
             deleted_at DATETIME NULL,
             PRIMARY KEY (id)
-          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+          ) ENGINE=InnoDB
         `)
       }
 
@@ -174,6 +189,9 @@ export default class extends BaseSchema {
 
       for (const [nome, coluna, referencia] of chaves) {
         if (!(await temRestricao(db, 'plataforma_cupom_uso', nome))) {
+          // Mesma razão da chave acima.
+          await alinharColunaComReferencia(db, 'plataforma_cupom_uso', coluna, referencia, 'id')
+
           await db.rawQuery(`
             ALTER TABLE plataforma_cupom_uso
               ADD CONSTRAINT ${nome}
