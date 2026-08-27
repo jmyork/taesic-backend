@@ -87,31 +87,26 @@ export default class AuthController {
     }
   }
 
+  /**
+   * Regista um funcionário.
+   *
+   * **Sem try/catch**, pela razão já documentada em 7.4/7.17: o `catch` genérico
+   * transformava em 500 tudo o que não fosse erro de validação, incluindo a
+   * `LimiteDoPlanoException` (402) — quem tentasse convidar um funcionário a mais recebia
+   * "Erro interno do servidor" em vez de "o plano X permite N utilizadores".
+   *
+   * O handler global traduz os erros do VineJS em 400 com os campos e qualquer `Exception`
+   * de domínio no seu próprio status.
+   */
   async register({ request, response, params }: HttpContext) {
-    try {
-      const payload = await request.validateUsing(UsersCreateValidator)
-      const data = await this.service.register({ ...payload, company_alias: params.company_alias })
-      return response.created({
-        data,
-        message: 'Registro criado com sucesso',
-        status: 201,
-      })
-    } catch (error: any) {
-      if (error.messages) {
-        return response.badRequest({
-          data: null,
-          message: 'Dados inválidos',
-          errors: error.messages,
-          status: 400,
-        })
-      }
-      console.error('Erro ao realizar registro:', error)
-      return response.internalServerError({
-        data: null,
-        message: 'Erro interno do servidor',
-        status: 500,
-      })
-    }
+    const payload = await request.validateUsing(UsersCreateValidator)
+    const data = await this.service.register({ ...payload, company_alias: params.company_alias })
+
+    return response.created({
+      data,
+      message: 'Registro criado com sucesso',
+      status: 201,
+    })
   }
 
   async reset_password({ request, response, params }: HttpContext) {

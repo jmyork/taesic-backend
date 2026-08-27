@@ -14,6 +14,7 @@ import { clonarPapeisPadrao } from '../helpers/papeis_da_empresa.js'
 import pessoa from '#models/pessoa'
 import { randomUUID } from 'crypto'
 import { semearMetodosPagamento } from '../helpers/metodos_pagamento_padrao.js'
+import { semearPostoPadrao } from '../helpers/posto_padrao.js'
 import { urlPublicaR2 } from '../helpers/r2_url.js'
 
 export default class empresaRepository {
@@ -186,6 +187,16 @@ export default class empresaRepository {
       // empresa criada sem eles não consegue fechar vendas (ver o comentário em
       // metodos_pagamento_padrao.ts), por isso ou nasce completa ou não nasce.
       await semearMetodosPagamento(empresa.id, trx)
+
+      // O primeiro posto de atendimento. Mesma razão, mesma transacção: sem um `pos` a
+      // empresa não abre caixa, não vende e não recebe stock — e um Vendedor fica preso
+      // no ecrã de escolher PDV, a olhar para uma lista vazia que só um Admin podia
+      // encher. Ver `app/helpers/posto_padrao.ts`.
+      //
+      // O email é o da conta que registou a empresa: `empresa` não tem coluna de email
+      // (ver `empresaDoUtilizador` em auth_repository.ts), e é esse o contacto
+      // institucional em todo o resto do sistema.
+      await semearPostoPadrao(empresa, user.email, trx)
 
       await trx.commit()
 

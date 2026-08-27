@@ -67,6 +67,36 @@ export default class Empresa extends BaseModel {
   declare verified: boolean
 
   /**
+   * Ramo de actuação escolhido no primeiro passo do onboarding (`farmacia`,
+   * `restaurante`, ...). É o que decide as categorias e os produtos de exemplo semeados
+   * — ver `app/helpers/ramos_de_actuacao.ts`. NULL enquanto ninguém escolher, e nas
+   * empresas anteriores ao onboarding.
+   */
+  @column()
+  declare ramo_actuacao: string | null
+
+  /**
+   * Quando é que o dono chegou ao fim do onboarding. NULL = por concluir.
+   *
+   * É por esta coluna que o login e o `auth/me` respondem `onboarding_completed`, e é
+   * esse sinalizador que o `ProtectedRoute` do frontend usa para prender a sessão no
+   * ecrã de onboarding. Data, e não boolean, pela mesma razão que `suspensa_em`: saber
+   * QUANDO é uma pergunta que se faz mais tarde, e um boolean nunca a responde.
+   */
+  @column.dateTime()
+  declare onboarding_concluido_em: DateTime | null
+
+  /**
+   * A pergunta que o login e o `auth/me` fazem.
+   *
+   * Existe pela mesma razão que `estaSuspensa`: nenhuma das fronteiras precisa de saber
+   * que a resposta vive numa data.
+   */
+  get onboardingConcluido(): boolean {
+    return this.onboarding_concluido_em !== null && this.onboarding_concluido_em !== undefined
+  }
+
+  /**
    * Suspensão pelo dono da plataforma. `null` = empresa activa.
    *
    * Coluna própria, e não `status`/`inadiplente`: essas duas são booleans sem

@@ -35,6 +35,7 @@ import db from '@adonisjs/lucid/services/db'
 import VerificationTokenHash from '#models/verification_token_hash'
 import InvalidTokenException from '#exceptions/invalid_token_exception'
 import EmpresaSuspensaException from '#exceptions/empresa_suspensa_exception'
+import { assertPodeCriarUtilizador } from '../helpers/limites_do_plano.js'
 
 export default class authRepository {
   baseQuery(trx?: TransactionClientContract) {
@@ -83,8 +84,9 @@ export default class authRepository {
     // A verificação é pelo `empresa_id` do UTILIZADOR, não pelo `company_alias` do
     // pedido: esse é opcional nesta rota, e bastaria omiti-lo para contornar uma
     // verificação feita sobre ele.
+    let empresa: Empresa | null = null
     if (userModel.empresa_id) {
-      const empresa = await Empresa.find(userModel.empresa_id)
+      empresa = await Empresa.find(userModel.empresa_id)
       if (empresa?.estaSuspensa) {
         throw new EmpresaSuspensaException()
       }
@@ -96,6 +98,18 @@ export default class authRepository {
       type: 'bearer',
       value: token.value!.release(),
       company_alias: user.company_alias,
+      // Se a empresa ainda tem a configuração inicial por fazer.
+      //
+      // Este sinalizador é a razão de o ecrã de onboarding nunca ter corrido: o frontend
+      // decidia por `onboarding_completed === false` (ver `login/page.tsx`), e NENHUMA
+      // rota deste backend o devolvia — `undefined` não é `false`, portanto toda a gente
+      // caía directamente no painel com o catálogo vazio.
+      //
+      // `true` quando não há empresa (contas de plataforma): não têm configuração inicial
+      // nenhuma a fazer, e mandá-las para o onboarding seria prendê-las num ecrã que não
+      // lhes diz respeito.
+      onboarding_completed: empresa ? empresa.onboardingConcluido : true,
+      ramo_actuacao: empresa?.ramo_actuacao ?? null,
     }
   }
 
@@ -114,6 +128,13 @@ export default class authRepository {
       if (!empresa) {
         throw new Error(`Empresa com alias "${data.company_alias}" não encontrada`)
       }
+
+      // 1.5. O plano manda em quantos utilizadores a empresa pode ter.
+      //
+      // Antes da palavra-passe temporária e do envio de email, de propósito: recusar
+      // depois de a conta estar criada obrigaria a desfazer, e recusar depois de o email
+      // sair mandaria um convite para uma conta que não existe.
+      await assertPodeCriarUtilizador(empresa.id)
 
       // 2. Separar dados
       const { company_alias, papel, ...dataSemAlias } = data
@@ -149,6 +170,19 @@ export default class authRepository {
 
       return user
     } catch (error) {
+      // Uma excepção de DOMÍNIO passa tal e qual.
+      //
+      // Este `catch` apanhava tudo e devolvia sempre "Erro ao criar conta" — a mesma
+      // classe de bug já documentada em 7.4 e 7.17: apaga a distinção entre "não pode" e
+      // "rebentou". Com os limites do plano isso passou a ter consequência visível: quem
+      // tentasse convidar um funcionário a mais recebia "Erro ao criar conta" em vez de
+      // "o plano X permite N utilizadores; actualize o plano".
+      //
+      // O `instanceof Exception` cobre todas as excepções de domínio deste projecto
+      // (partilham a base do `@adonisjs/core`) e o `E_ROW_NOT_FOUND` do Lucid. O resto —
+      // falha de infra, erro de SQL — continua a sair como a mensagem genérica, que é o
+      // que se quer: essa não se mostra ao utilizador.
+      if (error instanceof Exception) throw error
       throw new Exception('Erro ao criar conta')
     }
   }
@@ -526,6 +560,8 @@ export default class authRepository {
         'empresa.localizacao as localizacao',
         'empresa.contacto as contacto',
         'empresa.regime_iva as regime_iva',
+        'empresa.ramo_actuacao as ramo_actuacao',
+        'empresa.onboarding_concluido_em as onboarding_concluido_em',
         'dono.email as email',
         'taxa_iva.nome as taxa_iva_nome',
         'taxa_iva.percentual as taxa_iva_percentual'
@@ -545,6 +581,11 @@ export default class authRepository {
       contacto: linha.contacto,
       email: linha.email ?? null,
       regime_iva: Boolean(linha.regime_iva),
+      // Configuração inicial. Vai aqui, e não numa rota nova, pela mesma razão que o
+      // regime de IVA: são dados da própria empresa de quem está autenticado, e o
+      // arranque do frontend já faz este pedido.
+      ramo_actuacao: linha.ramo_actuacao ?? null,
+      onboarding_concluido: linha.onboarding_concluido_em !== null,
       taxa_iva: {
         nome: linha.taxa_iva_nome ?? null,
         percentual: linha.taxa_iva_percentual != null ? Number(linha.taxa_iva_percentual) : null,

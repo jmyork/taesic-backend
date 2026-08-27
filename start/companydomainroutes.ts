@@ -277,6 +277,29 @@ router
 
         router.post('facturas/anular/:id', [controllers.Factura, 'anular']).as('domain_facturas.anular')
 
+        // ---------------------- assinatura ----------------------
+        //
+        // A subscrição vista pela própria empresa. `domain_subscricao`/`domain_cobranca`
+        // (mais abaixo) continuam a ser o CRUD genérico; estas são as quatro perguntas que
+        // o ecrã de Subscrição faz.
+        router.get('assinatura', [controllers.Assinatura, 'estado']).as('domain_assinatura.estado')
+        router.get('assinatura/planos', [controllers.Assinatura, 'planos']).as('domain_assinatura.planos')
+        router.post('assinatura/plano', [controllers.Assinatura, 'escolherPlano']).as('domain_assinatura.escolher')
+        router.post('assinatura/cobranca', [controllers.Assinatura, 'cobrancaPendente']).as('domain_assinatura.cobranca')
+
+        // ---------------------- onboarding ----------------------
+        //
+        // A configuração inicial da empresa: escolher o ramo de actuação, semear o
+        // catálogo desse ramo, e fechar o passo. Ver `app/helpers/ramos_de_actuacao.ts`.
+        //
+        // `onboarding/ramos` fica registada ANTES de `onboarding` — aqui não há
+        // `:id` a intercetar (não é um resource), mas a ordem mantém a mesma leitura
+        // dos outros blocos deste ficheiro: o caminho mais específico primeiro.
+        router.get('onboarding/ramos', [controllers.Onboarding, 'ramos']).as('domain_onboarding.ramos')
+        router.get('onboarding', [controllers.Onboarding, 'estado']).as('domain_onboarding.estado')
+        router.post('onboarding/ramo', [controllers.Onboarding, 'aplicarRamos']).as('domain_onboarding.ramo')
+        router.post('onboarding/concluir', [controllers.Onboarding, 'concluir']).as('domain_onboarding.concluir')
+
         // auth
         router.post('auth/register', [controllers.Auth, 'register']).as('domain_auth.register') //(v)
         router.get('auth/list', [controllers.Auth, 'index']).as('domain_auth.list') //(v)

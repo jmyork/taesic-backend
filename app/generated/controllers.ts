@@ -16,6 +16,8 @@ import marcasController from '#controllers/marca_controller'
 import metodopagamentosController from '#controllers/metodopagamento_controller'
 import MetricasController from '#controllers/metricas_controller'
 import NifController from '#controllers/nif_controller'
+import OnboardingController from '#controllers/onboarding_controller'
+import AssinaturaController from '#controllers/assinatura_controller'
 import pessoasController from '#controllers/pessoa_controller'
 import possController from '#controllers/pos_controller'
 import produto_categoriassController from '#controllers/produto_categorias_controller'
@@ -67,7 +69,9 @@ export const controllers = {
   Marca: marcasController,
   MetodoPagamento: metodopagamentosController,
   Metricas: MetricasController,
+  Assinatura: AssinaturaController,
   Nif: NifController,
+  Onboarding: OnboardingController,
   Pessoa: pessoasController,
   Pos: possController,
   ProdutoCategorias: produto_categoriassController,

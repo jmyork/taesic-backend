@@ -20,6 +20,7 @@ import emitter from '@adonisjs/core/services/emitter'
 import VendaCanceladaAltoValor from '#events/venda_cancelada_alto_valor'
 import { applyCommonFilters, FieldSpec } from '../helpers/query_filters.js'
 import { proximoNumeroPorEmpresa } from '../helpers/sequencial_numero.js'
+import { assertPodeFacturar } from '../helpers/limites_do_plano.js'
 
 const VENDAS_FILTER_FIELDS: FieldSpec[] = [
   { kind: 'exact', column: 'vendas.numero', key: 'numero' },
@@ -300,6 +301,12 @@ export default class vendasRepository {
     if (Math.abs(totalPago - totalAPagar) > 0.01) {
       throw new VendaPagamentoIncompletoException(totalAPagar, totalPago)
     }
+
+    // O tecto de facturação do plano. ANTES da transacção, e portanto antes de qualquer
+    // movimento de stock: recusar a meio obrigaria a desfazer saídas de armazém já
+    // gravadas, e recusar depois de fechar deixaria o tecto sempre ultrapassado por uma
+    // venda — um tecto que se ultrapassa não é um tecto. Ver `limites_do_plano.ts`.
+    await assertPodeFacturar(pos.empresa_id, totalAPagar)
 
     // Todas as movimentações de stock e a atualização da venda correm na mesma transação:
     // se uma falhar a meio (ex.: stock insuficiente num item), nada fica gravado a metade.

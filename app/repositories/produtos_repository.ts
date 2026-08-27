@@ -10,6 +10,7 @@ import db from '@adonisjs/lucid/services/db'
 import categorias_produtos from '#models/faturacao/categorias_produtos'
 import Empresa from '#models/empresa'
 import { proximoNumeroPorEmpresa } from '../helpers/sequencial_numero.js'
+import { assertPodeCriarProduto } from '../helpers/limites_do_plano.js'
 import loteRepository from './lote_repository.js'
 import estoqueRepository from './estoque_repository.js'
 import venda_itensRepository from './venda_itens_repository.js'
@@ -69,6 +70,9 @@ export default class produtosRepository {
 
   async create(data: CreateprodutosDTO) {
     const empresa = await Empresa.findByOrFail('company_alias', data.company_alias)
+
+    // O plano manda em quantos produtos a empresa pode ter no catálogo.
+    await assertPodeCriarProduto(empresa.id)
 
     const { empresa_id, company_alias, user_id, preco_venda, preco_compra, ...produtoData } = data
     // Se for serviço, remove campos que não fazem sentido
@@ -180,6 +184,11 @@ export default class produtosRepository {
     // tabela `produtos` não tem) — sem esta resolução, o INSERT ia com `empresa_id`
     // undefined, quebrando o isolamento por tenant deste produto.
     const empresa = await Empresa.findByOrFail('company_alias', data.produto.company_alias)
+
+    // Mesmo limite do `create()` simples — este é o outro caminho que cria produtos, e
+    // esquecê-lo deixava o limite contornável por quem usasse o formulário completo.
+    await assertPodeCriarProduto(empresa.id)
+
     const { company_alias, user_id, ...produtoData } = data.produto
 
     const trx = await db.transaction()

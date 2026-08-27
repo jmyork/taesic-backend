@@ -22,6 +22,12 @@ export const messages = {
     'notSameAs': 'Os campos {{ field }} e {{ otherField }} devem ser diferentes',
     'in': 'O campo {{ field }} selecionado é inválido',
     'notIn': 'O campo {{ field }} selecionado é inválido',
+    // `enum` faltava, e é a regra por trás de todos os campos de escolha fechada deste
+    // projecto (`vine.enum`) — tamanho da empresa, tipo de movimentação de stock, estado
+    // de uma venda, ramo de actuação. Sem a entrada, o VineJS caía na mensagem por
+    // omissão, em inglês ("The selected X is invalid"), no meio de uma resposta cujo
+    // envelope já vinha em português.
+    'enum': 'A opção escolhida em {{ field }} não é válida',
     'ipAddress': 'O campo {{ field }} deve ser um endereço IP válido',
     'uuid': 'A opção escolhida em {{ field }} não é válida',
     'ascii': 'O campo {{ field }} deve conter apenas caracteres ASCII',
@@ -108,6 +114,7 @@ export const fields = {
     empresa_localizacao: 'localização',
     empresa_tamanho: 'dimensão da empresa',
     empresa_regime_iva: 'regime de IVA',
+    ramo: 'ramo de actuação',
 
     // Transversais
     company_alias: 'nome curto da empresa',

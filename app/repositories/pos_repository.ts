@@ -2,6 +2,9 @@ import { DateTime } from 'luxon'
 import pos from '#models/faturacao/pos'
 import { CreateposDTO, PosQueryDTO, UpdateposDTO } from '#dtos/pos_dto'
 import Empresa from '#models/empresa'
+import UltimoPostoException from '#exceptions/ultimo_posto_exception'
+import { contarPostosActivos } from '../helpers/posto_padrao.js'
+import { assertPodeCriarPosto } from '../helpers/limites_do_plano.js'
 
 export default class posRepository {
   baseQuery() {
@@ -109,6 +112,11 @@ export default class posRepository {
 
   async create(data: CreateposDTO) {
     const empresa = await Empresa.findByOrFail('company_alias', data.company_alias)
+
+    // O plano manda em quantos postos a empresa pode ter. Aqui, e não no controller: um
+    // limite que viva no controller é um limite que o próximo caminho não conhece.
+    await assertPodeCriarPosto(empresa.id)
+
     const { empresa_id, company_alias, ...marcaData } = data
     return pos.create({ ...marcaData, empresa_id: empresa.id })
   }
@@ -120,14 +128,33 @@ export default class posRepository {
     return r
   }
 
+  /**
+   * Alterna `deleted_at` (desactiva/reactiva), com uma condição: a empresa nunca pode
+   * ficar sem nenhum posto de atendimento activo.
+   *
+   * A verificação só se aplica ao sentido DESACTIVAR. Reactivar nunca pode ser recusado
+   * por esta regra — só aumenta a contagem — e um `if` que não distinguisse os dois
+   * sentidos deixaria um posto apagado impossível de recuperar quando fosse o único.
+   *
+   * Porquê aqui e não no controller: `destroy` não é o único caminho que chega a este
+   * método, e uma regra de integridade da empresa que viva no controller é uma regra que
+   * o próximo caminho não conhece. Ver `app/helpers/posto_padrao.ts` para o que se
+   * partia sem ela.
+   */
   async softDelete(id: string, company_alias?: string) {
-    const marca = await this.baseQuery()
+    const posto = await this.baseQuery()
       .join('empresa', 'empresa.id', 'pos.empresa_id')
       .where('empresa.company_alias', company_alias ?? '')
       .where('pos.id', id)
       .select('pos.*')
       .firstOrFail()
-    marca.deletedAt = marca.deletedAt ? null : DateTime.now()
-    await marca.save()
+
+    const aDesactivar = !posto.deletedAt
+    if (aDesactivar && (await contarPostosActivos(posto.empresa_id)) <= 1) {
+      throw new UltimoPostoException()
+    }
+
+    posto.deletedAt = posto.deletedAt ? null : DateTime.now()
+    await posto.save()
   }
 }

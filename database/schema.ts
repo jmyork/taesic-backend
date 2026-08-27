@@ -239,7 +239,7 @@ export class DespesaSchema extends BaseModel {
 }
 
 export class EmpresaSchema extends BaseModel {
-  static $columns = ['companyAlias', 'contacto', 'createdAt', 'deletedAt', 'id', 'inadiplente', 'localizacao', 'nif', 'nome', 'regimeIva', 'status', 'suspensaEm', 'suspensaMotivo', 'suspensaPor', 'tamanho', 'taxaIvaId', 'updatedAt', 'userId', 'verified'] as const
+  static $columns = ['companyAlias', 'contacto', 'createdAt', 'deletedAt', 'id', 'inadiplente', 'localizacao', 'nif', 'nome', 'onboardingConcluidoEm', 'ramoActuacao', 'regimeIva', 'status', 'suspensaEm', 'suspensaMotivo', 'suspensaPor', 'tamanho', 'taxaIvaId', 'updatedAt', 'userId', 'verified'] as const
   $columns = EmpresaSchema.$columns
   @column()
   declare companyAlias: string | null
@@ -259,6 +259,10 @@ export class EmpresaSchema extends BaseModel {
   declare nif: string | null
   @column()
   declare nome: string | null
+  @column.dateTime()
+  declare onboardingConcluidoEm: DateTime | null
+  @column()
+  declare ramoActuacao: string | null
   @column()
   declare regimeIva: boolean | null
   @column()
@@ -296,6 +300,21 @@ export class EmpresaContaBancariaSchema extends BaseModel {
   declare iban: string | null
   @column({ isPrimary: true })
   declare id: string
+  @column.dateTime({ autoCreate: true, autoUpdate: true })
+  declare updatedAt: DateTime
+}
+
+export class EmpresaRamoSchema extends BaseModel {
+  static $columns = ['createdAt', 'empresaId', 'id', 'ramo', 'updatedAt'] as const
+  $columns = EmpresaRamoSchema.$columns
+  @column.dateTime({ autoCreate: true })
+  declare createdAt: DateTime
+  @column()
+  declare empresaId: string
+  @column({ isPrimary: true })
+  declare id: string
+  @column()
+  declare ramo: string
   @column.dateTime({ autoCreate: true, autoUpdate: true })
   declare updatedAt: DateTime
 }
@@ -572,7 +591,7 @@ export class PessoaSchema extends BaseModel {
 }
 
 export class PlanoSchema extends BaseModel {
-  static $columns = ['ativo', 'createdAt', 'deletedAt', 'descricao', 'id', 'limiteUso', 'moeda', 'nome', 'periodo', 'preco', 'updatedAt'] as const
+  static $columns = ['ativo', 'createdAt', 'deletedAt', 'descricao', 'diasGratuitos', 'funcionalidades', 'id', 'limiteFaturacaoMensal', 'limitePostos', 'limiteProdutos', 'limiteUso', 'limiteUtilizadores', 'moeda', 'nome', 'ordem', 'periodo', 'preco', 'slug', 'updatedAt'] as const
   $columns = PlanoSchema.$columns
   @column()
   declare ativo: boolean | null
@@ -582,18 +601,34 @@ export class PlanoSchema extends BaseModel {
   declare deletedAt: DateTime | null
   @column()
   declare descricao: string | null
+  @column()
+  declare diasGratuitos: number
+  @column()
+  declare funcionalidades: string | null
   @column({ isPrimary: true })
   declare id: string
   @column()
+  declare limiteFaturacaoMensal: string | null
+  @column()
+  declare limitePostos: number | null
+  @column()
+  declare limiteProdutos: number | null
+  @column()
   declare limiteUso: string | null
+  @column()
+  declare limiteUtilizadores: number | null
   @column()
   declare moeda: string | null
   @column()
   declare nome: string | null
   @column()
+  declare ordem: number
+  @column()
   declare periodo: string | null
   @column()
   declare preco: string | null
+  @column()
+  declare slug: string | null
   @column.dateTime({ autoCreate: true, autoUpdate: true })
   declare updatedAt: DateTime
 }

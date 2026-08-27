@@ -125,6 +125,11 @@ export async function createCaixa(
   return Caixa.create({
     user_id: user.id,
     pos_id: pos.id,
+    // `empresa_id` como o `caixa_repository.open()` real o preenche (a partir do pos).
+    // Sem isto a caixa de teste ficava sem tenant, e tudo o que filtre por
+    // `caixa.empresa_id`/`vendas.empresa_id` — o tecto de facturação do plano, por
+    // exemplo — não via as vendas dos testes e passava por não encontrar nada.
+    empresa_id: pos.empresa_id,
     valor_inicial: overrides.valor_inicial ?? 0,
     total_vendas: 0,
     // A coluna só aceita 'Aberto'/'Fechado' (enum da BD e tipo do model). Os testes
@@ -132,19 +137,22 @@ export async function createCaixa(
     status: (overrides.status ?? 'Aberto').toLowerCase() === 'fechado' ? 'Fechado' : 'Aberto',
     observacoes: '',
     total_caixa: 0,
-  })
+  } as any)
 }
 
 export async function createVenda(
   caixa: Caixa,
   overrides: Partial<{ status: 'aberta' | 'fechada' | 'cancelada' | 'reembolsada' | 'proforma'; total: number }> = {}
 ) {
+  // `empresa_id` como o `vendas_repository.create()` real o preenche (a partir da caixa).
+  // Ver o comentário em `createCaixa`: sem isto a venda de teste fica sem tenant.
   return Vendas.create({
     caixa_id: caixa.id,
+    empresa_id: caixa.empresa_id,
     total: overrides.total ?? 0,
     status: overrides.status ?? 'aberta',
     venda_tipo: 'presencial',
-  })
+  } as any)
 }
 
 export async function createVendaItem(

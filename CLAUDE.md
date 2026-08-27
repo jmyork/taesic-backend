@@ -2357,3 +2357,352 @@ deploy em vez de durante.
 
 E, agora que se sabe que é o mesmo produto, há um remédio barato que antes parecia caro:
 **pôr o MySQL de desenvolvimento em 8.4.11**, a mesma versão do servidor.
+
+### 7.21 Complemento de onboarding — a empresa nasce utilizável
+
+Pedido do dono do produto: ao registar uma empresa, criar logo um posto de atendimento que
+nunca possa ficar sem substituto; e, ao escolher o ramo de actuação no onboarding, semear
+automaticamente categorias e produtos desse ramo.
+
+#### O que estava partido antes de tudo isto
+
+**O ecrã de onboarding nunca correu para ninguém.** Existia (`/[companyAlias]/onboarding`,
+sete passos, com carrossel e tudo), e o `ProtectedRoute` do frontend decidia por
+`user.onboarded === false` — valor que vinha de `first_time`/`is_new_user`/
+`onboarding_completed`, **sinalizadores que nenhuma rota deste backend alguma vez
+devolveu**. `undefined` não é `false`, portanto `needsOnboarding` era sempre falso e toda a
+gente caía directamente no painel.
+
+O ecrã também não configurava nada: escolher um "tipo de negócio" guardava uma string num
+`useState` e o passo dos produtos era um formulário falso (nascia com "Produto 1" a €0.00 —
+moeda errada para Angola — e perdia tudo ao sair).
+
+#### 1. Toda a empresa nasce com um posto de atendimento
+
+`app/helpers/posto_padrao.ts` (`semearPostoPadrao`), chamado em
+`empresa_repository.CreateEmpresaUserDetalhes` **dentro da transacção do registo**, ao lado
+de `clonarPapeisPadrao` e `semearMetodosPagamento` e pela mesma razão: ou a empresa nasce
+completa, ou não nasce.
+
+Sem um `pos` a empresa está de pé e não faz nada — `caixa` abre contra um posto, `vendas`
+corre dentro de uma caixa, o `lote` é por posto. E um Vendedor era atirado para
+`/dashboard/selecionar-pdv` (ver `ProtectedRoute`) para uma lista vazia, sem saída: criar
+postos é `domain_pos.store`, permissão que ele não tem.
+
+- Nome `Sede`, dados copiados da empresa, email o da conta que a registou (`empresa` não tem
+  coluna de email — ver `empresaDoUtilizador` em auth_repository.ts).
+- Idempotente, e **procura um nome livre** (`Sede`, `Sede 2`, ...): `pos` tem
+  `unique(nome, empresa_id)` e um posto SOFT-APAGADO continua a ocupar o nome. Uma empresa
+  que tivesse desactivado a sua "Sede" rebentava no meio do registo com erro de chave
+  duplicada, sem nada a dizer que o problema era um nome.
+
+#### 2. A empresa nunca fica sem nenhum
+
+`pos_repository.softDelete()` recusa com `UltimoPostoException` (409, `ULTIMO_POSTO`) quando
+é o último posto activo. No repositório e não no controller: `destroy` não é o único caminho
+até lá, e uma regra de integridade que viva no controller é uma regra que o próximo caminho
+não conhece.
+
+**Só no sentido desactivar.** O `softDelete` deste projecto é um alternador; se a
+verificação não distinguisse os dois sentidos, um posto apagado ficava impossível de
+recuperar assim que fosse o único — que é precisamente quando alguém precisa dele de volta.
+
+- **`pos_controller.destroy` perdeu o try/catch** (mais 1 dos ~48 por migrar). É a terceira
+  vez que este padrão esconde uma excepção nova (7.4, 7.17): o `catch` genérico devolvia
+  **500 "Erro interno do servidor"** à `UltimoPostoException`, portanto quem tentasse apagar
+  o único posto via "a aplicação avariou" em vez da explicação. Verificado por HTTP: agora
+  409 com a mensagem, e 404 para um id inexistente.
+
+#### 3. O ramo de actuação semeia o catálogo
+
+`app/helpers/ramos_de_actuacao.ts` — catálogo de 7 ramos (farmácia, supermercado,
+restauração, vestuário, serviços, imóveis, personalizado) e `semearRamoDeActuacao()`,
+idempotente por nome.
+
+**Os produtos nascem SEM lote**, logo sem preço e sem stock: aparecem na lista de produtos
+(`incluir_sem_lote`) e **não** no PDV. Decisão do dono do produto, entre três opções
+apresentadas. A alternativa (lote a preço 0) punha produtos a 0 Kz prontos a passar pela
+caixa — um produto por preencher deve ser invisível ao PDV, não vendável de graça.
+
+**"Serviços" e "Imóveis" semeiam só categorias.** Um serviço não existe aqui sem lote
+(`produtos_repository.create()` cria-lhe sempre um, porque é o lote que lhe guarda o preço),
+e semeá-lo obrigaria a inventar esse preço. Semeá-lo como produto físico era pior: entrava
+no controlo de stock e nos alertas de validade, e uma consultoria não tem nem uma coisa nem
+outra.
+
+> **Bug pré-existente encontrado e NÃO corrigido** (fora do âmbito, e a regra da secção 1
+> exige o teste a reproduzir primeiro): `produtos_repository.update()`, no ramo
+> `is_service`, faz `const lote = (await loteRepo.paginate(...))[0]` e escreve-lhe nos
+> preços **sem verificar se existe**. Um serviço sem lote rebenta ali com `TypeError` → 500.
+> É alcançável hoje convertendo um produto físico em serviço: `update` decide pelo valor
+> GRAVADO de `is_service`, portanto a conversão passa pelo `else` e grava o produto como
+> serviço sem lhe criar lote; a edição SEGUINTE rebenta.
+
+#### 4. O onboarding passa a ter estado, e a ser obrigatório
+
+Migração `1784662475799_alter_empresa_onboarding`: `ramo_actuacao` (VARCHAR, anulável — o
+catálogo vive no código, e acrescentar um ramo não deve exigir migração) e
+`onboarding_concluido_em` (TIMESTAMP, anulável). Ambas anuláveis conforme 7.20.
+
+**O backfill é condicionado a "a empresa já tem produtos"**, e não a um simples
+`WHERE IS NULL`. Sem backfill, todas as empresas existentes seriam atiradas para o
+onboarding no login seguinte. Com a condição óbvia, uma **segunda execução** (7.19)
+varreria também as empresas registadas entretanto e marcá-las-ia como concluídas sem nunca
+terem visto o ecrã. "Já tem produtos" distingue as duas populações e continua a
+distingui-las numa reexecução: uma empresa acabada de registar tem catálogo vazio (o
+registo semeia posto, papéis e métodos de pagamento — nunca produtos).
+
+Recurso novo `api/:company_alias/onboarding` (`domain_onboarding.*`): `estado`, `ramos`,
+`ramo`, `concluir`. `onboardingRepository` não estende `BaseRepository` de propósito
+(secção 2) — não é CRUD, são três operações de estado sobre a empresa.
+
+- `aplicarRamo` grava o ramo e semeia **numa transacção**: uma empresa com "Farmácia"
+  gravado e catálogo vazio mente ao dono, e o passo já teria sido dado.
+- Trocar de ramo **acrescenta, nunca apaga** o catálogo anterior: o dono pode já ter editado
+  preços ou vendido alguma coisa entre os dois passos, e apagar-lhe produtos por ter mudado
+  de ideias num ecrã de configuração seria destruir trabalho dele. É também o que permite a
+  esta rota servir de "repor o modelo do ramo" mais tarde, sem nenhum caminho novo.
+- `concluir` semeia o posto em falta antes de fechar — as empresas anteriores a esta mudança
+  podem não ter nenhum, e deixá-las sair do onboarding assim era mandá-las para um painel
+  onde não se abre caixa nem se vende.
+
+**RBAC:** Admin tem as quatro; Gerente só as duas de leitura. Concedidas em dev com
+`permissao:conceder` **nos modelos E com `--todas-empresas`** (secção 7.13), e cobertas por
+um grupo de testes próprio — é a quarta vez que o catálogo à mão fica para trás (7.6, 7.8,
+7.12), e desta vez há rede.
+
+#### 5. Frontend
+
+- `login/page.tsx` passa a ler o `onboarding_completed` real, **e só encaminha o
+  administrador**: `ProtectedRoute` prende qualquer utilizador com `onboarded === false`, e
+  configurar a empresa é permissão de Admin — um vendedor de uma empresa por configurar
+  ficaria preso num ecrã onde cada pedido lhe responde 403, sem forma de sair.
+- `FinalizarSlide` chama `concluir()` **antes** de navegar e actualiza o `AuthContext`
+  (`onboarded: true`). Sem essa segunda parte, o `router.push` era imediatamente desfeito
+  pelo guarda — ciclo fechado no último clique do onboarding, com tudo já gravado do lado
+  do servidor.
+- `template-slide` deixou de ter a lista de ramos escrita à mão (e em inglês: `pharmacy`,
+  `clothing`, ...) — lê o catálogo do backend. Duas listas divergiriam, e a escolha passaria
+  a gravar um id que o backend não conhece. Só o ícone de cada ramo fica no frontend.
+- `produtos-slide` mostra o catálogo real em vez do formulário falso, e diz porque é que
+  aqueles produtos ainda não aparecem no ponto de venda.
+- O contexto resolve o `company_alias` da rota antes do primeiro pedido: os efeitos dos
+  filhos correm ANTES dos do pai, e o layout de `[companyAlias]` só o escreve no seu próprio
+  efeito — numa navegação directa o pedido saía como `/api//onboarding`.
+
+#### 6. Na mesma passagem: `enum` não tinha mensagem em português
+
+`start/validator.ts` tem um `SimpleMessagesProvider` completo em português — e faltava-lhe a
+entrada `enum`, que é a regra por trás de **todos** os campos de escolha fechada deste
+projecto (tamanho da empresa, tipo de movimentação de stock, estado de uma venda).
+Caíam na mensagem por omissão do VineJS, em inglês, dentro de uma resposta cujo envelope já
+vinha em português. Acrescentada, mais o campo `ramo`.
+
+#### 7. ⚠️ Achado do ambiente: a suite NÃO corre numa base isolada
+
+Este ficheiro diz em vários sítios "a BD de teste isolada (`auth_system_test`)" e manda
+correr migrações/seeders "nos DOIS bancos". **Isso já não é verdade.** `.env.test` define
+apenas `LIMITER_STORE=memory` — não define `DB_DATABASE` — e `config/database.ts` lê
+sempre `env.get('DB_DATABASE')`. Verificado: `node ace test` corre contra `auth_system`, a
+base de **desenvolvimento**.
+
+Na prática a suite é inofensiva (`withGlobalTransaction()` desfaz tudo), mas a instrução
+que este ficheiro dá **não** é: `NODE_ENV=test node ace db:fresh:seed` faz
+`migration:fresh` — larga todas as tabelas — na base de desenvolvimento. Antes de a
+correr, definir `DB_DATABASE` explicitamente, ou repor um `.env.test` com a base própria.
+
+- Suite: **707 testes** (eram 675). `tsc --noEmit` limpo. Migração corrida em dev.
+  Verificado também por HTTP contra o servidor real: as 4 rotas do onboarding, a recusa do
+  último posto (409), o 404 de um id inexistente, e as mensagens de validação em português.
+
+### 7.22 Onboarding utilizável, e planos com diferenças a sério
+
+Segunda passagem sobre o onboarding (a primeira é 7.21), a pedido do dono do produto:
+produtos mais organizados e mais numerosos, vários ramos em vez de um, a página a deixar
+de quebrar, pagar a deixar de ser obrigatório, e — o maior — **um sítio onde o
+proprietário trata da subscrição, com planos cujas diferenças o sistema conhece**.
+
+#### 1. A página quebrava por construção
+
+O carrossel era `h-screen overflow-hidden` com cada passo em `absolute inset-0`, e o
+cabeçalho e os botões TAMBÉM absolutos, por cima. Um passo mais alto do que o ecrã ficava
+cortado **sem forma de chegar ao resto** — o `overflow-hidden` do pai impedia até o
+scroll —, o cabeçalho tapava o título e os botões tapavam a última linha. Num portátil de
+768 px, ou num telemóvel, quase todos os passos caíam nisto.
+
+Agora é uma coluna flex: cabeçalho e navegação em fluxo (`shrink-0`), e o scroll vive
+DENTRO de cada passo. Cada passo guarda a sua posição ao voltar atrás. Os passos inactivos
+ganharam `invisible` além da opacidade — transparentes, continuavam a apanhar cliques e
+tabulação por cima do que estava visível.
+
+#### 2. Vários ramos de actuação
+
+Uma farmácia vende também perfumaria; um supermercado tem padaria. Obrigar a escolher um
+só dava um catálogo de arranque que não descreve o negócio.
+
+Tabela nova `empresa_ramo` (migração `create_empresa_ramo`), com `unique(empresa_id, ramo)`
+e **sem soft delete** — é um conjunto de escolhas, não um registo de negócio.
+`empresa.ramo_actuacao` fica como o ramo PRINCIPAL (o primeiro), porque `auth/me` e o login
+já o devolvem e há ecrãs com espaço para um nome só; é mantido em sintonia num sítio só
+(`aplicarRamos`).
+
+- **Não é uma lista dentro da coluna.** `"farmacia,perfumaria"` não tem unicidade, não se
+  consulta sem `LIKE` (que casa `farmacia` com `farmacia-veterinaria`), e não tem onde
+  guardar nada sobre a escolha.
+- **O conjunto é substituído, não acrescentado**: desmarcar um cartão desmarca-o mesmo.
+- **Desmarcar NÃO apaga o que o ramo semeou.** O dono pode já ter posto preço ou vendido;
+  apagar-lhe catálogo por ter mexido num ecrã de configuração seria destruir trabalho dele.
+- O backfill da 799 corre em duas passagens (ler, inserir) e não num `INSERT ... SELECT`,
+  porque os ids têm de vir de `randomUUID()` — o `UUID()` do MySQL é v1 e este projecto
+  tem validadores que exigem v4 (7.13).
+
+O caminho `POST onboarding/ramo` ficou no singular apesar de o corpo ser uma lista: o nome
+da rota é a chave da permissão no RBAC e renomeá-lo custaria um `permissao:conceder
+--todas-empresas` em todos os ambientes por estética. O validador aceita `ramos` (lista) e
+`ramo` (forma antiga), com `requiredIfMissing` nos dois.
+
+#### 3. Mais produtos, e organizados
+
+O catálogo passou de 6 para 13 ramos (juntaram-se padaria, perfumaria, papelaria,
+ferragens, electrónica e agropecuária) e de ~6 para 15-25 produtos por ramo. `semearRamos
+DeActuacao` semeia a **união** dos catálogos escolhidos, sem repetir o que é comum —
+"Protector solar FPS 50" está em Farmácia e em Perfumaria, e `produtos` não tem unicidade
+por nome, portanto sem a deduplicação ficavam duas linhas iguais.
+
+No ecrã, o passo dos produtos passou a agrupar por categoria em secções dobráveis, com
+contagem. Uma lista corrida de oitenta linhas — o que dois ou três ramos produzem — não se
+lê, e era metade da razão por que o passo parecia partido.
+
+Há um teste que semeia **cada ramo do catálogo** e verifica que nenhum produto fica sem
+categoria: é a rede contra um erro de dados neste ficheiro, que de outra forma só aparece
+quando um cliente escolhe esse ramo.
+
+#### 4. Planos com limites impostos
+
+Era o ponto mais forte do pedido: *"as diferenças entre planos não existem"*. E não
+existiam mesmo — dois planos escritos à mão no frontend, **em euros**, com funcionalidades
+inventadas ("Gestão de múltiplas farmácias"), a tabela `plano` **vazia**, e escolher um
+plano a não mudar coisa nenhuma.
+
+`alter_plano_limites` acrescenta `slug`, `limite_utilizadores`, `limite_postos`,
+`limite_produtos`, `limite_faturacao_mensal`, `dias_gratuitos`, `funcionalidades` (JSON num
+TEXT) e `ordem`. Todas anuláveis ou com default (7.20) — um `NOT NULL` aqui recusaria
+escritas vindas do `taesic-backoffice-api`, que é outro projecto e não é actualizado ao
+mesmo tempo.
+
+`app/helpers/limites_do_plano.ts` impõe-nos em quatro sítios, nos repositórios e não nos
+controllers (um limite no controller é um limite que o próximo caminho não conhece):
+
+| limite | onde |
+|---|---|
+| utilizadores | `auth_repository.create()` |
+| postos | `pos_repository.create()` |
+| produtos | `produtos_repository.create()` e `registrarProdutoAndDetalhes()` |
+| facturação mensal | `vendas_repository.close()` |
+
+**Duas regras que atravessam tudo:**
+
+1. **Sem plano, sem limite.** Uma empresa sem subscrição activa não é bloqueada. Um erro de
+   configuração da plataforma não pode transformar-se numa loja que deixa de vender. Uma
+   subscrição expirada também devolve "sem plano": cortar quem deixou de pagar é uma
+   decisão de cobrança com aviso e prazo, tomada pelo backoffice ao suspender a empresa
+   (7.15), não um efeito colateral de uma data passar.
+2. **`null` é ilimitado, nunca zero.** E um limite de `0` gravado por engano no backoffice é
+   tratado como ilimitado, para um plano mal preenchido não trancar uma empresa.
+
+**`LimiteDoPlanoException` é 402 Payment Required**, não 403: quem faz o pedido tem
+permissão, e o que falta é plano. É o único estado do HTTP desenhado para isto, e o
+frontend distingue-o para mostrar o caminho para Subscrição em vez de "peça ao
+administrador". A mensagem diz sempre o limite, o uso e o que fazer.
+
+O **tecto de facturação** é o modelo de negócio pedido: o plano gratuito não é uma amostra
+de 14 dias, é uma conta a sério, sem prazo, com um tecto mensal. É verificado ANTES da
+transacção de `close()` — recusar a meio obrigaria a desfazer saídas de armazém, e recusar
+depois de fechar deixaria o tecto sempre ultrapassado por uma venda.
+
+⚠️ **Os NÚMEROS de `planos_padrao.ts` (7.500 Kz, 19.900 Kz, tecto de 500.000 Kz) são um
+ponto de partida, não uma decisão fechada.** `plano` tem CRUD no backoffice; a lista só
+garante que uma instalação nova não fica sem planos.
+
+#### 5. O ecrã de Subscrição
+
+`/[alias]/dashboard/subscricao` (`domain_assinatura.*`): plano actual, consumo real contra
+os limites (as mesmas contagens que o backend usa para recusar, não uma estimativa),
+cobranças, e mudar de plano. `assinatura_repository` responde à pergunta que
+`domain_subscricao`/`domain_cobranca` — dois CRUD gerados sem ecrã — nunca responderam.
+
+- **Mudar de plano cancela a anterior e abre uma nova**, em vez de reescrever: a subscrição
+  antiga é o registo de que a empresa esteve naquele plano naquelas datas, e é a ela que as
+  cobranças emitidas estão ligadas. Reescrevê-la faria uma factura passada dizer que era de
+  outro plano.
+- `emitirCobrancaPendente` é idempotente — carregar duas vezes em "pagar" não pode gerar
+  duas dívidas.
+- `cobranca.referencia` existia e nunca era preenchida; passa a ser
+  (`SUB-<ALIAS>-<AAAAMM>-<4>`). É ela que torna a cobrança pagável por transferência
+  enquanto o gateway não estiver ligado.
+
+#### 6. Pagar deixou de ser obrigatório
+
+O passo de pagamento **saiu do carrossel** e os ficheiros foram apagados. Era um formulário
+de cartão que pedia número, validade e CVV, fazia `setTimeout(2000)` e marcava a conta como
+paga — não enviava nada a lado nenhum. O passo do plano cria a subscrição (gratuita ou em
+período livre) e não cobra; a cobrança vive em Subscrição.
+
+O passo da equipa também deixou de ser falso: usava um `useState` e prometia "Enviaremos
+convites por email". Agora chama `POST auth/register`, que já existia e que ninguém dali
+chamava.
+
+#### 7. ⚠️ BAI Paga: por ligar, e porquê
+
+O gateway escolhido foi o **BAI Paga**. **Não está integrado, e não podia estar**: a
+documentação técnica não é pública — o serviço exige conta domiciliada no BAI e BAI Directo,
+e as credenciais de comerciante e o manual de integração vêm do gestor comercial.
+
+Construir um cliente HTTP contra uma API adivinhada seria repetir exactamente o que este
+trabalho veio remover: um formulário de pagamento que não paga. O botão no ecrã de
+Subscrição está visível e **desactivado**, a dizer "por ligar", e a cobrança fica registada
+com referência para ser liquidada por transferência.
+
+Para ligar são precisos: credenciais de comerciante (merchant id / chave), o endpoint e o
+formato do pedido, e o URL de callback para a confirmação do pagamento.
+
+#### 8. Três try/catch que escondiam a nova excepção
+
+Mesma classe de bug de 7.4/7.17/7.21, e desta vez apanhada **por HTTP, não por leitura**:
+
+- `pos_controller.store` devolvia 500 "Erro interno do servidor" à `LimiteDoPlanoException`.
+  Verificado a correr contra o servidor: antes 500, agora 402 com "O plano Grátis permite 1
+  posto de atendimento, e a empresa já tem 1."
+- `auth_controller.register` fazia o mesmo com o limite de utilizadores.
+- `auth_repository.create` tinha um `catch (error)` que transformava **tudo** em
+  `Exception('Erro ao criar conta')`. Passa a reenviar as excepções de domínio tal e qual e
+  a reservar a mensagem genérica para o resto (falha de infra, erro de SQL).
+
+Mais 2 dos ~48 controllers migrados para o handler global.
+
+#### 9. Fixtures que não pareciam a realidade
+
+`createCaixa`/`createVenda` não preenchiam `empresa_id` — os repositórios reais preenchem
+(a partir do pos e da caixa). Nenhum teste dava por isso até o tecto de facturação, que
+filtra por `vendas.empresa_id`, não ver nenhuma venda dos testes e passar por não encontrar
+nada. Corrigido nas fixtures, com o porquê escrito lá.
+
+> Vale como lembrete geral: uma fixture que produz um estado que a produção nunca cria faz
+> testes passarem sobre uma realidade que não existe.
+
+#### 10. Também nesta passagem
+
+- **Não se desactiva o último PDV pelo ecrã.** A regra já existia no backend (7.21); o
+  ecrã de Postos engolia o 409 e mostrava "Erro ao desabilitar posto.". Agora mostra a
+  mensagem do servidor, e a opção desaparece quando é o único activo — oferecer uma acção
+  que se sabe que vai ser recusada é pior do que não a oferecer.
+- Moeda: `src/lib/moeda.ts`. O onboarding mostrava **euros** (`€49/mês`, `€0.00`) num
+  produto angolano.
+- Menu: "Subscrição" no painel do administrador.
+- `mensagens-erro.ts` ganhou o 402.
+
+- Suite: **745 testes** (eram 707). `tsc --noEmit` limpo nos dois projectos, `next build`
+  a passar. Migrações 800 e 801 corridas em dev; `node ace planos:semear` corrido;
+  permissões `domain_assinatura.*` concedidas nos modelos e com `--todas-empresas`.
+  Verificado por HTTP: escolher plano, o 402 do limite de postos com a mensagem certa, e o
+  catálogo de planos.

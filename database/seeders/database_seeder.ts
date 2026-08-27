@@ -263,6 +263,20 @@ export default class extends BaseSeeder {
       { nome: 'domain_pos.destroy', descricao: 'Remover/Recuperar pos' },
       { nome: 'domain_pos.meu', descricao: 'Listar os meus pos' },
 
+      // ==================== ASSINATURA ====================
+      // A subscrição vista pela própria empresa (plano, consumo, cobranças).
+      { nome: 'domain_assinatura.estado', descricao: 'Ver o plano e o consumo da empresa' },
+      { nome: 'domain_assinatura.planos', descricao: 'Listar os planos disponíveis' },
+      { nome: 'domain_assinatura.escolher', descricao: 'Escolher ou mudar de plano' },
+      { nome: 'domain_assinatura.cobranca', descricao: 'Emitir/consultar a cobrança em aberto' },
+
+      // ==================== ONBOARDING ====================
+      // Configuração inicial da empresa (ramo de actuação + catálogo de arranque).
+      { nome: 'domain_onboarding.estado', descricao: 'Ver o estado da configuração inicial' },
+      { nome: 'domain_onboarding.ramos', descricao: 'Listar os ramos de actuação disponíveis' },
+      { nome: 'domain_onboarding.ramo', descricao: 'Escolher o ramo e semear o catálogo inicial' },
+      { nome: 'domain_onboarding.concluir', descricao: 'Concluir a configuração inicial' },
+
       // User-Pos (associar utilizadores a pontos de venda)
       { nome: 'domain_user_pos.index', descricao: 'Listar associações user-pos' },
       { nome: 'domain_user_pos.show', descricao: 'Ver associação user-pos' },
@@ -808,6 +822,18 @@ export default class extends BaseSeeder {
       'domain_pos.update',
       'domain_pos.destroy',
       'domain_pos.meu',
+
+      // onboarding (configuração inicial da empresa)
+      'domain_onboarding.estado',
+      'domain_onboarding.ramos',
+      'domain_onboarding.ramo',
+      'domain_onboarding.concluir',
+
+      // assinatura (plano, consumo e pagamento da subscrição)
+      'domain_assinatura.estado',
+      'domain_assinatura.planos',
+      'domain_assinatura.escolher',
+      'domain_assinatura.cobranca',
 
       // user-pos
       'domain_user_pos.index',
@@ -1383,6 +1409,14 @@ export default class extends BaseSeeder {
       'domain_pos.update',
       'domain_pos.destroy',
       'domain_pos.meu',
+
+      // onboarding (só leitura — a configuração inicial é do Admin)
+      'domain_onboarding.estado',
+      'domain_onboarding.ramos',
+
+      // assinatura (só leitura — mudar de plano e pagar é do dono da empresa)
+      'domain_assinatura.estado',
+      'domain_assinatura.planos',
 
       // lote
       'domain_lote_produto.index',

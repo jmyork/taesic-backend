@@ -48,5 +48,17 @@ test.group('empresaRepository.CreateEmpresaUserDetalhes — operação real de r
 
     const papeis = await db.from('user_papel').where('user_id', resultado.user.id)
     assert.lengthOf(papeis, 1, 'o papel Admin devia ter sido atribuído ao novo utilizador')
+
+    // A empresa nasce com um posto de atendimento. Sem ele não abre caixa, não vende e
+    // não recebe stock — e um Vendedor fica preso no ecrã de escolher PDV a olhar para
+    // uma lista vazia. Ver `app/helpers/posto_padrao.ts`.
+    //
+    // Verificado aqui, sobre a operação REAL de registo, e não só sobre o helper: o que
+    // interessa é que a chamada está dentro da transacção do registo, e isso nenhum
+    // teste ao helper prova.
+    const postos = await db.from('pos').where('empresa_id', resultado.empresa.id)
+    assert.lengthOf(postos, 1, 'o registo devia ter criado o primeiro posto de atendimento')
+    assert.equal(postos[0].nome, 'Sede')
+    assert.equal(postos[0].email, resultado.user.email)
   }).timeout(60000)
 })
