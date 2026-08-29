@@ -2706,3 +2706,244 @@ nada. Corrigido nas fixtures, com o porquê escrito lá.
   permissões `domain_assinatura.*` concedidas nos modelos e com `--todas-empresas`.
   Verificado por HTTP: escolher plano, o 402 do limite de postos com a mensagem certa, e o
   catálogo de planos.
+
+### 7.23 Onde os planos nascem, e documentos que diziam a empresa errada
+
+Cinco relatos do dono do produto, na mesma passagem. Três deles são a mesma classe de
+defeito: **um valor escrito à mão onde devia estar o valor de quem está autenticado.**
+
+#### 1. O seeder deixava a tabela `plano` vazia
+
+`database/seeders/database_seeder.ts` criava utilizadores, papéis e 331 permissões — e
+zero planos. Uma instalação semeada de raiz ficava assim:
+
+- o passo dos planos no onboarding aparecia sem nenhum plano para escolher;
+- `garantirSubscricao()` (chamado no fim do onboarding) não encontrava plano de arranque
+  e **devolve `null` em silêncio**, de propósito, para uma plataforma mal configurada não
+  prender ninguém no onboarding;
+- a empresa saía configurada e **sem subscrição** — logo, sem plano;
+- e "sem plano, sem limite" (7.22) faz o resto: acesso ilimitado, sem nada a dizê-lo.
+
+Passa a chamar `semearPlanosPadrao()`, e **em primeiro lugar**, antes dos utilizadores.
+É idempotente por `slug` e nunca sobrepõe o que já existe — um preço afinado no backoffice
+não é revertido por uma corrida do seeder. `node ace planos:semear` continua a ser o
+caminho para uma base que já tem dados, porque este seeder não é idempotente
+(`Users.createMany` rebenta com emails repetidos).
+
+Verificado numa base descartável (`migration:run` + `db:seed` de raiz): os três planos
+ficam gravados com os limites e com `funcionalidades` a ler de volta como lista.
+
+> **Achado em dev, e é o sintoma inteiro numa linha:** a base de desenvolvimento tinha
+> exactamente DOIS planos — "Plano Base" (15.000 Kz) e "Plano Pro Max" (25.000 Kz), ambos
+> criados pelo backoffice, ambos **sem slug e sem um único limite**. Sem `slug='gratuito'`,
+> `planoDeArranque()` cai no mais barato activo: toda a empresa que concluísse o onboarding
+> ficava no "Plano Base" — a pagar 15.000 Kz no papel e sem limite nenhum na prática.
+
+#### 2. O backoffice não tinha onde registar um plano a sério
+
+O ecrã `/painel/planos` existia (CRUD completo). O que não existia eram os campos que
+fazem um plano ser diferente de outro: os `limite_*` de 7.22 não estavam no model do
+`taesic-backoffice-api`, nem no validador, nem no formulário. **Todos os planos criados
+por ali nasciam com os limites a NULL, e NULL é ilimitado.**
+
+O detalhe está documentado do lado onde vive (`taesic-backoffice-api/CLAUDE.md` §8.3). O
+que interessa reter aqui, porque é uma regra deste projecto:
+
+> **Uma coluna nova numa tabela partilhada não chega ao outro projecto sozinha.** O
+> `colunas_fantasma.spec.ts` corre dos dois lados e apanha uma coluna *declarada e
+> inexistente*. O caso simétrico — a coluna existe e o model do outro projecto ignora-a —
+> é invisível para ele, e é este. Ao acrescentar colunas a uma tabela que o backoffice
+> escreve (`plano`, `taxa_iva`, `empresa`, `papel`), a migração é aqui **e o model é nos
+> dois sítios**.
+
+#### 3. A proforma saía com os dados de OUTRA empresa
+
+Relato: *"a factura proforma [sai errada] tão logo quando é feita a proforma"* — e a
+palavra que resolve o caso é "tão logo". Há duas páginas de proforma:
+
+| ecrã | quando | estado |
+|---|---|---|
+| `faturas-proforma/[id]` | aberta mais tarde, pela lista | correcta |
+| `faturas-proforma/preview` | **logo a seguir a gerar** | errada |
+
+A preview desenhava o emitente a partir de `EMPRESA_POR_OMISSAO` — "Taesic, Lda.", NIF
+"(NIF por configurar)", "Luanda, Angola", "+244 900 000 000". Nunca chamava
+`sincronizarEmpresaSessao()`, apesar de importar o helper. E o PDF descarregado no mesmo
+ecrã saía **certo**, porque o gerador vai à sessão por conta própria: o que se via e o que
+se guardava eram documentos com emitentes diferentes.
+
+Mais três defeitos encontrados no mesmo sítio, e dois deles nas DUAS páginas:
+
+- **`const EMPRESA_SESSAO = getEmpresaSessao()` ao nível do módulo.** Avaliado uma vez, na
+  primeira importação. Se nessa altura o storage não tivesse a empresa, ficava `{}` para
+  sempre — e é dele que saía o cálculo do IVA. A página `[id]` já tinha sido corrigida no
+  cabeçalho e continuava a calcular o imposto sobre esta constante.
+- **A linha de IVA aparecia sempre.** `liquidaIva()` era chamado (`MOSTRA_IVA`) e o
+  resultado **nunca era usado** — nos dois ficheiros, e também no ecrã de pagamento do
+  PDV. Uma empresa fora do regime via "IVA 0,00 Kz", que não é a mesma coisa que não
+  liquidar imposto.
+- **`"IVA (14%)"` escrito à mão no PDF da proforma**, com a taxa fixa, enquanto o ecrã já
+  usava `rotuloIva()`. Papel e ecrã a discordar sobre imposto no mesmo documento.
+
+Agora as duas páginas passam a empresa ao gerador (`empresaSessao`), e o gerador prefere-a
+ao storage: **o ecrã e o ficheiro lêem a mesma coisa, por construção.**
+
+#### 4. Os botões de imprimir do pós-venda não faziam nada
+
+Relato: *"o botão para imprimir a factura não funciona no pós venda"*. **Duas causas
+independentes**, e qualquer uma sozinha bastava:
+
+1. **O carrinho era esvaziado antes do ecrã de sucesso existir.** A finalização fazia
+   `clearSales()` e o efeito `[sales]` punha `product` a vazio; `printReceipt` começa por
+   `if (safeProducts.length === 0) return` — um `return` mudo. Os dois botões do ecrã de
+   sucesso ("Imprimir" e "Baixar") ficavam sem nada para desenhar e não diziam porquê.
+   O carrinho passa a viver exactamente o tempo do ecrã de sucesso: limpo por "Nova
+   venda", por "Ver histórico", e por um efeito de desmontagem que cobre o menu lateral,
+   o botão de voltar e fechar o separador. Sem esse efeito, sair pelo menu depois de
+   vender deixava os produtos **já vendidos** no carrinho, prontos a ser vendidos outra
+   vez.
+2. **`window.open` na factura A4.** Exactamente o bug que `imprimirPdf()` (iframe
+   escondido) já resolvia no recibo térmico: entre o clique e o `window.open` corre um
+   `await`, e nessa altura o browser deixa de tratar a abertura como resultado do clique —
+   o bloqueador de pop-ups cancela-a **sem erro nenhum**. O gerador A4 vive noutro
+   ficheiro e ficou para trás quando o térmico foi corrigido. `imprimirPdf` passou a ser
+   exportada e é usada pelos dois; uma segunda cópia seria a forma segura de a próxima
+   correcção ficar só num dos lados.
+
+E o `return` mudo passou a mensagem: um botão que não faz nada e também não explica é
+indistinguível de um botão avariado.
+
+#### 5. Terminar uma venda descarregava a factura
+
+`await printReceipt(vendaId)` na finalização, sem modo — e o modo por omissão é
+`"download"`. **Toda a venda terminada deixava um PDF na pasta de transferências**, sem
+ninguém o pedir. Retirado: o ecrã de sucesso já tem "Imprimir" e "Baixar", e agora
+funcionam.
+
+#### 6. As duas vias
+
+`faturas-recibos/[id]` já imprimia ORIGINAL e DUPLICADO (em HTML, dois `.via`). O
+pós-venda — que é o que se imprime todos os dias — saía com um exemplar só.
+
+`generateProfessionalPDF` e `generateA4` ganharam um parâmetro `vias`, e o desenho de cada
+exemplar passou a viver numa função (`desenharVia`) chamada uma vez por via, com
+`doc.addPage()` entre elas. O rótulo vai no topo, junto ao título: quem separa a folha do
+cliente da que fica no arquivo lê o topo, não o rodapé.
+
+- **Imprimir leva as duas vias; descarregar leva uma, sem rótulo.** Quem guarda um ficheiro
+  não quer a cópia de arquivo lá dentro, e é a mesma regra que o detalhe da factura já
+  seguia ("segunda via, só no papel").
+- No térmico, `pageHeight` cresce 6mm quando há rótulo — a altura da folha é calculada
+  antes de se desenhar e a linha nova não cabia no cálculo antigo.
+
+#### 7. Na mesma passagem
+
+- **A morada do CLIENTE na factura A4 era `"Luanda, Angola"`, escrita à mão**, igual em
+  todas as facturas de todas as empresas. Retirada e não corrigida: o carrinho não traz a
+  morada do cliente, e inventar a morada de um destinatário numa factura é pior do que
+  não a ter. Mesma decisão já tomada para o IBAN fixo que estava neste ficheiro.
+- `dialogo-de-formulario.tsx` (backoffice) ganhou `CampoDeTextoLongo` — a lista de
+  funcionalidades é uma entrada por linha e não cabe num `<input>`.
+
+#### 8. ⚠️ A CSP da aplicação bloqueava a impressão — e falhava em silêncio
+
+**Isto não estava no relato, e é provavelmente a causa mais funda de "imprimir não
+funciona".** Apareceu numa mensagem de consola apanhada pelo teste de browser novo:
+
+```
+Framing 'blob:http://localhost:3000/…' violates the following Content Security
+Policy directive: "default-src 'self'". The request has been blocked.
+```
+
+Imprimir um recibo é gerar o PDF com jsPDF e abri-lo num **iframe escondido** para chamar
+`print()` sobre ele (`imprimirPdf`). O iframe existe precisamente para não ser um pop-up.
+Só que `next.config.mjs` não declarava `frame-src`, portanto valia o `default-src 'self'`
+— e um `blob:` não é `'self'`. O browser recusava o embutido: **o PDF era gerado, o
+iframe entrava no DOM, o `onload` nunca disparava com conteúdo, e a caixa de impressão
+nunca abria.** Sem erro visível, sem toast, sem nada.
+
+Acrescentado `frame-src 'self' blob:`. Continua a não ser possível embutir conteúdo de
+outra origem, e `frame-ancestors 'none'` — quem nos pode embutir a NÓS — fica intocado.
+
+> Vale como regra: uma técnica que evita o bloqueador de pop-ups (iframe, worker, blob)
+> passa a depender da CSP. Quando o remédio muda de mecanismo, a política tem de saber.
+
+#### 9. Dois obstáculos no caminho, corrigidos para se poder verificar
+
+Nenhum dos dois foi relatado; ambos impediam **qualquer** verificação em browser.
+
+- **`node ace seed:qa-tenant` estava partido desde 7.13.** Criava a empresa com
+  `Empresa.create` directamente — logo, sem passar por `CreateEmpresaUserDetalhes` e sem
+  `clonarPapeisPadrao()` — e rebentava a seguir com «Não existe o papel "Admin" no âmbito
+  "empresa"», já depois de ter criado empresa e utilizador. Deixava um inquilino de QA a
+  meio, sem administrador. Além disso resolvia o papel com `Papel.findByOrFail('nome',
+  'Admin')`, que 7.13 avisa não identificar um papel: devolvia o MODELO, e a verificação
+  seguinte nunca encontrava a atribuição (que aponta para a cópia da empresa), pelo que o
+  comando reatribuía o papel em cada corrida. Corrigidas as duas coisas, e **acrescentado
+  o passo que faltava desde 7.21**: marcar o onboarding como concluído, pelo repositório
+  real (`OnboardingRepository.concluir`, que também garante a subscrição). Sem isso o
+  `ProtectedRoute` prende a sessão de QA em `/[alias]/onboarding` e todos os testes de
+  browser param no primeiro ecrã — o login passa e mais nada passa, que é o pior sintoma
+  possível porque parece um problema da página que se está a testar.
+- **A caixa do inquilino de QA não tinha `empresa_id`**, e isso produzia vendas que a
+  produção nunca produz. `vendas_repository.create()` copia o `empresa_id` da CAIXA para
+  a venda; sem ele segue por um ramo alternativo que grava a venda **sem `empresa_id` e
+  sem número sequencial**. O comando criava a caixa com `Caixa.create` directo, ao
+  contrário de `caixa_repository.open()`, que o preenche a partir do utilizador. As
+  facturas saíam como `FAT-4F7E3253` (um pedaço de UUID) em vez de `FAT-000001` — e, o
+  que é pior, **`faturacaoDoMes()` filtra por `vendas.empresa_id`**: o tecto de
+  facturação do plano nunca contaria uma única dessas vendas, e um teste do 402 do tecto
+  passaria por não encontrar nada em vez de por o limite funcionar. Corrigido, com
+  reparação da caixa que a versão anterior deixou. **A produção não é afectada** —
+  `open()` sempre preencheu o campo; era só o inquilino de teste que não se parecia com
+  ela. É a lição de 7.22 outra vez, e desta vez do lado do comando e não das fixtures.
+- **Os testes de browser tinham três cópias do login**, e o placeholder do campo da
+  empresa mudou (`empresa_1` → `minha-empresa`). `_login.mjs` existe exactamente para
+  isso não acontecer e nunca chegou a ser adoptado por `proforma.mjs`, `sessao.mjs` e
+  `smoke.mjs`. Resultado: falhavam num timeout de 90 s sem dizer que a causa era um
+  selector cosmético. `proforma.mjs` passou a usar o helper; os outros dois passaram a
+  procurar pelo NOME do campo (`input[name="company_alias"]`), que é contrato, e não pelo
+  placeholder, que é texto de interface.
+
+#### Verificado
+
+Ao contrário do que costuma acontecer com trabalho de frontend neste repositório, **isto
+foi verificado a correr, em browser real** — e os dois testes novos foram postos à prova
+contra o código ANTIGO antes de se acreditar neles.
+
+| suite | resultado |
+|---|---|
+| `taesic-backend` — `node ace test` | **745** (sem alteração: a mudança é o seeder) |
+| `taesic-backoffice-api` — `node ace test` | **193** (eram 181; +12 de `plano_limites.spec.ts`) |
+| `alaragest-webpage` — `npm run e2e:proforma` | **12/12** (eram 7; +5 sobre o emitente e o IVA) |
+| `alaragest-webpage` — `npm run e2e:pos-venda` | **13/13** (novo) |
+| `alaragest-webpage` — `npm run e2e:smoke` | 21/21 |
+| `tsc --noEmit` | limpo nos quatro projectos |
+| `next build` | passa nos dois frontends |
+
+**Os dois testes novos têm dentes, e está provado:**
+
+- Reposto o emitente de exemplo na pré-visualização da proforma → falham *"A
+  pré-visualização identifica a empresa autenticada — falta o nome «QA Audit Empresa»;
+  falta o NIF 5000000000; mostra o emitente de exemplo «Taesic, Lda.»"* e *"Sem regime de
+  IVA, o documento não tem linha de imposto"*.
+- Repostos o `clearSales()` e o `printReceipt` na finalização → falham 6 asserções, com o
+  relato do utilizador escrito nelas: *"descarregou recibo_FAT-….pdf"* e *"nenhum PDF foi
+  gerado — o botão não fez nada"*, nos dois formatos, mais o "Baixar".
+
+E, do lado dos dados: seeder corrido de raiz numa base descartável (três planos gravados
+com os limites); `node ace planos:semear` corrido em dev; `POST api/plano` verificado por
+HTTP com os limites e com as duas recusas (limite zero, slug repetido) em português.
+
+> ⚠️ **`e2e:pos-venda` FECHA UMA VENDA A SÉRIO** no inquilino `qa-audit` — consome stock
+> e escreve na caixa. É para isso que o inquilino de QA existe, e é a razão de não correr
+> contra a empresa de ninguém. Não apontar estes testes a dados reais.
+
+> ⚠️ **`npm run e2e:sessao` tem 2 falhas pré-existentes**, e são do TESTE, não do produto:
+> ainda exige que o token de sessão esteja no `localStorage`/`sessionStorage`, e o token
+> saiu do browser para um cookie httpOnly. Não foi tocado — corrigi-lo é decidir qual é
+> hoje o contrato da sessão, e isso não é uma decisão de arrumação.
+
+> ⚠️ **`taesic-backoffice` não tem testes de browser** (só `e2e/bff-tunel.mjs`, que é uma
+> regressão do proxy e não abre browser nenhum). O ecrã de planos foi verificado por
+> `tsc`, por `next build` e pela API por baixo dele — não por execução da página.

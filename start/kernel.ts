@@ -41,6 +41,10 @@ router.use([
   () => import('@adonisjs/shield/shield_middleware'),
   () => import('@adonisjs/auth/initialize_auth_middleware'),
   () => import('#middleware/initialize_bouncer_middleware'),
+  // Depois da auth, de propósito: é dela que sai o actor da linha de auditoria.
+  // Registado aqui e não por rota para que uma rota nova nasça auditada — ver o
+  // comentário no próprio ficheiro.
+  () => import('#middleware/activity_log_middleware'),
 ])
 
 /**

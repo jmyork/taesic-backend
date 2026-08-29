@@ -2,6 +2,7 @@ import app from '@adonisjs/core/services/app'
 import { HttpContext, ExceptionHandler } from '@adonisjs/core/http'
 import { Exception } from '@adonisjs/core/exceptions'
 import { frontendBaseUrl } from '../helpers/Utils.js'
+import { registarActividade } from '../helpers/activity_logger.js'
 
 export default class HttpExceptionHandler extends ExceptionHandler {
   /**
@@ -105,12 +106,46 @@ export default class HttpExceptionHandler extends ExceptionHandler {
   }
 
   /**
-   * The method is used to report error to the logging service or
-   * the a third party error monitoring service.
+   * Erros e excepções não tratadas ficam registados em `activity_logs`, com
+   * `action: 'error'`.
    *
-   * @note You should not attempt to send a response from this method.
+   * ── Só o que NÃO era esperado ────────────────────────────────────────────────
+   *
+   * As excepções de domínio (`CaixaAlreadyOpen`, `LimiteDoPlano`, `E_ROW_NOT_FOUND`,
+   * os erros de validação do VineJS) são o funcionamento normal do sistema a dizer
+   * "não pode" — não são avarias. Registá-las aqui encheria a tabela de ruído e
+   * enterraria os 500 a sério, que são precisamente o que se procura quando se vem
+   * aqui à procura de alguma coisa. A tentativa recusada continua registada pelo
+   * `activity_log_middleware`, com o seu código de estado.
+   *
+   * O que fica é o resto: o `TypeError`, o erro de SQL, o que ninguém previu.
+   *
+   * ── Porquê aqui e não num try/catch ─────────────────────────────────────────
+   *
+   * `report()` é chamado pelo AdonisJS para TODA a excepção que chegue ao topo,
+   * independentemente do caminho que a produziu. É o único sítio onde a cobertura
+   * não depende de alguém se ter lembrado.
+   *
+   * O `stack` vai no `description` porque é ele que responde à pergunta que se faz
+   * três dias depois — "onde é que isto rebentou?" — e sem ele a linha diz que houve
+   * um erro sem dizer onde. É cortado à largura da coluna pelo serviço.
    */
   async report(error: unknown, ctx: HttpContext) {
+    const erro = error as { status?: number; code?: string; messages?: unknown; stack?: string; message?: string }
+    const ehDeNegocio = erro instanceof Exception || Boolean(erro?.messages)
+
+    if (!ehDeNegocio) {
+      registarActividade(
+        {
+          action: 'error',
+          subject_type: 'excepcao',
+          status_code: erro?.status ?? 500,
+          description: [erro?.code, erro?.message, erro?.stack].filter(Boolean).join(' :: '),
+        },
+        ctx
+      )
+    }
+
     return super.report(error, ctx)
   }
 }

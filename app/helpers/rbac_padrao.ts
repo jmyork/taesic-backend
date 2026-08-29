@@ -256,6 +256,7 @@ export const PERMISSOES_PADRAO: PermissaoPadrao[] = [
   { nome: 'domain_onboarding.ramo', descricao: 'Escolher o ramo e semear o catálogo inicial' },
   { nome: 'domain_onboarding.concluir', descricao: 'Concluir a configuração inicial' },
 
+
   // User-Pos (associar utilizadores a pontos de venda)
   { nome: 'domain_user_pos.index', descricao: 'Listar associações user-pos' },
   { nome: 'domain_user_pos.show', descricao: 'Ver associação user-pos' },

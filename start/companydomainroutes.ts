@@ -300,6 +300,7 @@ router
         router.post('onboarding/ramo', [controllers.Onboarding, 'aplicarRamos']).as('domain_onboarding.ramo')
         router.post('onboarding/concluir', [controllers.Onboarding, 'concluir']).as('domain_onboarding.concluir')
 
+
         // auth
         router.post('auth/register', [controllers.Auth, 'register']).as('domain_auth.register') //(v)
         router.get('auth/list', [controllers.Auth, 'index']).as('domain_auth.list') //(v)

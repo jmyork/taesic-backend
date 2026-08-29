@@ -13,6 +13,11 @@ import Vendas from '#models/faturacao/vendas'
 import VendaItens from '#models/faturacao/venda_itens'
 import Cliente from '#models/cliente'
 import { giveRoleToUser } from '../app/helpers/Utils.js'
+import { clonarPapeisPadrao } from '../app/helpers/papeis_da_empresa.js'
+import OnboardingRepository from '#repositories/onboarding_repository'
+import db from '@adonisjs/lucid/services/db'
+import { proximoNumeroPorEmpresa } from '../app/helpers/sequencial_numero.js'
+import { ESCOPO_PAPEL } from '#models/auth/papel'
 import { semearMetodosPagamento } from '../app/helpers/metodos_pagamento_padrao.js'
 
 const COMPANY_ALIAS = 'qa-audit'
@@ -44,6 +49,22 @@ export default class SeedQaTenant extends BaseCommand {
       this.logger.info(`Empresa já existe: ${COMPANY_ALIAS}`)
     }
 
+    /**
+     * Os papéis DESTA empresa.
+     *
+     * Sem isto o comando estava partido desde que os papéis passaram a pertencer a uma
+     * empresa (CLAUDE.md 7.13): a empresa era criada com `Empresa.create` directamente,
+     * que não passa por `CreateEmpresaUserDetalhes` e portanto nunca clonava nada. O
+     * `giveRoleToUser` mais abaixo rebentava com «Não existe o papel "Admin" no âmbito
+     * "empresa"», já depois de ter criado a empresa e o utilizador — deixava um inquilino
+     * de QA a meio, sem administrador, e nenhum dos testes de browser podia correr.
+     *
+     * `clonarPapeisPadrao` é idempotente (compara por nome), portanto corre sempre: assim
+     * também repara um inquilino que tenha ficado nesse estado.
+     */
+    const clonados = await clonarPapeisPadrao(empresa.id)
+    if (clonados > 0) this.logger.success(`Papéis da empresa clonados: ${clonados}`)
+
     let user = await User.findBy('email', UID)
     if (!user) {
       user = await User.create({
@@ -74,10 +95,21 @@ export default class SeedQaTenant extends BaseCommand {
       this.logger.success('Verification token criado (conta ativada)')
     }
 
-    const adminPapel = await Papel.findByOrFail('nome', 'Admin')
+    // Pelo par (empresa, nome), nunca só pelo nome: desde 7.13 há um "Admin" por
+    // empresa mais o MODELO com o mesmo nome, e `findByOrFail('nome', 'Admin')`
+    // devolveria qualquer um deles. Devolvendo o modelo, a verificação seguinte nunca
+    // encontrava a atribuição (que aponta para a cópia) e o comando tentava atribuir o
+    // papel outra vez em cada corrida.
+    const adminPapel = await Papel.query()
+      .where('nome', 'Admin')
+      .where('empresa_id', empresa.id)
+      .where('escopo', ESCOPO_PAPEL.empresa)
+      .whereNull('deleted_at')
+      .firstOrFail()
     const hasAdminRole = await UserPapel.query()
       .where('user_id', user.id)
       .where('papel_id', adminPapel.id)
+      .whereNull('deleted_at')
       .first()
     if (!hasAdminRole) {
       await giveRoleToUser(user, 'Admin')
@@ -87,6 +119,26 @@ export default class SeedQaTenant extends BaseCommand {
     }
 
     await this.semearDadosOperacionais(empresa, user)
+
+    /**
+     * O onboarding tem de estar CONCLUÍDO.
+     *
+     * Desde que passou a ser obrigatório (CLAUDE.md 7.21), o `ProtectedRoute` prende
+     * qualquer sessão de uma empresa por configurar em `/[alias]/onboarding`. Um
+     * inquilino de QA nesse estado faz todos os testes de browser pararem no primeiro
+     * ecrã — o login passa e mais nada passa, o que é o pior sintoma possível porque
+     * parece um problema da página que se está a testar.
+     *
+     * Pelo repositório real e não escrevendo a coluna à mão: é o mesmo caminho que uma
+     * empresa a sério percorre, portanto ganha também a subscrição no plano de arranque
+     * (`garantirSubscricao`) e o posto em falta, se houver. É idempotente.
+     */
+    if (!empresa.onboardingConcluido) {
+      await new OnboardingRepository().concluir({ company_alias: COMPANY_ALIAS })
+      this.logger.success('Onboarding marcado como concluído')
+    } else {
+      this.logger.info('Onboarding já estava concluído')
+    }
 
     this.logger.success('Pronto. Credenciais de login para testes automatizados:')
     console.log({ company_alias: COMPANY_ALIAS, uid: UID, password: PASSWORD })
@@ -124,22 +176,59 @@ export default class SeedQaTenant extends BaseCommand {
     // 'Aberto' | 'Fechado'). Em minúsculas passava por acaso, graças à collation
     // insensível do MySQL, mas o TypeScript apanha-o — e um deploy com collation
     // sensível a maiúsculas deixaria de encontrar a caixa.
+    /**
+     * A caixa TEM de ter `empresa_id`, e não é um detalhe de arrumação.
+     *
+     * `vendas_repository.create()` copia o `empresa_id` da CAIXA para a venda, e sem ele
+     * segue por um ramo alternativo que grava a venda sem `empresa_id` **e sem número
+     * sequencial**. Esta caixa era criada com `Caixa.create` directamente, sem esse campo
+     * — ao contrário de `caixa_repository.open()`, que o preenche a partir do utilizador.
+     *
+     * O resultado: o inquilino de QA produzia vendas que a produção nunca produz. As
+     * facturas saíam identificadas por um pedaço de UUID em vez de "FAT-000001", e —
+     * o que é pior — `faturacaoDoMes()` filtra por `vendas.empresa_id`, portanto o tecto
+     * de facturação do plano nunca contaria nenhuma delas. Um teste do 402 do tecto
+     * passaria por não encontrar vendas, e não por o limite funcionar.
+     *
+     * É a mesma lição de CLAUDE.md 7.22: uma fixture que produz um estado que a produção
+     * nunca cria faz testes passarem sobre uma realidade que não existe.
+     */
     let caixa = await Caixa.query()
       .where('pos_id', pos.id)
       .where('status', 'Aberto')
       .whereNull('deleted_at')
       .first()
     if (!caixa) {
-      caixa = await Caixa.create({
-        user_id: user.id,
-        pos_id: pos.id,
-        valor_inicial: 0,
-        total_vendas: 0,
-        total_caixa: 0,
-        status: 'Aberto',
-        observacoes: 'Caixa de testes automatizados',
+      caixa = await db.transaction(async (trx) => {
+        const numero = await proximoNumeroPorEmpresa(trx, empresa.id, Caixa)
+        return Caixa.create(
+          {
+            user_id: user.id,
+            pos_id: pos.id,
+            empresa_id: empresa.id,
+            numero,
+            valor_inicial: 0,
+            total_vendas: 0,
+            total_caixa: 0,
+            status: 'Aberto',
+            observacoes: 'Caixa de testes automatizados',
+          },
+          { client: trx }
+        )
       })
       this.logger.success('Caixa aberta criada')
+    } else if (!caixa.empresa_id) {
+      // Repara uma caixa deixada pela versão anterior deste comando. Sem isto, uma
+      // máquina que já tenha corrido o comando continuaria a produzir vendas órfãs.
+      await db.transaction(async (trx) => {
+        caixa!.useTransaction(trx)
+        caixa!.empresa_id = empresa.id
+        if (!caixa!.numero) {
+          caixa!.numero = await proximoNumeroPorEmpresa(trx, empresa.id, Caixa)
+        }
+        await caixa!.save()
+      })
+      this.logger.success('Caixa existente ligada à empresa (estava sem empresa_id)')
     }
 
     // Dois produtos com lote e stock, para o catálogo e o PDV terem o que mostrar.
