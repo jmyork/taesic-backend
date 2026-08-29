@@ -1,5 +1,5 @@
 import { DateTime } from 'luxon'
-import { BaseModel, column, beforeCreate } from '@adonisjs/lucid/orm'
+import { BaseModel, column, beforeCreate, computed } from '@adonisjs/lucid/orm'
 import { randomUUID } from 'node:crypto'
 
 export default class plano extends BaseModel {
@@ -101,5 +101,62 @@ export default class plano extends BaseModel {
   /** Um plano sem preço é o plano gratuito. `preco` vem do MySQL como string (DECIMAL). */
   get eGratuito(): boolean {
     return Number(this.preco) === 0
+  }
+
+  /**
+   * As linhas do cartão que descrevem os LIMITES, derivadas dos próprios limites.
+   *
+   * ── Porque é que isto não é texto escrito à mão ────────────────────────────
+   *
+   * Era. As quatro primeiras entradas de `funcionalidades` diziam exactamente o mesmo
+   * que os quatro `limite_*`, noutro sítio e por outras palavras: "Até 2 utilizadores"
+   * ao lado de `limite_utilizadores: 2`. Enquanto ninguém mexia nos planos, ninguém
+   * dava por isso.
+   *
+   * O problema aparece no dia em que alguém mexe — que é agora, porque `plano` tem CRUD
+   * no backoffice. Mudar `limite_utilizadores` de 2 para 5 fazia o backend passar a
+   * aceitar 5 e o cartão continuar a prometer 2. O ecrã que vende o plano passava a
+   * mentir sobre o plano, e o único aviso era alguém reparar.
+   *
+   * Derivar tira a escolha de quem edita: o número é a única fonte, e a frase segue-o.
+   *
+   * `funcionalidades` continua a existir e continua editável — é onde vivem as linhas
+   * que NÃO são limites ("Ponto de venda e controlo de stock", "Gestão de promotores e
+   * cupões"). O cartão mostra estas primeiro e essas a seguir.
+   *
+   * `@computed` para sair no JSON sem nenhum endpoint ter de se lembrar: os planos são
+   * servidos ao onboarding, ao ecrã de Subscrição e ao backoffice, e uma lista montada
+   * em cada um deles voltaria a poder divergir.
+   */
+  @computed()
+  get limites_descritos(): string[] {
+    // `0` é tratado como ilimitado em todo o lado (ver `limites_do_plano.ts`): um plano
+    // mal preenchido não pode trancar a empresa de um cliente, e a frase tem de dizer o
+    // mesmo que o backend faz.
+    const semLimite = (v: number | null) => v === null || v === undefined || Number(v) <= 0
+
+    // "2.000", "500.000" — como o resto do produto escreve valores.
+    //
+    // À mão e não com `toLocaleString('pt-PT')`: essa não agrupa números de 4 dígitos
+    // (dava "2000" ao lado de "500.000") e depende do ICU com que o Node foi compilado,
+    // o que faria a mesma frase sair diferente conforme o servidor.
+    const numero = (v: number) => String(Math.trunc(Number(v))).replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+
+    const contagem = (v: number | null, singular: string, plural: string, semLimiteTexto: string) =>
+      semLimite(v) ? semLimiteTexto : Number(v) === 1 ? `1 ${singular}` : `Até ${numero(Number(v))} ${plural}`
+
+    return [
+      contagem(this.limite_utilizadores, 'utilizador', 'utilizadores', 'Utilizadores sem limite'),
+      contagem(
+        this.limite_postos,
+        'posto de atendimento',
+        'postos de atendimento',
+        'Postos de atendimento sem limite'
+      ),
+      contagem(this.limite_produtos, 'produto', 'produtos', 'Produtos sem limite'),
+      semLimite(this.limite_faturacao_mensal)
+        ? 'Facturação sem tecto'
+        : `Facturação até ${numero(Number(this.limite_faturacao_mensal))} ${this.moeda} por mês`,
+    ]
   }
 }
