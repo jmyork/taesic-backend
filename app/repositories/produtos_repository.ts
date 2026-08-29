@@ -71,15 +71,19 @@ export default class produtosRepository {
   async create(data: CreateprodutosDTO) {
     const empresa = await Empresa.findByOrFail('company_alias', data.company_alias)
 
-    // O plano manda em quantos produtos a empresa pode ter no catálogo.
-    await assertPodeCriarProduto(empresa.id)
-
     const { empresa_id, company_alias, user_id, preco_venda, preco_compra, ...produtoData } = data
     // Se for serviço, remove campos que não fazem sentido
 
     if (produtoData.is_service) {
       const { formato_id, fornecedor_id, marca_id, fabricante_id, ...servicoData } = produtoData
       const produto = await db.transaction(async (trx) => {
+        // O plano manda em quantos produtos a empresa pode ter no catálogo.
+        //
+        // A verificação corre DENTRO da transacção que insere, e recebe o `trx`: contar e
+        // depois inserir sem os dois estarem na mesma transacção deixava dois pedidos em
+        // paralelo passarem ambos pelo mesmo limite. Ver `limites_do_plano.ts`.
+        await assertPodeCriarProduto(empresa.id, trx)
+
         const numero = await proximoNumeroPorEmpresa(trx, empresa.id, produtos)
         return produtos.create(
           {
@@ -112,6 +116,13 @@ export default class produtosRepository {
     }
 
     return await db.transaction(async (trx) => {
+      // O plano manda em quantos produtos a empresa pode ter no catálogo.
+      //
+      // A verificação corre DENTRO da transacção que insere, e recebe o `trx`: contar e
+      // depois inserir sem os dois estarem na mesma transacção deixava dois pedidos em
+      // paralelo passarem ambos pelo mesmo limite. Ver `limites_do_plano.ts`.
+      await assertPodeCriarProduto(empresa.id, trx)
+
       const numero = await proximoNumeroPorEmpresa(trx, empresa.id, produtos)
       return produtos.create(
         {
@@ -185,14 +196,15 @@ export default class produtosRepository {
     // undefined, quebrando o isolamento por tenant deste produto.
     const empresa = await Empresa.findByOrFail('company_alias', data.produto.company_alias)
 
-    // Mesmo limite do `create()` simples — este é o outro caminho que cria produtos, e
-    // esquecê-lo deixava o limite contornável por quem usasse o formulário completo.
-    await assertPodeCriarProduto(empresa.id)
-
     const { company_alias, user_id, ...produtoData } = data.produto
 
     const trx = await db.transaction()
     try {
+      // Mesmo limite do `create()` simples — este é o outro caminho que cria produtos,
+      // e esquecê-lo deixava o limite contornável por quem usasse o formulário completo.
+      // Dentro da transacção, pela mesma razão de corrida explicada no `create()`.
+      await assertPodeCriarProduto(empresa.id, trx)
+
       const numero = await proximoNumeroPorEmpresa(trx, empresa.id, produtos)
       const produto = await produtos.create({ ...produtoData, empresa_id: empresa.id, numero }, { client: trx })
 

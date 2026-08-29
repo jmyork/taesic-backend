@@ -129,13 +129,6 @@ export default class authRepository {
         throw new Error(`Empresa com alias "${data.company_alias}" não encontrada`)
       }
 
-      // 1.5. O plano manda em quantos utilizadores a empresa pode ter.
-      //
-      // Antes da palavra-passe temporária e do envio de email, de propósito: recusar
-      // depois de a conta estar criada obrigaria a desfazer, e recusar depois de o email
-      // sair mandaria um convite para uma conta que não existe.
-      await assertPodeCriarUtilizador(empresa.id)
-
       // 2. Separar dados
       const { company_alias, papel, ...dataSemAlias } = data
 
@@ -144,11 +137,30 @@ export default class authRepository {
       // enviada, não é devolvida e ninguém a usa para entrar.
       const temporaryPassword = generateSecurePassword()
 
-      // 4. Criar usuário
-      const user = await User.create({
-        ...dataSemAlias,
-        empresa_id: empresa.id,
-        password: temporaryPassword,
+      // 4. O limite do plano e a criação da conta, indivisíveis.
+      //
+      // O limite é verificado antes do envio de email, de propósito: recusar depois de o
+      // email sair mandaria um convite para uma conta que não existe.
+      //
+      // E é verificado DENTRO da mesma transacção que insere, com o `trx`, porque
+      // contar e depois inserir em separado deixava dois convites simultâneos passarem
+      // ambos pelo mesmo limite — no plano Grátis (2 utilizadores) bastava convidar
+      // duas pessoas ao mesmo tempo. Ver `limites_do_plano.ts`.
+      //
+      // A transacção cobre só isto. O papel e o email ficam de fora porque já ficavam:
+      // envolvê-los agora mudaria o comportamento de um caminho que não é o que aqui
+      // se está a corrigir.
+      const user = await db.transaction(async (trx) => {
+        await assertPodeCriarUtilizador(empresa.id, trx)
+
+        return User.create(
+          {
+            ...dataSemAlias,
+            empresa_id: empresa.id,
+            password: temporaryPassword,
+          },
+          { client: trx }
+        )
       })
       // 5. Atribuir papel/role
       await giveRoleToUser(user, papel)

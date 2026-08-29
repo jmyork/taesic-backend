@@ -61,7 +61,8 @@ export default class OnboardingController {
       message: descreverSementeira(
         resultado.ramos.map((id) => ramoPorId(id)?.nome ?? id),
         resultado.categorias_criadas,
-        resultado.produtos_criados
+        resultado.produtos_criados,
+        resultado.produtos_omitidos
       ),
       status: 200,
     }
@@ -94,7 +95,8 @@ export default class OnboardingController {
 function descreverSementeira(
   nomesDosRamos: string[],
   categorias: number,
-  produtos: number
+  produtos: number,
+  omitidos: number
 ): string {
   const ramos = listarNomes(nomesDosRamos)
 
@@ -102,13 +104,21 @@ function descreverSementeira(
   if (categorias > 0) partes.push(`${categorias} categoria${categorias === 1 ? '' : 's'}`)
   if (produtos > 0) partes.push(`${produtos} produto${produtos === 1 ? '' : 's'} de exemplo`)
 
+  // Semear menos do que o ramo tem e não o dizer deixaria o dono a pensar que o
+  // catálogo do seu ramo é assim. O limite do plano é a única razão por que isto
+  // acontece — ver `semearRamosDeActuacao`.
+  const porLimite =
+    omitidos > 0
+      ? ` ${omitidos} produto${omitidos === 1 ? ' ficou' : 's ficaram'} de fora por o plano actual não ter espaço para mais — mude de plano para os receber.`
+      : ''
+
   if (partes.length === 0) {
-    return `${ramos} guardado${nomesDosRamos.length === 1 ? '' : 's'}. Não havia nada de novo a acrescentar ao catálogo.`
+    return `${ramos} guardado${nomesDosRamos.length === 1 ? '' : 's'}. Não havia nada de novo a acrescentar ao catálogo.${porLimite}`
   }
 
   return `${ramos} guardado${nomesDosRamos.length === 1 ? '' : 's'}. Foram criados ${partes.join(
     ' e '
-  )}. Defina o preço e o stock de cada produto antes de o vender.`
+  )}. Defina o preço e o stock de cada produto antes de o vender.${porLimite}`
 }
 
 /** "Farmácia", "Farmácia e Perfumaria", "Farmácia, Perfumaria e Padaria". */

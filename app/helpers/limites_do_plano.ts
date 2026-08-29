@@ -3,6 +3,7 @@ import db from '@adonisjs/lucid/services/db'
 import { DateTime } from 'luxon'
 import Plano from '#models/plano'
 import LimiteDoPlanoException from '#exceptions/limite_do_plano_exception'
+import { bloquearEmpresaParaSequencial } from './sequencial_numero.js'
 
 /**
  * Os limites do plano, impostos onde importa.
@@ -26,12 +27,28 @@ import LimiteDoPlanoException from '#exceptions/limite_do_plano_exception'
  * |---|---|
  * | utilizadores | `auth_repository.create()` — registar funcionário |
  * | postos | `pos_repository.create()` |
- * | produtos | `produtos_repository.create()` e `registrarProdutoAndDetalhes()` |
+ * | produtos | `produtos_repository.create()`, `registrarProdutoAndDetalhes()` e a sementeira do onboarding (`semearRamosDeActuacao`) |
  * | facturação mensal | `vendas_repository.close()` |
  *
  * No repositório e não no controller, pela mesma razão que a regra do último posto: um
  * limite que viva no controller é um limite que o próximo caminho não conhece — um
  * comando ace, um import em massa, outro repositório.
+ *
+ * ── Duas armadilhas que já morderam ────────────────────────────────────────────
+ *
+ * **A criação em MASSA passa ao lado dos `assert*`.** Estes respondem a "posso criar
+ * mais UM?". A sementeira do onboarding cria produtos às dezenas com um `createMany` e
+ * durante algum tempo não perguntava nada: a união dos catálogos dos ramos são 174
+ * produtos, o plano Grátis permite 150, e uma empresa que escolhesse ramos que
+ * chegassem saía do onboarding acima do limite — para descobrir depois que o produto
+ * seguinte era recusado, por um tecto que nunca soube ter ultrapassado. Para esses
+ * caminhos há `espacoParaProdutos()`, que devolve quanto cabe.
+ *
+ * **Contar e depois inserir é uma corrida.** Entre as duas coisas cabe outro pedido, e
+ * dois cliques no botão passavam ambos pelo mesmo limite. Todos os `assert*` aceitam
+ * uma transacção e, quando a recebem, bloqueiam a linha da empresa — quem chama a
+ * partir de um caminho de escrita TEM de a passar, senão a verificação continua a ser
+ * só um aviso amigável.
  */
 
 /** Nomes das colunas de contagem, para as mensagens saírem em português de negócio. */
@@ -172,22 +189,44 @@ export async function usoDoPlano(
   }
 }
 
-async function assertLimiteDeContagem(
-  recurso: Recurso,
-  tabela: 'user' | 'pos' | 'produtos',
-  empresaId: string,
-  trx?: TransactionClientContract
-): Promise<void> {
-  const plano = await planoDaEmpresa(empresaId, trx)
-  if (!plano) return // Regra 1: sem plano, sem limite.
-
-  const limite = normalizarLimite(
+/** O limite deste recurso para este plano. `null` = ilimitado. */
+function limiteDoRecurso(recurso: Recurso, plano: Plano): number | null {
+  return normalizarLimite(
     recurso === 'utilizadores'
       ? plano.limite_utilizadores
       : recurso === 'postos'
         ? plano.limite_postos
         : plano.limite_produtos
   )
+}
+
+async function assertLimiteDeContagem(
+  recurso: Recurso,
+  tabela: 'user' | 'pos' | 'produtos',
+  empresaId: string,
+  trx?: TransactionClientContract
+): Promise<void> {
+  // ── Porque é que a transacção importa aqui ──────────────────────────────────
+  //
+  // Isto é um "conta e depois insere", e entre as duas coisas cabe outro pedido.
+  // Com o plano Grátis (1 posto de atendimento), dois POST em paralelo liam ambos
+  // `usado = 0`, passavam ambos, e a empresa ficava com dois postos — um limite que
+  // se contorna carregando duas vezes no botão não é um limite.
+  //
+  // O lock é na linha da EMPRESA, a mesma que `proximoNumeroPorEmpresa` já bloqueia
+  // para calcular sequenciais. Reutilizar essa linha (em vez de inventar outro
+  // mutex) é o que garante que as duas coisas pedem sempre o mesmo recurso, na
+  // mesma ordem — e portanto não há aqui como criar um deadlock novo.
+  //
+  // Sem `trx` a verificação continua a funcionar e continua a ser útil (recusa o
+  // caso normal, sequencial); o que não dá é serializar. Quem chama a partir de um
+  // caminho de escrita deve passar a transacção.
+  if (trx) await bloquearEmpresaParaSequencial(trx, empresaId)
+
+  const plano = await planoDaEmpresa(empresaId, trx)
+  if (!plano) return // Regra 1: sem plano, sem limite.
+
+  const limite = limiteDoRecurso(recurso, plano)
   if (limite === null) return // Ilimitado.
 
   const usado = await contar(tabela, empresaId, trx)
@@ -210,6 +249,35 @@ export function assertPodeCriarPosto(empresaId: string, trx?: TransactionClientC
 
 export function assertPodeCriarProduto(empresaId: string, trx?: TransactionClientContract) {
   return assertLimiteDeContagem('produtos', 'produtos', empresaId, trx)
+}
+
+/**
+ * Quantos produtos ainda cabem no catálogo desta empresa. `null` = sem limite.
+ *
+ * Os `assert*` acima respondem a "posso criar MAIS UM?", que é a pergunta de quem
+ * cria um produto de cada vez. O onboarding cria-os às dezenas — a união dos
+ * catálogos dos ramos escolhidos vai até 174 produtos, e o plano Grátis permite 150.
+ * Perguntar "posso criar mais um?" 174 vezes seria 174 idas à base de dados, e
+ * recusar a 151ª com uma excepção partiria o passo do onboarding a meio.
+ *
+ * Daí uma pergunta diferente: quanto espaço há. Quem semeia corta a lista ao que
+ * cabe e diz quantos ficaram de fora — ver `semearRamosDeActuacao`.
+ *
+ * Devolve 0 quando já não cabe nada (nunca um número negativo, mesmo que a empresa
+ * esteja acima do limite por ter mudado de plano para um mais pequeno).
+ */
+export async function espacoParaProdutos(
+  empresaId: string,
+  trx?: TransactionClientContract
+): Promise<number | null> {
+  const plano = await planoDaEmpresa(empresaId, trx)
+  if (!plano) return null // Regra 1: sem plano, sem limite.
+
+  const limite = limiteDoRecurso('produtos', plano)
+  if (limite === null) return null
+
+  const usado = await contar('produtos', empresaId, trx)
+  return Math.max(0, limite - usado)
 }
 
 /**

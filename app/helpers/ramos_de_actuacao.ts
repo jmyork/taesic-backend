@@ -3,6 +3,7 @@ import produto_categorias from '#models/faturacao/produto_categorias'
 import produtos from '#models/faturacao/produtos'
 import categorias_produtos from '#models/faturacao/categorias_produtos'
 import { proximoNumeroPorEmpresa } from './sequencial_numero.js'
+import { espacoParaProdutos } from './limites_do_plano.js'
 
 /**
  * O catálogo de ramos de actuação do onboarding — e o que cada um semeia.
@@ -474,6 +475,14 @@ export function ramoPorId(id: string): RamoDeActuacao | undefined {
 export interface ResultadoDaSementeira {
   categorias_criadas: number
   produtos_criados: number
+  /**
+   * Produtos do catálogo dos ramos escolhidos que NÃO foram criados por não caberem
+   * no plano. Zero quando o plano é ilimitado ou quando coube tudo.
+   *
+   * Existe para que o ecrã possa dizê-lo. Semear menos do que o ramo tem e não o
+   * mencionar deixaria o dono a pensar que o catálogo do seu ramo é assim.
+   */
+  produtos_omitidos: number
 }
 
 /**
@@ -510,7 +519,7 @@ export async function semearRamosDeActuacao(
     return ramo
   })
 
-  const nadaFeito = { categorias_criadas: 0, produtos_criados: 0 }
+  const nadaFeito = { categorias_criadas: 0, produtos_criados: 0, produtos_omitidos: 0 }
 
   // União, preservando a ordem de escolha e sem repetir.
   const categoriasDesejadas: string[] = []
@@ -577,7 +586,32 @@ export async function semearRamosDeActuacao(
   )
 
   if (produtosEmFalta.length === 0) {
-    return { categorias_criadas: categoriasEmFalta.length, produtos_criados: 0 }
+    return { categorias_criadas: categoriasEmFalta.length, produtos_criados: 0, produtos_omitidos: 0 }
+  }
+
+  // ── O plano manda em quantos produtos cabem no catálogo ─────────────────────
+  //
+  // Este era o caminho por onde o limite se contornava sem ninguém dar por isso: a
+  // união dos catálogos dos 12 ramos são 174 produtos, e o plano Grátis permite 150.
+  // Uma empresa que escolhesse ramos que cheguem saía do onboarding com 174 produtos
+  // e um cartão de plano a prometer 150 — e a partir daí `assertPodeCriarProduto`
+  // recusava-lhe o 175.º, um limite que ela nunca soube que tinha ultrapassado.
+  //
+  // CORTA-SE a lista em vez de recusar o passo todo. Recusar seria coerente com o
+  // limite e péssimo para quem está a configurar a empresa: o passo existe para dar
+  // um catálogo de arranque, e rebentá-lo com um 402 a meio da configuração trava a
+  // empresa numa altura em que ela ainda nem sabe o que o plano dela dá. Quantos
+  // ficaram de fora vai no resultado, para o ecrã o poder dizer.
+  const espaco = await espacoParaProdutos(empresaId, trx)
+  const aCriar = espaco === null ? produtosEmFalta : produtosEmFalta.slice(0, espaco)
+  const omitidos = produtosEmFalta.length - aCriar.length
+
+  if (aCriar.length === 0) {
+    return {
+      categorias_criadas: categoriasEmFalta.length,
+      produtos_criados: 0,
+      produtos_omitidos: omitidos,
+    }
   }
 
   // Uma só chamada, e depois incrementa-se: `proximoNumeroPorEmpresa` bloqueia a linha da
@@ -586,7 +620,7 @@ export async function semearRamosDeActuacao(
   const primeiroNumero = await proximoNumeroPorEmpresa(trx, empresaId, produtos)
 
   const criados = await produtos.createMany(
-    produtosEmFalta.map((p, i) => ({
+    aCriar.map((p, i) => ({
       nome: p.nome,
       descricao: p.descricao,
       // Físico e disponível, sem lote: o dono define preço e stock antes de vender.
@@ -599,9 +633,13 @@ export async function semearRamosDeActuacao(
   )
 
   const ligacoes = criados
+    // `aCriar` e não `produtosEmFalta`: hoje um é o prefixo do outro e os índices
+    // batem certo, mas ler o índice de uma lista para indexar outra é o género de
+    // coisa que passa a atribuir a categoria errada no dia em que o corte deixar de
+    // ser um prefixo. `criados` sai de `aCriar`, e é de `aCriar` que se lê.
     .map((produto, i) => ({
       produto_id: produto.id,
-      produto_categoria_id: idPorCategoria.get(produtosEmFalta[i].categoria.trim().toLowerCase()),
+      produto_categoria_id: idPorCategoria.get(aCriar[i].categoria.trim().toLowerCase()),
     }))
     // Uma categoria em falta no catálogo do próprio ramo é erro de dados deste ficheiro,
     // não do utilizador: o produto fica sem categoria em vez de rebentar o passo todo.
@@ -613,5 +651,9 @@ export async function semearRamosDeActuacao(
     await categorias_produtos.createMany(ligacoes, { client: trx })
   }
 
-  return { categorias_criadas: categoriasEmFalta.length, produtos_criados: criados.length }
+  return {
+    categorias_criadas: categoriasEmFalta.length,
+    produtos_criados: criados.length,
+    produtos_omitidos: omitidos,
+  }
 }

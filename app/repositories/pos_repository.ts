@@ -4,6 +4,7 @@ import { CreateposDTO, PosQueryDTO, UpdateposDTO } from '#dtos/pos_dto'
 import Empresa from '#models/empresa'
 import UltimoPostoException from '#exceptions/ultimo_posto_exception'
 import { contarPostosActivos } from '../helpers/posto_padrao.js'
+import db from '@adonisjs/lucid/services/db'
 import { assertPodeCriarPosto } from '../helpers/limites_do_plano.js'
 
 export default class posRepository {
@@ -112,13 +113,20 @@ export default class posRepository {
 
   async create(data: CreateposDTO) {
     const empresa = await Empresa.findByOrFail('company_alias', data.company_alias)
+    const { empresa_id, company_alias, ...marcaData } = data
 
     // O plano manda em quantos postos a empresa pode ter. Aqui, e não no controller: um
     // limite que viva no controller é um limite que o próximo caminho não conhece.
-    await assertPodeCriarPosto(empresa.id)
-
-    const { empresa_id, company_alias, ...marcaData } = data
-    return pos.create({ ...marcaData, empresa_id: empresa.id })
+    //
+    // Dentro de uma transacção, e passando-lhe o `trx`, porque a verificação e a
+    // criação têm de ser indivisíveis: `assertPodeCriarPosto` conta e depois insere-se,
+    // e entre as duas coisas cabe outro pedido. Com o plano Grátis (1 posto), dois
+    // cliques no botão liam ambos "0 postos", passavam ambos, e a empresa ficava com
+    // dois. O lock é na linha da empresa — ver `limites_do_plano.ts`.
+    return db.transaction(async (trx) => {
+      await assertPodeCriarPosto(empresa.id, trx)
+      return pos.create({ ...marcaData, empresa_id: empresa.id }, { client: trx })
+    })
   }
 
   async update(id: string, data: UpdateposDTO, company_alias?: string) {

@@ -302,15 +302,21 @@ export default class vendasRepository {
       throw new VendaPagamentoIncompletoException(totalAPagar, totalPago)
     }
 
-    // O tecto de facturação do plano. ANTES da transacção, e portanto antes de qualquer
-    // movimento de stock: recusar a meio obrigaria a desfazer saídas de armazém já
-    // gravadas, e recusar depois de fechar deixaria o tecto sempre ultrapassado por uma
-    // venda — um tecto que se ultrapassa não é um tecto. Ver `limites_do_plano.ts`.
-    await assertPodeFacturar(pos.empresa_id, totalAPagar)
-
     // Todas as movimentações de stock e a atualização da venda correm na mesma transação:
     // se uma falhar a meio (ex.: stock insuficiente num item), nada fica gravado a metade.
     return db.transaction(async (trx) => {
+      // O tecto de facturação do plano. A PRIMEIRA coisa dentro da transacção, e
+      // portanto antes de qualquer movimento de stock: recusar a meio obrigaria a
+      // desfazer saídas de armazém já gravadas (e os alertas de stock já emitidos), e
+      // recusar depois de fechar deixaria o tecto sempre ultrapassado por uma venda —
+      // um tecto que se ultrapassa não é um tecto.
+      //
+      // DENTRO da transacção, e com o `trx`, e não antes dela: soma-se o já facturado e
+      // depois grava-se, e entre as duas coisas cabe outra venda. Duas caixas a fechar
+      // ao mesmo tempo passavam ambas pelo mesmo tecto. O lock é na linha da empresa —
+      // ver `limites_do_plano.ts`.
+      await assertPodeFacturar(pos.empresa_id, totalAPagar, trx)
+
       for (const item of VendaItens) {
         await estoqueRepo.create({
           pos_id: pos.id,
