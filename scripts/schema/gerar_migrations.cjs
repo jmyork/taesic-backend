@@ -209,23 +209,40 @@ async function main() {
   for (const t of ordem) {
     const pk = (I[t] || []).find((x) => x.INDEX_NAME === 'PRIMARY')
     const pkCols = pk ? pk.COLS.split(',') : []
+    const temCheck = (K[t] || []).length > 0
+    const temTrigger = (T[t] || []).length > 0
+    const importados = ['temTabela']
+    if (temCheck) importados.push('temRestricao')
+    if (temTrigger) importados.push('temGatilho')
+
     const L = []
     L.push(`import { BaseSchema } from '@adonisjs/lucid/schema'`)
+    L.push(``)
+    L.push(`import { ${importados.join(', ')} } from '../helpers/esquema.js'`)
     L.push(``)
     L.push(`export default class extends BaseSchema {`)
     L.push(`  protected tableName = ${aspas(t)}`)
     L.push(``)
+    L.push(`  /**`)
+    L.push(`   * Re-executável: cada passo pergunta antes de fazer. Ver`)
+    L.push(`   * \`database/helpers/esquema.ts\` para o porquê de isto não ser opcional — o MySQL`)
+    L.push(`   * não faz DDL transaccional, portanto uma migração que falhe a meio deixa o`)
+    L.push(`   * esquema meio alterado E por registar, e a corrida seguinte bate na mesma`)
+    L.push(`   * instrução para sempre.`)
+    L.push(`   */`)
     L.push(`  async up() {`)
-    L.push(`    this.schema.createTable(this.tableName, (table) => {`)
+    L.push(`    this.defer(async (db) => {`)
+    L.push(`      if (!(await temTabela(db, this.tableName))) {`)
+    L.push(`        await db.schema.createTable(this.tableName, (table) => {`)
 
     let primariaFeita = false
     for (const col of C[t] || []) {
       const { linha, jaEhPrimaria } = chamadaDeColuna(col, pkCols)
       if (jaEhPrimaria) primariaFeita = true
-      L.push(`      ${linha}`)
+      L.push(`          ${linha}`)
     }
     if (pkCols.length && !primariaFeita) {
-      L.push(`      table.primary([${pkCols.map(aspas).join(', ')}])`)
+      L.push(`          table.primary([${pkCols.map(aspas).join(', ')}])`)
     }
 
     // Índices com o NOME explícito. O knex derivaria um nome das colunas, e basta
@@ -238,45 +255,79 @@ async function main() {
       const cols = ix.COLS.split(',').map(aspas).join(', ')
       L.push(
         ix.NON_UNIQUE === 0
-          ? `      table.unique([${cols}], { indexName: ${aspas(ix.INDEX_NAME)} })`
-          : `      table.index([${cols}], ${aspas(ix.INDEX_NAME)})`
+          ? `          table.unique([${cols}], { indexName: ${aspas(ix.INDEX_NAME)} })`
+          : `          table.index([${cols}], ${aspas(ix.INDEX_NAME)})`
       )
     }
 
     for (const f of F[t] || []) {
       if (adiada(f)) continue
-      L.push(`      table`)
-      L.push(`        .foreign([${f.COLS.split(',').map(aspas).join(', ')}], ${aspas(f.CONSTRAINT_NAME)})`)
-      L.push(`        .references([${f.REF.split(',').map(aspas).join(', ')}])`)
-      L.push(`        .inTable(${aspas(f.REFERENCED_TABLE_NAME)})`)
-      L.push(`        .onDelete(${aspas(f.DELETE_RULE)})`)
-      L.push(`        .onUpdate(${aspas(f.UPDATE_RULE)})`)
+      L.push(`          table`)
+      L.push(`            .foreign([${f.COLS.split(',').map(aspas).join(', ')}], ${aspas(f.CONSTRAINT_NAME)})`)
+      L.push(`            .references([${f.REF.split(',').map(aspas).join(', ')}])`)
+      L.push(`            .inTable(${aspas(f.REFERENCED_TABLE_NAME)})`)
+      L.push(`            .onDelete(${aspas(f.DELETE_RULE)})`)
+      L.push(`            .onUpdate(${aspas(f.UPDATE_RULE)})`)
     }
-    L.push(`    })`)
+    L.push(`        })`)
+    L.push(`      }`)
 
     // CHECK e TRIGGER não têm equivalente no construtor do Lucid — só SQL.
     const id = (nome) => `\\${crase}${nome}\\${crase}` // identificador citado, escapado para o template
     for (const k of K[t] || []) {
       const clausula = sqlParaTemplate(String(k.CHECK_CLAUSE).replace(/\\'/g, "'"))
       L.push(``)
-      L.push(`    this.schema.raw(`)
-      L.push(`      \`ALTER TABLE ${id(t)} ADD CONSTRAINT ${id(k.CONSTRAINT_NAME)} CHECK ${clausula}\``)
-      L.push(`    )`)
+      L.push(`      if (!(await temRestricao(db, this.tableName, ${aspas(k.CONSTRAINT_NAME)}))) {`)
+      L.push(`        await db.rawQuery(`)
+      L.push(`          \`ALTER TABLE ${id(t)} ADD CONSTRAINT ${id(k.CONSTRAINT_NAME)} CHECK ${clausula}\``)
+      L.push(`        )`)
+      L.push(`      }`)
     }
+
+    // ── Gatilhos: criados se faltarem, e a falha NÃO pára a migração ──────────
+    // Aprendido em `api-qua`: `CREATE TRIGGER` exige `SUPER` (ou
+    // `log_bin_trust_function_creators`) quando o binlog está ligado, e o utilizador
+    // da aplicação não o tem. Um `CREATE TRIGGER` que rebente aqui bloqueia esta
+    // migração e TODAS as seguintes, em todos os deploys — e a aplicação já preenche
+    // `chave_escopo` por si (`@beforeSave` em app/models/auth/papel.ts). Ver a
+    // secção 7.20.1 do CLAUDE.md.
     for (const g of T[t] || []) {
       const corpo = sqlParaTemplate(String(g.ACTION_STATEMENT).replace(/\s+/g, ' ').trim())
       L.push(``)
-      L.push(`    this.schema.raw(`)
+      L.push(`      if (!(await temGatilho(db, ${aspas(g.TRIGGER_NAME)}))) {`)
+      L.push(`        try {`)
+      L.push(`          await db.rawQuery(`)
       L.push(
-        `      \`CREATE TRIGGER ${id(g.TRIGGER_NAME)} ${g.ACTION_TIMING} ${g.EVENT_MANIPULATION} ON ${id(t)} FOR EACH ROW ${corpo}\``
+        `            \`CREATE TRIGGER ${id(g.TRIGGER_NAME)} ${g.ACTION_TIMING} ${g.EVENT_MANIPULATION} ON ${id(t)} FOR EACH ROW ${corpo}\``
       )
-      L.push(`    )`)
+      L.push(`          )`)
+      L.push(`        } catch (erro: any) {`)
+      L.push(`          console.warn(`)
+      // `\${` sai como `${` no ficheiro gerado — interpolação a sério. Com uma barra
+      // a mais saía escapado, e a migração imprimiria o texto do erro em vez do erro.
+      L.push(
+        `            \`[migração] não foi possível criar o gatilho ${g.TRIGGER_NAME}: \${erro?.sqlMessage ?? erro?.message}\\n\` +`
+      )
+      L.push(`              '  A aplicação preenche esta coluna por si, por isso NÃO impede o funcionamento.\\n' +`)
+      L.push(`              '  Fica sem cobertura quem escreva na tabela por fora (o taesic-backoffice-api,\\n' +`)
+      L.push(`              '  SQL à mão). Para corrigir, conforme o erro acima:\\n' +`)
+      L.push(`              '    · "SUPER privilege ... binary logging" (1419) -> log_bin_trust_function_creators = 1\\n' +`)
+      L.push(`              '    · "command denied ... TRIGGER" (1142) -> GRANT TRIGGER ao utilizador da BD.\\n' +`)
+      L.push(`              '  Depois, voltar a correr esta migração (é idempotente).'`)
+      L.push(`          )`)
+      L.push(`        }`)
+      L.push(`      }`)
     }
 
+    L.push(`    })`)
     L.push(`  }`)
     L.push(``)
     L.push(`  async down() {`)
-    L.push(`    this.schema.dropTable(this.tableName)`)
+    L.push(`    this.defer(async (db) => {`)
+    L.push(`      if (await temTabela(db, this.tableName)) {`)
+    L.push(`        await db.schema.dropTable(this.tableName)`)
+    L.push(`      }`)
+    L.push(`    })`)
     L.push(`  }`)
     L.push(`}`)
     L.push(``)
@@ -291,6 +342,8 @@ async function main() {
   if (ARESTAS_ADIADAS.length) {
     const L = []
     L.push(`import { BaseSchema } from '@adonisjs/lucid/schema'`)
+    L.push(``)
+    L.push(`import { temRestricao } from '../helpers/esquema.js'`)
     L.push(``)
     L.push(`/**`)
     L.push(` * A chave estrangeira que fecha o ciclo \`user\` <-> \`empresa\`.`)
@@ -310,23 +363,32 @@ async function main() {
       )
       L.push(`  protected tableName = ${aspas(a.tabela)}`)
       L.push(``)
+      L.push(`  /** Re-executável, como todas as outras — ver database/helpers/esquema.ts. */`)
       L.push(`  async up() {`)
-      L.push(`    this.schema.alterTable(this.tableName, (table) => {`)
+      L.push(`    this.defer(async (db) => {`)
       for (const f of relevantes) {
-        L.push(`      table`)
-        L.push(`        .foreign([${f.COLS.split(',').map(aspas).join(', ')}], ${aspas(f.CONSTRAINT_NAME)})`)
-        L.push(`        .references([${f.REF.split(',').map(aspas).join(', ')}])`)
-        L.push(`        .inTable(${aspas(f.REFERENCED_TABLE_NAME)})`)
-        L.push(`        .onDelete(${aspas(f.DELETE_RULE)})`)
-        L.push(`        .onUpdate(${aspas(f.UPDATE_RULE)})`)
+        L.push(`      if (!(await temRestricao(db, this.tableName, ${aspas(f.CONSTRAINT_NAME)}))) {`)
+        L.push(`        await db.schema.alterTable(this.tableName, (table) => {`)
+        L.push(`          table`)
+        L.push(`            .foreign([${f.COLS.split(',').map(aspas).join(', ')}], ${aspas(f.CONSTRAINT_NAME)})`)
+        L.push(`            .references([${f.REF.split(',').map(aspas).join(', ')}])`)
+        L.push(`            .inTable(${aspas(f.REFERENCED_TABLE_NAME)})`)
+        L.push(`            .onDelete(${aspas(f.DELETE_RULE)})`)
+        L.push(`            .onUpdate(${aspas(f.UPDATE_RULE)})`)
+        L.push(`        })`)
+        L.push(`      }`)
       }
       L.push(`    })`)
       L.push(`  }`)
       L.push(``)
       L.push(`  async down() {`)
-      L.push(`    this.schema.alterTable(this.tableName, (table) => {`)
+      L.push(`    this.defer(async (db) => {`)
       for (const f of relevantes) {
-        L.push(`      table.dropForeign([${f.COLS.split(',').map(aspas).join(', ')}], ${aspas(f.CONSTRAINT_NAME)})`)
+        L.push(`      if (await temRestricao(db, this.tableName, ${aspas(f.CONSTRAINT_NAME)})) {`)
+        L.push(`        await db.schema.alterTable(this.tableName, (table) => {`)
+        L.push(`          table.dropForeign([${f.COLS.split(',').map(aspas).join(', ')}], ${aspas(f.CONSTRAINT_NAME)})`)
+        L.push(`        })`)
+        L.push(`      }`)
       }
       L.push(`    })`)
       L.push(`  }`)

@@ -62,7 +62,8 @@ export default class MigrationBaseline extends BaseCommand {
    * numa segunda passagem, quando o deploy já estiver assente.
    */
   @flags.boolean({
-    description: 'Apaga do registo as migrations cujo ficheiro já não existe (correr só depois do deploy assentar)',
+    description:
+      'Apaga do registo as migrations cujo ficheiro já não existe (correr só depois do deploy assentar)',
     default: false,
     flagName: 'limpar-orfas',
   })
@@ -155,9 +156,9 @@ export default class MigrationBaseline extends BaseCommand {
     const agora = new Date()
 
     await db.transaction(async (trx) => {
-      await trx.table('adonis_schema').multiInsert(
-        emFalta.map((name) => ({ name, batch: lote, migration_time: agora }))
-      )
+      await trx
+        .table('adonis_schema')
+        .multiInsert(emFalta.map((name) => ({ name, batch: lote, migration_time: agora })))
     })
 
     this.logger.success(

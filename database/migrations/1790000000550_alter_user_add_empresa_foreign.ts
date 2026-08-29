@@ -1,5 +1,7 @@
 import { BaseSchema } from '@adonisjs/lucid/schema'
 
+import { temRestricao } from '../helpers/esquema.js'
+
 /**
  * A chave estrangeira que fecha o ciclo `user` <-> `empresa`.
  *
@@ -14,20 +16,29 @@ import { BaseSchema } from '@adonisjs/lucid/schema'
 export default class extends BaseSchema {
   protected tableName = 'user'
 
+  /** Re-executável, como todas as outras — ver database/helpers/esquema.ts. */
   async up() {
-    this.schema.alterTable(this.tableName, (table) => {
-      table
-        .foreign(['empresa_id'], 'user_empresa_id_foreign')
-        .references(['id'])
-        .inTable('empresa')
-        .onDelete('SET NULL')
-        .onUpdate('NO ACTION')
+    this.defer(async (db) => {
+      if (!(await temRestricao(db, this.tableName, 'user_empresa_id_foreign'))) {
+        await db.schema.alterTable(this.tableName, (table) => {
+          table
+            .foreign(['empresa_id'], 'user_empresa_id_foreign')
+            .references(['id'])
+            .inTable('empresa')
+            .onDelete('SET NULL')
+            .onUpdate('NO ACTION')
+        })
+      }
     })
   }
 
   async down() {
-    this.schema.alterTable(this.tableName, (table) => {
-      table.dropForeign(['empresa_id'], 'user_empresa_id_foreign')
+    this.defer(async (db) => {
+      if (await temRestricao(db, this.tableName, 'user_empresa_id_foreign')) {
+        await db.schema.alterTable(this.tableName, (table) => {
+          table.dropForeign(['empresa_id'], 'user_empresa_id_foreign')
+        })
+      }
     })
   }
 }
