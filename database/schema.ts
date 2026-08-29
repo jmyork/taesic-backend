@@ -8,7 +8,7 @@ import { BaseModel, column } from '@adonisjs/lucid/orm'
 import { DateTime } from 'luxon'
 
 export class ActivityLogSchema extends BaseModel {
-  static $columns = ['action', 'changes', 'createdAt', 'description', 'empresaId', 'id', 'ipAddress', 'method', 'route', 'statusCode', 'subjectId', 'subjectType', 'userEmail', 'userId'] as const
+  static $columns = ['action', 'changes', 'createdAt', 'description', 'durationMs', 'empresaId', 'id', 'ipAddress', 'method', 'requestBody', 'requestHeaders', 'requestQuery', 'responseBody', 'route', 'statusCode', 'subjectId', 'subjectType', 'userEmail', 'userId', 'userNome'] as const
   $columns = ActivityLogSchema.$columns
   @column()
   declare action: string
@@ -19,6 +19,8 @@ export class ActivityLogSchema extends BaseModel {
   @column()
   declare description: string | null
   @column()
+  declare durationMs: number | null
+  @column()
   declare empresaId: string | null
   @column({ isPrimary: true })
   declare id: bigint | number
@@ -26,6 +28,14 @@ export class ActivityLogSchema extends BaseModel {
   declare ipAddress: string | null
   @column()
   declare method: string | null
+  @column()
+  declare requestBody: string | null
+  @column()
+  declare requestHeaders: string | null
+  @column()
+  declare requestQuery: string | null
+  @column()
+  declare responseBody: string | null
   @column()
   declare route: string | null
   @column()
@@ -38,6 +48,8 @@ export class ActivityLogSchema extends BaseModel {
   declare userEmail: string | null
   @column()
   declare userId: string | null
+  @column()
+  declare userNome: string | null
 }
 
 export class AuthAccessTokenSchema extends BaseModel {

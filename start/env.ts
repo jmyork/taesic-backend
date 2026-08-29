@@ -184,4 +184,23 @@ export default await Env.create(new URL('../', import.meta.url), {
   ESTOQUE_LIMIAR_CRITICO: Env.schema.number.optional(),
   LOTE_VALIDADE_ALERTA_DIAS: Env.schema.number.optional(),
   VENDA_CANCELADA_LIMIAR: Env.schema.number.optional(),
+
+  /*
+  |----------------------------------------------------------
+  | Quanto é que o registo de actividade captura
+  |----------------------------------------------------------
+  | 'completo'  (omissão) — TODAS as rotas chamadas, com cabeçalhos, parâmetros,
+  |                         corpo do pedido e corpo da resposta. Tudo redigido:
+  |                         password, token, cookie, authorization e afins saem
+  |                         substituídos por [redigido] (ver activity_logger.ts).
+  | 'escritas'            — só POST/PUT/PATCH/DELETE, e sem corpos. É o mínimo
+  |                         para saber quem fez o quê.
+  | 'desligado'           — não regista nada.
+  |
+  | O que isto decide na prática é VOLUME. Em 'completo' cada GET deixa uma linha
+  | com o corpo da resposta, e um catálogo de produtos consultado ao segundo enche
+  | a tabela depressa. Os corpos são cortados aos 8000 caracteres, mas o número de
+  | LINHAS é que manda — ver a nota de retenção no runbook.
+  */
+  AUDITORIA_CAPTURA: Env.schema.enum.optional(['completo', 'escritas', 'desligado'] as const),
 })

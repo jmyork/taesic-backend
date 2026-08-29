@@ -34,6 +34,10 @@ export default class ActivityLog extends BaseModel {
   @column()
   declare user_email: string | null
 
+  /** O nome de quem fez a acção, copiado no momento — ver `user_email`. */
+  @column()
+  declare user_nome: string | null
+
   @column()
   declare empresa_id: string | null
 
@@ -66,6 +70,75 @@ export default class ActivityLog extends BaseModel {
 
   @column()
   declare status_code: number | null
+
+  /** Quanto tempo o pedido demorou, em milissegundos. */
+  @column()
+  declare duration_ms: number | null
+
+  /** Cabeçalhos do pedido, já redigidos (sem `authorization` nem `cookie`). */
+  @column({
+    prepare: (v: unknown) => (v === null || v === undefined ? null : JSON.stringify(v)),
+    consume: (v: string | null) => {
+      if (!v) return null
+      try {
+        return JSON.parse(v)
+      } catch {
+        // Texto que não é JSON (escrito à mão, ou truncado a meio por alguém): devolve-se
+        // como texto em vez de rebentar o ecrã de auditoria.
+        return v
+      }
+    },
+  })
+  declare request_headers: unknown
+
+  /** Os parâmetros de query string (`?pagina=2&q=arroz`). */
+  @column({
+    prepare: (v: unknown) => (v === null || v === undefined ? null : JSON.stringify(v)),
+    consume: (v: string | null) => {
+      if (!v) return null
+      try {
+        return JSON.parse(v)
+      } catch {
+        // Texto que não é JSON (escrito à mão, ou truncado a meio por alguém): devolve-se
+        // como texto em vez de rebentar o ecrã de auditoria.
+        return v
+      }
+    },
+  })
+  declare request_query: unknown
+
+  /** O corpo enviado, redigido e truncado. */
+  @column({
+    prepare: (v: unknown) => (v === null || v === undefined ? null : JSON.stringify(v)),
+    consume: (v: string | null) => {
+      if (!v) return null
+      try {
+        return JSON.parse(v)
+      } catch {
+        // Texto que não é JSON (escrito à mão, ou truncado a meio por alguém): devolve-se
+        // como texto em vez de rebentar o ecrã de auditoria.
+        return v
+      }
+    },
+  })
+  declare request_body: unknown
+
+  /** O corpo devolvido, redigido e truncado. */
+  @column({
+    prepare: (v: unknown) => (v === null || v === undefined ? null : JSON.stringify(v)),
+    consume: (v: string | null) => {
+      if (!v) return null
+      try {
+        return JSON.parse(v)
+      } catch {
+        // Texto que não é JSON (escrito à mão, ou truncado a meio por alguém): devolve-se
+        // como texto em vez de rebentar o ecrã de auditoria.
+        return v
+      }
+    },
+  })
+  declare response_body: unknown
+
 
   @column.dateTime({ autoCreate: true })
   declare createdAt: DateTime

@@ -146,6 +146,7 @@ const LARGURAS = {
   subject_id: 64,
   description: 500,
   user_email: 254,
+  user_nome: 255,
   ip_address: 45,
   method: 10,
   route: 255,
@@ -154,6 +155,151 @@ const LARGURAS = {
 const cortar = (valor: string | null | undefined, largura: number): string | null => {
   if (valor === null || valor === undefined) return null
   return valor.length <= largura ? valor : `${valor.slice(0, largura - 1)}…`
+}
+
+/** O que substitui um valor sensível. Fica visível de propósito: quem lê vê que existia. */
+export const REDIGIDO = '[redigido]'
+
+/** Tecto por coluna de captura. Ver `redigir()`. */
+const LIMITE_CAPTURA = 8_000
+
+/**
+ * Uma cópia de um valor **sem nada que não deva ser guardado**.
+ *
+ * É a peça que torna seguro guardar corpos de pedido e de resposta. Sem ela, esta
+ * tabela — consultável no backoffice, e que sobrevive ao apagar dos dados que
+ * descreve — teria as palavras-passe de toda a gente, os tokens de sessão e os dados
+ * de pagamento em texto simples.
+ *
+ * Três regras:
+ *
+ * 1. **Por nome de campo, a qualquer profundidade.** `{ user: { password: 'x' } }` é
+ *    redigido tal como `{ password: 'x' }`. A comparação é por substring e em
+ *    minúsculas (a mesma de `diferencas()`), portanto apanha `password_confirmation`,
+ *    `senha_actual`, `refresh_token`, `x-bff-secret`.
+ * 2. **Peca por excesso.** Perder um campo do registo custa muito menos do que
+ *    guardar um segredo. Um campo chamado `hash_do_produto` é redigido sem ser
+ *    preciso, e não faz mal nenhum.
+ * 3. **Trunca.** Um catálogo de produtos ou o corpo de um upload não cabem aqui nem
+ *    devem caber — o objectivo é reconstruir o que aconteceu, não guardar uma segunda
+ *    cópia da base de dados. O corte é marcado no valor, para quem lê saber que está
+ *    a ver uma parte.
+ *
+ * Devolve `null` quando não há nada a guardar, para a coluna ficar NULL em vez de com
+ * um `{}` que não diz nada.
+ */
+/**
+ * Segredos reconhecidos pelo VALOR, não pelo nome do campo.
+ *
+ * A redacção por nome não chega, e isto não é hipotético: a resposta de
+ * `POST auth/login` devolve o token de sessão num campo chamado `value`. Nenhuma lista
+ * de nomes razoável apanha "value" — e redigir todos os campos com esse nome apagaria
+ * metade dos dados legítimos. O resultado era o registo de auditoria a guardar
+ * **sessões utilizáveis** de toda a gente que entrasse.
+ *
+ * Um token tem forma reconhecível, e é essa a defesa que funciona onde quer que ele
+ * apareça: no corpo, num cabeçalho, no meio de uma mensagem de erro.
+ *
+ *   `oat_...`         tokens de acesso opacos do AdonisJS
+ *   `Bearer <coisa>`  o cabeçalho, e qualquer sítio onde alguém o tenha copiado
+ *   `eyJ...`          JWT (três blocos base64 separados por pontos)
+ */
+const VALORES_SENSIVEIS: RegExp[] = [
+  /oat_[A-Za-z0-9._-]{10,}/g,
+  /Bearer\s+[A-Za-z0-9._-]{10,}/gi,
+  /eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}/g,
+]
+
+const redigirValor = (texto: string): string =>
+  VALORES_SENSIVEIS.reduce((acc, padrao) => acc.replace(padrao, REDIGIDO), texto)
+
+export function redigir(valor: unknown, limite = LIMITE_CAPTURA): unknown {
+  if (valor === null || valor === undefined) return null
+
+  const visitados = new WeakSet<object>()
+
+  const limpar = (v: unknown, profundidade: number): unknown => {
+    if (v === null || v === undefined) return v
+    if (v instanceof Date) return v.toISOString()
+
+    const tipo = typeof v
+    if (tipo === 'string') return redigirValor(v as string)
+    if (tipo === 'number' || tipo === 'boolean') return v
+    if (tipo === 'function') return '[função]'
+    if (tipo !== 'object') return String(v)
+
+    // Um model do Lucid, ou um paginador, sabe serializar-se. Sem isto, o corpo da
+    // resposta ficava com as ENTRANHAS do objecto — `transactionListener`,
+    // `$attributes`, `fillInvoked` — em vez do JSON que o cliente recebeu, que é o
+    // que a palavra "saída" quer dizer.
+    const serializa = (v as { serialize?: () => unknown }).serialize
+    if (typeof serializa === 'function' && !visitados.has(v as object)) {
+      visitados.add(v as object)
+      try {
+        return limpar(serializa.call(v), profundidade)
+      } catch {
+        // Um `serialize()` que rebente não pode levar o registo com ele.
+        return '[objecto não serializável]'
+      }
+    }
+
+    // Um corpo com uma referência circular (ou um objecto do próprio framework que lá
+    // vá parar) rebentaria o `JSON.stringify` — e a escrita é fire-and-forget, portanto
+    // o registo desaparecia em silêncio em vez de dar erro.
+    if (visitados.has(v as object)) return '[circular]'
+    visitados.add(v as object)
+
+    // Profundidade: um objecto muito aninhado não se lê num ecrã, e serializá-lo
+    // inteiro é a forma mais fácil de encher a coluna com ruído.
+    if (profundidade > 6) return '[…]'
+
+    if (Array.isArray(v)) {
+      // Uma listagem de 500 produtos não tem de estar aqui inteira para se perceber o
+      // que a rota devolveu.
+      const corte = v.slice(0, 50).map((x) => limpar(x, profundidade + 1))
+      if (v.length > 50) corte.push(`[… mais ${v.length - 50} itens]`)
+      return corte
+    }
+
+    const saida: Record<string, unknown> = {}
+    for (const [chave, item] of Object.entries(v as Record<string, unknown>)) {
+      saida[chave] = ehSensivel(chave) ? REDIGIDO : limpar(item, profundidade + 1)
+    }
+    return saida
+  }
+
+  const limpo = limpar(valor, 0)
+
+  if (limpo === null || limpo === undefined) return null
+  if (typeof limpo === 'object' && Object.keys(limpo as object).length === 0) return null
+
+  // O tecto final é sobre o TEXTO, que é o que ocupa a coluna. Um objecto que passe do
+  // limite vira texto cortado — deixa de ser navegável no ecrã, mas continua legível,
+  // e a alternativa era a linha inteira não caber e perder-se.
+  const texto = JSON.stringify(limpo)
+  if (texto.length <= limite) return limpo
+
+  return {
+    _truncado: true,
+    _tamanho_original: texto.length,
+    // Passa outra vez pela redacção por VALOR: o corte é sobre o texto já
+    // serializado, e um token que estivesse lá dentro não voltaria a ser visto por
+    // `limpar`. Redigir duas vezes não custa nada; falhar uma vez custa uma sessão.
+    conteudo: redigirValor(texto.slice(0, limite)) + '…',
+  }
+}
+
+/**
+ * Os cabeçalhos do pedido, sem os que carregam identidade.
+ *
+ * `authorization` e `cookie` são apanhados por `ehSensivel`, mas ficam aqui escritos
+ * por extenso porque são o caso que mais importa e o mais fácil de perder de vista: um
+ * `Authorization: Bearer <token>` guardado numa tabela consultável é uma sessão
+ * roubável de quem a ler.
+ */
+export function redigirCabecalhos(cabecalhos: Record<string, unknown> | undefined): unknown {
+  if (!cabecalhos) return null
+  return redigir(cabecalhos, 4_000)
 }
 
 export interface RegistoDeActividade {
@@ -168,7 +314,22 @@ export interface RegistoDeActividade {
   empresa_id?: string | null
   user_id?: string | null
   user_email?: string | null
+  user_nome?: string | null
   status_code?: number | null
+
+  /** Quanto tempo o pedido demorou, em milissegundos. */
+  duration_ms?: number | null
+
+  /**
+   * O pedido e a resposta, tal como atravessaram a API.
+   *
+   * Passam SEMPRE por `redigir()` antes de chegarem à coluna — quem chama não tem de
+   * se lembrar disso, e não tem como o contornar. Ver `activity_log_middleware.ts`.
+   */
+  request_headers?: unknown
+  request_query?: unknown
+  request_body?: unknown
+  response_body?: unknown
 }
 
 /**
@@ -178,7 +339,11 @@ export interface RegistoDeActividade {
 export function registarActividade(entrada: RegistoDeActividade, ctx?: HttpContext): void {
   // O actor vem do contexto autenticado, NUNCA do corpo do pedido: um `user_id`
   // aceite do cliente é um registo de auditoria que o próprio autor pode falsificar.
-  const utilizador = ctx?.auth?.user as { id?: string; email?: string; empresa_id?: string } | undefined
+  // Lido DEPOIS de a acção correr (o middleware chama isto a seguir ao `next()`), que
+  // é quando `middleware.auth()` já autenticou. Lê-lo antes daria sempre `null`.
+  const utilizador = ctx?.auth?.user as
+    | { id?: string; email?: string; username?: string; empresa_id?: string }
+    | undefined
 
   const linha = {
     action: cortar(entrada.action, LARGURAS.action)!,
@@ -188,6 +353,7 @@ export function registarActividade(entrada: RegistoDeActividade, ctx?: HttpConte
     description: cortar(entrada.description, LARGURAS.description),
     user_id: entrada.user_id ?? utilizador?.id ?? null,
     user_email: cortar(entrada.user_email ?? utilizador?.email, LARGURAS.user_email),
+    user_nome: cortar(entrada.user_nome ?? utilizador?.username, LARGURAS.user_nome),
     empresa_id: entrada.empresa_id ?? utilizador?.empresa_id ?? null,
     ip_address: cortar(ctx?.request.ip(), LARGURAS.ip_address),
     method: cortar(ctx?.request.method(), LARGURAS.method),
@@ -196,6 +362,14 @@ export function registarActividade(entrada: RegistoDeActividade, ctx?: HttpConte
     // cruzar "quem tem esta permissão" com "quem a usou".
     route: cortar(ctx?.route?.name ?? ctx?.request.url(), LARGURAS.route),
     status_code: entrada.status_code ?? null,
+    duration_ms: entrada.duration_ms ?? null,
+    // A redacção acontece AQUI e não em quem chama: um ponto de passagem obrigatório
+    // não se esquece, e é a diferença entre "guardamos o corpo com cuidado" e
+    // "guardamos o corpo".
+    request_headers: redigirCabecalhos(entrada.request_headers as Record<string, unknown>),
+    request_query: redigir(entrada.request_query),
+    request_body: redigir(entrada.request_body),
+    response_body: redigir(entrada.response_body),
   }
 
   ActivityLog.create(linha).catch((error) => {

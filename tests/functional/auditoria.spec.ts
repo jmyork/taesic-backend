@@ -1,8 +1,9 @@
 import { test } from '@japa/runner'
 import testUtils from '@adonisjs/core/services/test_utils'
 import { randomUUID } from 'node:crypto'
+import db from '@adonisjs/lucid/services/db'
 import ActivityLog from '#models/activity_log'
-import { registarActividade, diferencas } from '../../app/helpers/activity_logger.js'
+import { registarActividade, diferencas, redigir, REDIGIDO } from '../../app/helpers/activity_logger.js'
 import ActivityLogMiddleware from '#middleware/activity_log_middleware'
 import HttpExceptionHandler from '#exceptions/handler'
 import { Exception } from '@adonisjs/core/exceptions'
@@ -250,17 +251,31 @@ test.group('auditoria — o middleware', (group) => {
     return { seguiu }
   }
 
-  test('um GET não deixa rasto — só o que escreve é registado', async ({ assert }) => {
-    const antes = await ActivityLog.query().count('* as total')
-    const { seguiu } = await correr('GET', { rota: 'domain_produtos.index' })
+  test('um GET TAMBÉM fica registado — "todas as rotas chamadas"', async ({ assert }) => {
+    // A primeira versão registava só o que escreve, para não encher a tabela de ruído.
+    // O dono do produto quer o rasto completo, e é essa a decisão: em `completo` (o
+    // valor por omissão de `AUDITORIA_CAPTURA`) uma leitura deixa linha como qualquer
+    // outra chamada. Quem quiser o comportamento antigo põe `escritas` no `.env`.
+    const id = randomUUID()
+    const { seguiu } = await correr('GET', { rota: 'domain_produtos.index', params: { id } })
     assert.isTrue(seguiu)
 
-    // Sonda algumas vezes: se o middleware registasse um GET, a linha apareceria
-    // durante esta janela, tal como aparece nos testes que a esperam.
-    await new Promise((r) => setTimeout(r, 150))
-    const depois = await ActivityLog.query().count('* as total')
+    const linha = await esperarLinha((q) => q.where('subject_id', id))
 
-    assert.equal(Number(depois[0].$extras.total), Number(antes[0].$extras.total))
+    assert.isNotNull(linha, 'um GET tem de deixar linha em modo completo')
+    assert.equal(linha!.method, 'GET')
+    assert.equal(linha!.action, 'domain_produtos.index')
+  })
+
+  test('regista quanto tempo o pedido demorou', async ({ assert }) => {
+    // É a coluna que transforma o registo num sítio onde se responde a "o que estava
+    // lento ontem às 15h?".
+    const id = randomUUID()
+    await correr('POST', { rota: 'domain_produtos.store', params: { id }, estado: 201 })
+
+    const linha = await esperarLinha((q) => q.where('subject_id', id))
+    assert.isNumber(linha!.duration_ms)
+    assert.isAtLeast(linha!.duration_ms!, 0)
   })
 
   test('um POST fica registado com a rota, o método e o estado', async ({ assert }) => {
@@ -357,5 +372,140 @@ test.group('auditoria — erros não tratados', (group) => {
       .first()
 
     assert.isNull(linha)
+  })
+})
+
+/**
+ * A redacção — a peça que torna seguro guardar corpos de pedido e de resposta.
+ *
+ * Sem ela, `activity_logs` passaria a ser o sítio mais perigoso da base de dados:
+ * consultável no backoffice, sobrevive ao apagar dos dados que descreve, e teria as
+ * palavras-passe e as sessões de toda a gente.
+ */
+test.group('auditoria — redigir()', () => {
+  test('apaga campos sensíveis a qualquer profundidade', async ({ assert }) => {
+    const r = redigir({
+      nome: 'visível',
+      password: 'segredo',
+      dados: { user: { password_confirmation: 'segredo', access_token: 'abc' } },
+      lista: [{ senha_actual: 'segredo' }],
+    }) as any
+
+    assert.equal(r.nome, 'visível')
+    assert.equal(r.password, REDIGIDO)
+    assert.equal(r.dados.user.password_confirmation, REDIGIDO)
+    assert.equal(r.dados.user.access_token, REDIGIDO)
+    assert.equal(r.lista[0].senha_actual, REDIGIDO)
+    assert.notInclude(JSON.stringify(r), 'segredo')
+  })
+
+  test('apaga um token pelo VALOR, mesmo num campo com nome inocente', async ({ assert }) => {
+    // O caso real, e a razão de a redacção por nome não chegar: a resposta de
+    // `POST auth/login` devolve o token num campo chamado `value`. Nenhuma lista de
+    // nomes razoável apanha "value", e redigir todos os campos com esse nome apagaria
+    // metade dos dados legítimos. O registo guardava SESSÕES UTILIZÁVEIS.
+    const r = redigir({
+      data: { type: 'bearer', value: 'oat_MTE.QjNiSzZlNVA1ckYzaFd4SEhLQUg2a3pROWVBaUJvOGF3' },
+    }) as any
+
+    assert.equal(r.data.value, REDIGIDO)
+    assert.notInclude(JSON.stringify(r), 'oat_')
+  })
+
+  test('apaga "Bearer ..." e JWT onde quer que apareçam', async ({ assert }) => {
+    const r = redigir({
+      mensagem: 'falhou com Authorization: Bearer abcdefghijklmnop no pedido',
+      outro: 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N',
+    }) as any
+
+    assert.notInclude(JSON.stringify(r), 'abcdefghijklmnop')
+    assert.notInclude(JSON.stringify(r), 'eyJhbGciOi')
+  })
+
+  test('serializa um model do Lucid em vez de guardar as entranhas dele', async ({ assert }) => {
+    // `ctx.response.getBody()` devolve o objecto que o controller pôs na resposta, que
+    // muitas vezes é um model. Sem serializar, a coluna ficava com
+    // `transactionListener`, `$attributes` e `fillInvoked` — não com o JSON que o
+    // cliente recebeu, que é o que "saída" quer dizer.
+    const falso = {
+      $attributes: { nome: 'x' },
+      transactionListener: () => {},
+      serialize: () => ({ nome: 'Marca', id: 'abc' }),
+    }
+
+    assert.deepEqual(redigir({ data: falso }), { data: { nome: 'Marca', id: 'abc' } })
+  })
+
+  test('sobrevive a uma referência circular', async ({ assert }) => {
+    // A escrita é fire-and-forget: um `JSON.stringify` a rebentar aqui fazia a linha
+    // desaparecer em silêncio.
+    const a: Record<string, unknown> = { nome: 'a' }
+    a.proprio = a
+
+    assert.doesNotThrow(() => redigir(a))
+    assert.include(JSON.stringify(redigir(a)), 'circular')
+  })
+
+  test('corta listas longas e marca o que ficou de fora', async ({ assert }) => {
+    const r = redigir({ itens: Array.from({ length: 300 }, (_, i) => ({ i })) }) as any
+    assert.lengthOf(r.itens, 51)
+    assert.include(String(r.itens[50]), 'mais 250')
+  })
+
+  test('trunca o que passa do tecto, e o corte também é redigido', async ({ assert }) => {
+    const r = redigir({
+      recheio: 'x'.repeat(20_000),
+      token: 'oat_AAAAAAAAAAAAAAAAAAAA',
+    }) as any
+
+    assert.isTrue(r._truncado)
+    assert.notInclude(JSON.stringify(r), 'oat_A')
+  })
+
+  test('devolve null quando não há nada que guardar', async ({ assert }) => {
+    assert.isNull(redigir(null))
+    assert.isNull(redigir(undefined))
+    assert.isNull(redigir({}))
+  })
+})
+
+/**
+ * A poda do registo. Com a captura completa (cada chamada deixa linha), sem isto o
+ * crescimento é indefinido e o primeiro sintoma é o disco do servidor.
+ */
+test.group('auditoria — poda por retenção', (group) => {
+  group.each.setup(() => testUtils.db().withGlobalTransaction())
+
+  const inserir = (accao: string, quando: Date) =>
+    db.table('activity_logs').insert({ action: accao, method: 'GET', status_code: 200, created_at: quando })
+
+  test('apaga o que é antigo e NÃO toca no que é recente', async ({ assert }) => {
+    // O teste que apanhou o defeito. A poda limita-se por `id` para ser rápida, e o
+    // limite é "o maior id anterior ao corte" — o que só equivale a "tudo o que é
+    // antigo" enquanto a ordem dos ids acompanhar a das datas. Aqui as linhas ANTIGAS
+    // são inseridas DEPOIS das recentes, portanto têm ids mais altos: sem a condição
+    // de data no DELETE, a poda levava as recentes à frente.
+    const hoje = new Date()
+    const antigo = new Date(Date.now() - 200 * 24 * 3600 * 1000)
+
+    await inserir('recente.a', hoje)
+    await inserir('recente.b', hoje)
+    for (let i = 0; i < 5; i++) await inserir('antigo', antigo)
+
+    const corte = new Date(Date.now() - 90 * 24 * 3600 * 1000)
+    const limite = await db.from('activity_logs').where('created_at', '<', corte).max('id as maximo').first()
+
+    await db
+      .from('activity_logs')
+      .where('id', '<=', Number(limite?.maximo ?? 0))
+      .where('created_at', '<', corte)
+      .delete()
+
+    const restantes = await db.from('activity_logs').select('action')
+    const accoes = restantes.map((r: { action: string }) => r.action)
+
+    assert.notInclude(accoes, 'antigo', 'as antigas deviam ter sido apagadas')
+    assert.include(accoes, 'recente.a', 'as recentes NÃO podem ser apagadas')
+    assert.include(accoes, 'recente.b')
   })
 })
