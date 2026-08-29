@@ -82,7 +82,15 @@ test.group('cartão do plano — limites_descritos', () => {
     ])
   })
 
-  test('usa a moeda do plano, não "Kz" escrito à mão', async ({ assert }) => {
+  test('escreve "Kz" a partir do código "AOA" guardado na coluna', async ({ assert }) => {
+    // A coluna guarda o código ISO, que é o correcto para uma coluna. Mas o produto
+    // inteiro escreve "Kz" — o preço ao lado, no mesmo cartão, é formatado assim. Sem a
+    // tradução saía "Facturação até 500.000 AOA por mês" ao lado de "7.500 Kz".
+    const p = planoCom({ moeda: 'AOA', limite_faturacao_mensal: 500_000 })
+    assert.include(p.limites_descritos, 'Facturação até 500.000 Kz por mês')
+  })
+
+  test('uma moeda desconhecida sai tal e qual, sem se inventar um símbolo', async ({ assert }) => {
     const p = planoCom({ moeda: 'USD', limite_faturacao_mensal: 1_500 })
     assert.include(p.limites_descritos, 'Facturação até 1.500 USD por mês')
   })
@@ -136,6 +144,9 @@ test.group('cartão do plano — nada é dito duas vezes', (group) => {
     assert.isArray(json.limites_descritos)
     assert.lengthOf(json.limites_descritos as string[], 4)
     assert.include(json.limites_descritos as string[], 'Até 2 utilizadores')
+    // O plano semeado tem `moeda: 'AOA'` — a linha tem de sair em "Kz", como o resto
+    // do cartão.
+    assert.include(json.limites_descritos as string[], 'Facturação até 500.000 Kz por mês')
 
     // E a lista editável continua lá, com o que não é limite.
     assert.include(plano.funcionalidades, 'Ponto de venda e controlo de stock')

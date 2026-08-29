@@ -2,6 +2,21 @@ import { DateTime } from 'luxon'
 import { BaseModel, column, beforeCreate, computed } from '@adonisjs/lucid/orm'
 import { randomUUID } from 'node:crypto'
 
+/**
+ * O que se ESCREVE ao lado de um valor, a partir do código ISO guardado.
+ *
+ * `plano.moeda` guarda `AOA`, que é o código correcto para uma coluna. Mas o produto
+ * inteiro escreve "Kz" — é o que o frontend faz (`formatarKz`), é o que está nos
+ * cartões e nas facturas, e é como as pessoas em Angola escrevem a moeda. Sem esta
+ * tradução, a linha derivada dizia "Facturação até 500.000 AOA por mês" ao lado de um
+ * preço formatado como "7.500 Kz", no mesmo cartão.
+ *
+ * Um código desconhecido sai tal e qual: mais vale mostrar "USD" do que inventar.
+ */
+const SIMBOLO_DA_MOEDA: Record<string, string> = { AOA: 'Kz' }
+const simboloDaMoeda = (codigo: string | null | undefined) =>
+  SIMBOLO_DA_MOEDA[String(codigo ?? '').toUpperCase()] ?? codigo ?? ''
+
 export default class plano extends BaseModel {
   static table = 'plano'
 
@@ -156,7 +171,7 @@ export default class plano extends BaseModel {
       contagem(this.limite_produtos, 'produto', 'produtos', 'Produtos sem limite'),
       semLimite(this.limite_faturacao_mensal)
         ? 'Facturação sem tecto'
-        : `Facturação até ${numero(Number(this.limite_faturacao_mensal))} ${this.moeda} por mês`,
+        : `Facturação até ${numero(Number(this.limite_faturacao_mensal))} ${simboloDaMoeda(this.moeda)} por mês`,
     ]
   }
 }
