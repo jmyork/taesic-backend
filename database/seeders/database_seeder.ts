@@ -31,30 +31,6 @@ import { semearRbacPadrao } from '../../app/helpers/rbac_padrao.js'
  * tenha dados, o que se quer é `node ace rbac:semear` e `node ace planos:semear`,
  * que só acrescentam o que falta e não tocam em contas nenhumas.
  */
-/**
- * Lê uma variável obrigatória em produção, e PÁRA se faltar.
- *
- * Parar é o comportamento correcto: um seeder que continue sem a credencial de
- * administrador ou deixa a base sem forma de entrar, ou — pior — recorre a um
- * valor por omissão, que é exactamente o problema que este bloco existe para
- * resolver. Falhar aqui custa um comando repetido; adivinhar custa a plataforma.
- */
-function exigirEmProducao(nome: string): string {
-  const valor = process.env[nome]?.trim()
-
-  if (!valor) {
-    throw new Error(
-      `${nome} não está definida.\n\n` +
-        'Em produção o seeder não cria as contas de demonstração (têm as passwords ' +
-        'escritas no repositório). Defina a conta de administrador da plataforma e ' +
-        'repita:\n\n' +
-        '  SEED_ADMIN_EMAIL=... SEED_ADMIN_PASSWORD=... node ace db:fresh:seed --force\n'
-    )
-  }
-
-  return valor
-}
-
 export default class extends BaseSeeder {
   async run() {
     // ── Planos de subscrição ──────────────────────────────────────────────────
@@ -98,41 +74,51 @@ export default class extends BaseSeeder {
     // qualquer ambiente, e `db:fresh:seed` chama-o. Uma reconstrução de produção
     // criava-as sem um único aviso.
     //
-    // Em produção exige-se `SEED_ADMIN_EMAIL` e `SEED_ADMIN_PASSWORD`, e cria-se
-    // UMA conta. Sem elas, o seeder PÁRA — de propósito: uma base de produção sem
-    // administrador nenhum é um problema visível em cinco minutos; uma com
-    // credenciais públicas pode não dar por si durante meses.
+    // Em produção o seeder NÃO CRIA CONTA NENHUMA, e isso é deliberado.
     //
-    // Lidas de `process.env` e não do schema em start/env.ts: só interessam a
-    // quem semeia, e declará-las obrigatórias faria todos os deploys existentes
-    // deixar de arrancar por falta de uma variável que nunca usam.
+    // A primeira versão desta correcção exigia `SEED_ADMIN_EMAIL` e
+    // `SEED_ADMIN_PASSWORD` na linha de comandos. Funcionava, mas obrigava a
+    // escrever uma password num comando — que fica no histórico do shell, na
+    // lista de processos e em qualquer registo de sessão. Trocava um problema por
+    // outro mais pequeno, não o resolvia.
+    //
+    // A conta de administrador da plataforma passou a nascer no BACKOFFICE, num
+    // ecrã de instalação que só existe enquanto não houver nenhuma
+    // (`POST api/instalacao` em taesic-backoffice-api). A password é escrita num
+    // formulário, nunca num terminal.
+    //
+    // Uma base de produção sem utilizadores não fica bloqueada: o registo de
+    // empresas é público e não depende de haver contas de plataforma.
     const emProducao = process.env.NODE_ENV === 'production'
 
-    const contas = emProducao
-      ? [
-          {
-            username: process.env.SEED_ADMIN_USERNAME?.trim() || 'admin.plataforma',
-            email: exigirEmProducao('SEED_ADMIN_EMAIL'),
-            password: exigirEmProducao('SEED_ADMIN_PASSWORD'),
-          },
-        ]
-      : [
-          {
-            username: 'jose.baptista99',
-            email: 'josebaptistatest99@example.com',
-            password: '1234567890aA#',
-          },
-          {
-            username: 'benedito.ciloca',
-            email: 'beneditociloca@gmail.com',
-            password: '1234567890aA$',
-          },
-          {
-            username: 'carla.morais',
-            email: 'carlamorais@gmail.com',
-            password: '1234567890aA%',
-          },
-        ]
+    if (emProducao) {
+      console.log(
+        '\nProdução: nenhuma conta criada — as de demonstração têm passwords no repositório.\n' +
+          'Crie o administrador da plataforma no ecrã de instalação do backoffice:\n' +
+          '  1. defina PLATFORM_SETUP_TOKEN no .env do taesic-backoffice-api\n' +
+          '  2. abra /instalacao no backoffice e use esse token\n' +
+          '  3. apague a variável e reinicie o serviço\n'
+      )
+      return
+    }
+
+    const contas = [
+      {
+        username: 'jose.baptista99',
+        email: 'josebaptistatest99@example.com',
+        password: '1234567890aA#',
+      },
+      {
+        username: 'benedito.ciloca',
+        email: 'beneditociloca@gmail.com',
+        password: '1234567890aA$',
+      },
+      {
+        username: 'carla.morais',
+        email: 'carlamorais@gmail.com',
+        password: '1234567890aA%',
+      },
+    ]
 
     await Users.createMany(contas)
 
