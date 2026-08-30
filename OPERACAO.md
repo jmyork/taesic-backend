@@ -185,9 +185,21 @@ cd /srv/apps/api-qua/build && sudo -H -u deploy node ace db:fresh:seed --force
 O `--force` é obrigatório em produção — sem ele o comando recusa-se a correr, e
 é essa recusa que impede um `db:fresh:seed` distraído de apagar a base real.
 
-Em produção o *seeder* **não cria contas nenhumas**. As contas de plataforma
-criam-se no backoffice, em `/instalacao` — ver o `OPERACAO.md` do
-`taesic-backoffice-api`.
+O *seeder* **não cria contas nenhumas, em ambiente nenhum** — nem em produção,
+nem em qualidade, nem em desenvolvimento. Semeia os planos e o catálogo RBAC, e
+mais nada. A primeira conta de plataforma cria-se no backoffice, em
+`/instalacao` — ver o `OPERACAO.md` do `taesic-backoffice-api`, secção 5.
+
+O comando confirma-se a si próprio no fim e sai com erro se a sementeira ficar
+vazia:
+
+```
+Verificado: 5 papéis de plataforma, 3 planos.
+```
+
+Se em vez disso vir **"A base ficou por semear"**, pare: sem papéis de plataforma
+o `/instalacao` aborta, e sem planos o onboarding abre empresas sem subscrição —
+e sem plano não há limite nenhum a aplicar.
 
 ---
 

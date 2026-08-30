@@ -3119,3 +3119,116 @@ sem erro nenhum. Está documentado no cabeçalho da migração, no `Caddyfile` e
 CLAUDE.md §9.4 do outro projecto — três sítios, porque é o tipo de decisão de
 infraestrutura que se toma meses depois, por outra razão, sem ninguém ligar as
 duas coisas.
+
+### 7.26 O seeder deixou de criar contas — e o `--force` que esvaziou duas bases
+
+Duas coisas na mesma passagem. A segunda foi um defeito meu, e apagou os dados de
+qualidade e de produção.
+
+#### `db:seed` não aceita `--force`, e não precisa
+
+7.19/7.20 corrigiram `db:fresh:seed` para passar `--force` ao `migration:fresh` —
+sem ele, com `NODE_ENV=production`, o Adonis pergunta "You are in production
+environment. Want to continue?" e num pipeline sem terminal a resposta é sempre
+não. O comentário dessa correcção acrescentava *"o mesmo vale para o `db:seed`"*.
+
+**Era uma suposição, nunca verificada, e é falsa.** Em `@adonisjs/lucid`, a guarda
+de produção vive em `commands/migration/_base.js` e em `db_wipe`/`db_truncate`. O
+`db:seed` **não tem guarda nenhuma**, e os únicos flags que declara são
+`--connection`, `--interactive`, `--files` e `--compact-output`.
+
+O resultado no servidor foi o pior possível, e aconteceu nos dois ambientes:
+
+```
+Migrated in 4.98 s
+[ success ] migration:fresh concluída.
+[ info ] db:seed — a semear...
+  ERROR   Unknown flag "--force"
+```
+
+O `migration:fresh` correu com sucesso — largou todas as tabelas e recriou o
+esquema — e o `db:seed` rebentou logo a seguir. Ficou uma base **vazia**, sem
+planos e sem catálogo RBAC, em qualidade E em produção. Sem planos, o onboarding
+abre empresas sem subscrição e `limites_do_plano.ts` não impõe limite a quem não
+tem plano; sem papéis de plataforma, o `/instalacao` do backoffice aborta e não há
+como criar a primeira conta.
+
+**A lição, que 7.19 já tinha noutra forma: um flag que se "sabe" que existe
+verifica-se no comando que o vai receber.** Custa um `grep`.
+
+##### O comando passou a confirmar-se a si próprio
+
+A falha não se parecia com uma falha — `migration:fresh` dizia "concluída", e só a
+linha seguinte é que rebentava. Quem lesse a saída depressa via sucesso.
+
+`db:fresh:seed` passou a contar, no fim, as duas coisas sem as quais o sistema
+fica de pé e inutilizável, e a sair com código 1 se alguma for zero:
+
+```
+[ success ] Verificado: 5 papéis de plataforma, 3 planos.
+```
+
+Obrigou a `static options = { startApp: true }` — o comando passou a LER a base, e
+sem a app arrancada o serviço `db` não está registado.
+
+#### Nenhuma conta é criada, em ambiente nenhum
+
+Decisão do dono do produto: *"user nenhum deve ser criado de antemão"*.
+
+O seeder criou três administradores de plataforma durante muito tempo, com as
+passwords escritas no próprio ficheiro. A guarda foi apertada duas vezes — primeiro
+`!== 'production'`, depois `=== 'development'` — e as duas vezes a pergunta ficou
+por responder: **qual é o ambiente onde é aceitável semear credenciais
+publicadas?**
+
+Não há nenhum. Em desenvolvimento também não: é a base de onde se copiam dumps, é
+a que aparece num ecrã partilhado, e é o hábito que leva alguém a escrever a mesma
+password noutro sítio.
+
+O seeder ficou com planos e catálogo RBAC, e mais nada. Efeito colateral bom:
+**passou a poder correr duas vezes** — era o `Users.createMany` que o impedia.
+
+##### Consequência que é preciso saber
+
+**Também em desenvolvimento local a primeira conta se cria no `/instalacao`.** Quem
+tiver uma base antiga continua com as três contas lá — o comando para as retirar
+está no `OPERACAO.md` do `taesic-backoffice-api`, secção 5.
+
+#### Duas linhas do `activity_logger` que nunca chegaram a ser aplicadas
+
+Apanhadas por 2 testes a falhar (`822` total, `820` a passar). 7.24 documenta que
+`redigir()` e `diferencas()` passaram a construir os objectos com
+`Object.create(null)`, para um campo chamado `__proto__` ficar REGISTADO em vez de
+ser engolido pelo setter — num registo de auditoria, isso é uma forma de apagar
+rasto.
+
+**O comentário foi aplicado; o código não.** `mudouDepois` e `saida` continuavam
+`{}`, com o comentário por cima a explicar porque é que não deviam ser. Corrigidas
+as duas.
+
+> Vale como lembrete: um comentário que descreve a correcção não é a correcção. Os
+> dois testes existiam e falhavam — o que faltou foi correr a suite.
+
+#### Verificado
+
+| o quê | resultado |
+|---|---|
+| `taesic-backend` — `node ace test` | **822 passam** (eram 820/2 falhas) |
+| `taesic-backoffice-api` — `node ace test` | **241 passam** |
+| `taesic-backoffice-api` contra base **sem utilizadores** | **241 passam** |
+| `tsc --noEmit` | limpo nos dois |
+
+O seeder foi verificado **por execução**, em base descartável, nos dois ambientes:
+
+```
+NODE_ENV=development  user=0  verification_token_hash=0  user_papel=0  plano=3  papel_plataforma=5
+NODE_ENV=production   user=0  verification_token_hash=0  user_papel=0  plano=3  papel_plataforma=5
+```
+
+A auto-verificação do `db:fresh:seed` foi provada a ter dentes: desligada a
+sementeira, o comando sai com **código 1** e imprime *"A base ficou por semear: zero
+papéis de escopo plataforma, zero planos"*.
+
+E o override de base nos testes do backoffice foi provado por falsificação — apontar
+`DB_DATABASE` a uma base inexistente falha com `Unknown database`, portanto os 241
+contra a base vazia são um resultado real e não a suite a correr contra outra coisa.
