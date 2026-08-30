@@ -31,6 +31,30 @@ import { semearRbacPadrao } from '../../app/helpers/rbac_padrao.js'
  * tenha dados, o que se quer é `node ace rbac:semear` e `node ace planos:semear`,
  * que só acrescentam o que falta e não tocam em contas nenhumas.
  */
+/**
+ * Lê uma variável obrigatória em produção, e PÁRA se faltar.
+ *
+ * Parar é o comportamento correcto: um seeder que continue sem a credencial de
+ * administrador ou deixa a base sem forma de entrar, ou — pior — recorre a um
+ * valor por omissão, que é exactamente o problema que este bloco existe para
+ * resolver. Falhar aqui custa um comando repetido; adivinhar custa a plataforma.
+ */
+function exigirEmProducao(nome: string): string {
+  const valor = process.env[nome]?.trim()
+
+  if (!valor) {
+    throw new Error(
+      `${nome} não está definida.\n\n` +
+        'Em produção o seeder não cria as contas de demonstração (têm as passwords ' +
+        'escritas no repositório). Defina a conta de administrador da plataforma e ' +
+        'repita:\n\n' +
+        '  SEED_ADMIN_EMAIL=... SEED_ADMIN_PASSWORD=... node ace db:fresh:seed --force\n'
+    )
+  }
+
+  return valor
+}
+
 export default class extends BaseSeeder {
   async run() {
     // ── Planos de subscrição ──────────────────────────────────────────────────
@@ -59,24 +83,57 @@ export default class extends BaseSeeder {
       `RBAC: ${rbac.papeis} papéis, ${rbac.permissoes} permissões, ${rbac.ligacoes} ligações.`
     )
 
-    // ── Contas de plataforma (desenvolvimento e qualidade) ────────────────────
-    const contas = [
-      {
-        username: 'jose.baptista99',
-        email: 'josebaptistatest99@example.com',
-        password: '1234567890aA#',
-      },
-      {
-        username: 'benedito.ciloca',
-        email: 'beneditociloca@gmail.com',
-        password: '1234567890aA$',
-      },
-      {
-        username: 'carla.morais',
-        email: 'carlamorais@gmail.com',
-        password: '1234567890aA%',
-      },
-    ]
+    // ── Contas de plataforma ──────────────────────────────────────────────────
+    //
+    // ⚠️ AS TRÊS CONTAS ABAIXO NUNCA PODEM EXISTIR EM PRODUÇÃO.
+    //
+    // Recebem TODOS os papéis de escopo `plataforma` (ver o ciclo mais abaixo) —
+    // `Platform_Admin` incluído — e ficam pré-activadas, portanto entram sem
+    // passar pelo email. As passwords estão escritas neste ficheiro, que está no
+    // repositório. Em produção, isso são três administradores de plataforma com
+    // credenciais publicadas.
+    //
+    // O comentário anterior dizia "desenvolvimento e qualidade", o que descrevia
+    // a INTENÇÃO — mas nada a impunha: `db:seed` corre exactamente igual em
+    // qualquer ambiente, e `db:fresh:seed` chama-o. Uma reconstrução de produção
+    // criava-as sem um único aviso.
+    //
+    // Em produção exige-se `SEED_ADMIN_EMAIL` e `SEED_ADMIN_PASSWORD`, e cria-se
+    // UMA conta. Sem elas, o seeder PÁRA — de propósito: uma base de produção sem
+    // administrador nenhum é um problema visível em cinco minutos; uma com
+    // credenciais públicas pode não dar por si durante meses.
+    //
+    // Lidas de `process.env` e não do schema em start/env.ts: só interessam a
+    // quem semeia, e declará-las obrigatórias faria todos os deploys existentes
+    // deixar de arrancar por falta de uma variável que nunca usam.
+    const emProducao = process.env.NODE_ENV === 'production'
+
+    const contas = emProducao
+      ? [
+          {
+            username: process.env.SEED_ADMIN_USERNAME?.trim() || 'admin.plataforma',
+            email: exigirEmProducao('SEED_ADMIN_EMAIL'),
+            password: exigirEmProducao('SEED_ADMIN_PASSWORD'),
+          },
+        ]
+      : [
+          {
+            username: 'jose.baptista99',
+            email: 'josebaptistatest99@example.com',
+            password: '1234567890aA#',
+          },
+          {
+            username: 'benedito.ciloca',
+            email: 'beneditociloca@gmail.com',
+            password: '1234567890aA$',
+          },
+          {
+            username: 'carla.morais',
+            email: 'carlamorais@gmail.com',
+            password: '1234567890aA%',
+          },
+        ]
+
     await Users.createMany(contas)
 
     const users = await Users.query().whereIn(
