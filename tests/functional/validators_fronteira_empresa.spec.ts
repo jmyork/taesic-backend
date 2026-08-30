@@ -3,6 +3,7 @@ import testUtils from '@adonisjs/core/services/test_utils'
 import { createcaixaValidator, updatecaixaValidator } from '#validators/caixa_validator'
 import { createclienteValidator, updateclienteValidator } from '#validators/cliente_validator'
 import { updateproduto_mediaValidator } from '#validators/produto_media_validator'
+import { createpessoaValidator, updatepessoaValidator } from '#validators/pessoa_validator'
 import { createEmpresa, createUser, createProduto } from '../helpers/fixtures.js'
 import Cliente from '#models/cliente'
 
@@ -189,6 +190,54 @@ test.group('Validadores — a fronteira da empresa nas chaves estrangeiras', (gr
     })
 
     assert.equal(validado.produto_id, produto.id)
+  })
+
+  /**
+   * `pessoa` é recurso de inquilino (`router.resource('pessoa', ...)` sob
+   * `api/:company_alias`). Mesma falha do `caixa.user_id`, e passou ao lado da
+   * primeira passagem desta auditoria — só apareceu ao varrer o repositório
+   * inteiro por `exists(async (db, value, __)`, que é a assinatura do defeito.
+   */
+  test('pessoa: rejeita um user_id de OUTRA empresa', async ({ assert }) => {
+    const empresaA = await createEmpresa()
+    const empresaB = await createEmpresa()
+    const utilizadorDeB = await createUser(empresaB)
+
+    await assert.rejects(() =>
+      createpessoaValidator.validate({
+        nome: 'Pessoa nossa',
+        tipo: 'Funcionario',
+        user_id: utilizadorDeB.id,
+        params: { company_alias: empresaA.company_alias },
+      })
+    )
+  })
+
+  test('pessoa: aceita um user_id da PRÓPRIA empresa', async ({ assert }) => {
+    const empresa = await createEmpresa()
+    const utilizador = await createUser(empresa)
+
+    const validado = await createpessoaValidator.validate({
+      nome: 'Pessoa nossa',
+      tipo: 'Funcionario',
+      user_id: utilizador.id,
+      params: { company_alias: empresa.company_alias },
+    })
+
+    assert.equal(validado.user_id, utilizador.id)
+  })
+
+  test('pessoa (update): rejeita um user_id de OUTRA empresa', async ({ assert }) => {
+    const empresaA = await createEmpresa()
+    const empresaB = await createEmpresa()
+    const utilizadorDeB = await createUser(empresaB)
+
+    await assert.rejects(() =>
+      updatepessoaValidator.validate({
+        user_id: utilizadorDeB.id,
+        params: { company_alias: empresaA.company_alias },
+      })
+    )
   })
 
   /**

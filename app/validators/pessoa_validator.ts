@@ -1,4 +1,5 @@
 import { emailUtilizavel } from '../helpers/email_valido.js'
+import { pertenceAEmpresa } from './pertence_a_empresa.js'
 import vine from '@vinejs/vine'
 export const createpessoaValidator = vine.compile(
   vine.object({
@@ -21,10 +22,11 @@ export const createpessoaValidator = vine.compile(
       .string()
       .trim()
       .escape()
-      .exists(async (db, value, __) => {
-        const exists = await db.from('user').where('id', value).first()
-        return !!exists
-      })
+      // `pessoa` é recurso de inquilino (`router.resource('pessoa', ...)` sob
+      // `api/:company_alias`), mas o `user_id` não era verificado contra empresa
+      // nenhuma — dava para ligar uma ficha de pessoa a um funcionário de outra
+      // empresa. Mesma falha do `caixa.user_id`; ver pertence_a_empresa.ts.
+      .exists(pertenceAEmpresa({ tabela: 'user' }))
       .optional(),
   })
 )
@@ -45,10 +47,11 @@ export const updatepessoaValidator = vine.compile(
       .string()
       .trim()
       .escape()
-      .exists(async (db, value, __) => {
-        const exists = await db.from('user').where('id', value).first()
-        return !!exists
-      })
+      // `pessoa` é recurso de inquilino (`router.resource('pessoa', ...)` sob
+      // `api/:company_alias`), mas o `user_id` não era verificado contra empresa
+      // nenhuma — dava para ligar uma ficha de pessoa a um funcionário de outra
+      // empresa. Mesma falha do `caixa.user_id`; ver pertence_a_empresa.ts.
+      .exists(pertenceAEmpresa({ tabela: 'user' }))
       .optional(),
   })
 )
