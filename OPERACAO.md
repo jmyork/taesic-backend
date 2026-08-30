@@ -461,7 +461,94 @@ de voltar a entrar.
 
 ---
 
-## 9. Cópias de segurança
+## 9. Trancado fora do backoffice — a recuperação
+
+**Não é deste projecto, e está aqui de propósito:** quando alguém perde o acesso
+ao backoffice, a saída não passa pelo backoffice. Passa pela consola do
+servidor — e este é o documento que quem está no servidor tem à mão.
+
+O backoffice controla **de onde** cada administrador pode entrar, além de quem é.
+A lista vive na tabela `backoffice_ip_permitido` (a migração é daqui; o código
+que a usa é do `taesic-backoffice-api`). O filtro falha fechado, de propósito —
+e o reverso é que um endereço residencial ou móvel que mude sem aviso, ou as
+extensões de privacidade do IPv6, trancam a porta numa manhã normal.
+
+### Autorizar um endereço
+
+```bash
+cd /srv/apps/bo-api-qua/build
+sudo -H -u deploy node ace ip:permitir <email> <ip>
+```
+
+Em produção, `bo-api-prd`:
+
+```bash
+cd /srv/apps/bo-api-prd/build
+sudo -H -u deploy node ace ip:permitir <email> <ip>
+```
+
+Aceita IPv4 e IPv6, e mais duas opções:
+
+```bash
+sudo -H -u deploy node ace ip:permitir dono@exemplo.com 197.149.10.20 --descricao "Casa"
+sudo -H -u deploy node ace ip:permitir dono@exemplo.com 2001:db8::1 --expira-em 2026-12-31
+```
+
+**Correr duas vezes é seguro** — a segunda actualiza a linha que já lá está, e
+levanta a revogação se tiver sido revogada. No fim imprime a lista completa de
+autorizações em vigor, que é normalmente a resposta à pergunta *"porque é que não
+consigo entrar?"*.
+
+### Qual é o endereço a autorizar
+
+O próprio middleware regista cada recusa, com o IP que viu:
+
+```bash
+DBQ=$(sudo grep '^DB_DATABASE=' /srv/apps/bo-api-qua/.env | cut -d= -f2)
+sudo mysql "$DBQ" -e "
+  SELECT created_at, ip, details FROM security_logs
+   WHERE event='backoffice_ip_nao_autorizado'
+   ORDER BY created_at DESC LIMIT 5;"
+```
+
+E a lista actual:
+
+```bash
+sudo mysql "$DBQ" -e "
+  SELECT u.email, a.ip, a.descricao, a.expira_em, a.ultimo_acesso_em, a.deleted_at
+    FROM backoffice_ip_permitido a JOIN user u ON u.id = a.user_id
+   ORDER BY a.created_at DESC;"
+```
+
+### Desligar o filtro por completo
+
+Só em emergência, e sabendo o que significa: o backoffice volta a aceitar
+ligações de qualquer ponto do mundo. Com **zero** autorizações em vigor o filtro
+fica desligado — é o mesmo estado em que nasce, e é o que permite chegar ao ecrã
+de instalação.
+
+```bash
+sudo mysql "$DBQ" -e "
+  UPDATE backoffice_ip_permitido SET deleted_at = NOW() WHERE deleted_at IS NULL;"
+```
+
+Autorizar um endereço volta a ligá-lo.
+
+### ⚠️ O que faz isto deixar de funcionar
+
+O filtro só vale enquanto o Caddy vir o **endereço real do visitante**. Com o
+proxy do Cloudflare ligado em `admin.*`, todos os pedidos chegam com endereços da
+CDN e o filtro passa a autorizar toda a gente — **sem um único erro**. `admin.*`
+fica em **DNS only**, e o `Caddyfile` não declara `trusted_proxies`.
+
+```bash
+dig +short admin.qua.taesic.bknkv.com          # tem de dar 159.195.109.213
+grep -c trusted_proxies /etc/caddy/Caddyfile   # tem de dar 0
+```
+
+---
+
+## 10. Cópias de segurança
 
 ```bash
 # ver o estado
