@@ -77,6 +77,31 @@ export class AuthAccessTokenSchema extends BaseModel {
   declare updatedAt: DateTime | null
 }
 
+export class BackofficeIpPermitidoSchema extends BaseModel {
+  static $columns = ['createdAt', 'criadoPorUserId', 'deletedAt', 'descricao', 'expiraEm', 'id', 'ip', 'ultimoAcessoEm', 'updatedAt', 'userId'] as const
+  $columns = BackofficeIpPermitidoSchema.$columns
+  @column.dateTime({ autoCreate: true })
+  declare createdAt: DateTime
+  @column()
+  declare criadoPorUserId: string | null
+  @column.dateTime()
+  declare deletedAt: DateTime | null
+  @column()
+  declare descricao: string | null
+  @column.dateTime()
+  declare expiraEm: DateTime | null
+  @column({ isPrimary: true })
+  declare id: string
+  @column()
+  declare ip: string
+  @column.dateTime()
+  declare ultimoAcessoEm: DateTime | null
+  @column.dateTime({ autoCreate: true, autoUpdate: true })
+  declare updatedAt: DateTime
+  @column()
+  declare userId: string
+}
+
 export class CaixaSchema extends BaseModel {
   static $columns = ['createdAt', 'dataFecho', 'deletedAt', 'empresaId', 'id', 'numero', 'observacoes', 'posId', 'status', 'totalCaixa', 'totalVendas', 'updatedAt', 'userId', 'valorInicial'] as const
   $columns = CaixaSchema.$columns

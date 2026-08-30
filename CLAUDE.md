@@ -3090,3 +3090,32 @@ não só o "Valid configuration" do fim.**
 O `servidor-caddy-ratelimit.sh` continua por executar — exige reconstruir o binário no
 servidor. O `sed` que ele usa para descomentar foi simulado sobre o Caddyfile real e produz
 sintaxe correcta, mas o script em si nunca correu.
+
+### 7.25 A tabela do filtro por IP do backoffice vive aqui, o código vive lá
+
+`database/migrations/1790000000590_create_backoffice_ip_permitido_table.ts`.
+
+**Nada neste projecto lê ou escreve esta tabela.** É a regra 7.18 aplicada ao
+contrário do habitual: o esquema tem um dono único — este projecto —, mas a
+funcionalidade é inteiramente do `taesic-backoffice-api` (model, repositório,
+middleware, comando ace e o ecrã de gestão). O mesmo arranjo de
+`verification_token_hash`, invertido.
+
+**O que a tabela guarda:** pares (utilizador, endereço) autorizados a entrar no
+backoffice. Com a tabela vazia o filtro está desligado — tem de estar, senão
+ninguém chegaria ao ecrã de instalação que cria a primeira conta. A instalação
+grava o endereço que a criou, e é essa linha que liga o filtro.
+
+**O que é preciso saber ao mexer no esquema:** o `colunas_fantasma.spec.ts` do
+`taesic-backoffice-api` compara os models de lá com o `information_schema` real.
+Renomear ou apagar uma coluna desta tabela parte a suite de lá, e não a daqui.
+Correr os testes dos dois projectos depois de uma migração continua a não ser
+opcional.
+
+**A armadilha que não é de código:** o filtro só funciona enquanto o Caddy vir o
+endereço real do visitante. Com o proxy do Cloudflare ligado em `admin.*`, todos
+os pedidos chegam com endereços da CDN e o filtro passa a autorizar toda a gente,
+sem erro nenhum. Está documentado no cabeçalho da migração, no `Caddyfile` e no
+CLAUDE.md §9.4 do outro projecto — três sítios, porque é o tipo de decisão de
+infraestrutura que se toma meses depois, por outra razão, sem ninguém ligar as
+duas coisas.

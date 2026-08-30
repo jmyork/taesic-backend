@@ -89,11 +89,32 @@ export default class extends BaseSeeder {
     //
     // Uma base de produção sem utilizadores não fica bloqueada: o registo de
     // empresas é público e não depende de haver contas de plataforma.
-    const emProducao = process.env.NODE_ENV === 'production'
+    // ── Onde é que as contas de demonstração podem nascer ─────────────────────
+    //
+    // SÓ em `development`. A regra anterior era o inverso — "em todo o lado
+    // excepto `production`" — e falhava aberta por duas vias.
+    //
+    // A primeira apareceu em serviço: QUALIDADE está exposta na internet
+    // (`admin.qua.taesic.bknkv.com`), e não é produção. Bastava correr
+    // `db:fresh:seed` para a consola de administração de qualidade ficar com
+    // três administradores de plataforma cujas passwords estão escritas neste
+    // ficheiro, que está num repositório. A base é a de qualidade e não a de
+    // produção, mas continua a ser uma consola de administração destrancada.
+    //
+    // A segunda é mais silenciosa: `NODE_ENV` por definir, escrito com maiúscula,
+    // ou com um valor que ninguém previu, dava contas criadas. Uma lista de
+    // permissões não tem esse problema — o que não está nela não passa.
+    //
+    // A partir daqui, tudo o que não seja desenvolvimento cria a primeira conta
+    // no ecrã de instalação do backoffice, onde a password é escrita num
+    // formulário e não fica no repositório nem no histórico do shell.
+    const ambiente = process.env.NODE_ENV
+    const podeCriarContasDeDemonstracao = ambiente === 'development'
 
-    if (emProducao) {
+    if (!podeCriarContasDeDemonstracao) {
       console.log(
-        '\nProdução: nenhuma conta criada — as de demonstração têm passwords no repositório.\n' +
+        `\nAmbiente "${ambiente ?? '(por definir)'}": nenhuma conta criada — as de ` +
+          'demonstração têm passwords no repositório.\n' +
           'Crie o administrador da plataforma no ecrã de instalação do backoffice:\n' +
           '  1. defina PLATFORM_SETUP_TOKEN no .env do taesic-backoffice-api\n' +
           '  2. abra /instalacao no backoffice e use esse token\n' +
