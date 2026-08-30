@@ -116,7 +116,7 @@ export function diferencas(
   // `__proto__` tem de aparecer no registo como qualquer outro, e não ser
   // engolido pelo setter.
   const mudouAntes = Object.create(null) as Record<string, unknown>
-  const mudouDepois = Object.create(null) as Record<string, unknown>
+  const mudouDepois: Record<string, unknown> = {}
 
   for (const campo of campos) {
     if (ehSensivel(campo)) continue
@@ -278,7 +278,7 @@ export function redigir(valor: unknown, limite = LIMITE_CAPTURA): unknown {
     // Sem protótipo, `__proto__` passa a ser uma propriedade de dados normal e
     // fica registada como qualquer outra. `JSON.stringify` e `Object.keys`
     // funcionam na mesma sobre objectos sem protótipo.
-    const saida = Object.create(null) as Record<string, unknown>
+    const saida: Record<string, unknown> = {}
     for (const [chave, item] of Object.entries(v as Record<string, unknown>)) {
       saida[chave] = ehSensivel(chave) ? REDIGIDO : limpar(item, profundidade + 1)
     }
