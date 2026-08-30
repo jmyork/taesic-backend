@@ -5,11 +5,8 @@ import {
   Updateproduto_mediaDTO,
 } from '#dtos/produto_media_dto'
 import { DeletedValue } from '../helpers/Types.js'
-import { urlPublicaR2 } from '../helpers/r2_url.js'
+import { apagarImagemPorUrl, guardarImagem } from '../helpers/imagem_r2.js'
 import Empresa from '#models/empresa'
-import { randomUUID } from 'crypto'
-import env from '#start/env'
-import drive from '@adonisjs/drive/services/main'
 import db from '@adonisjs/lucid/services/db'
 import ProdutoMediaLimiteAtingidoException from '#exceptions/produto_media_limite_atingido_exception'
 import ProdutoMediaLimiteExcedidoException from '#exceptions/produto_media_limite_excedido_exception'
@@ -136,19 +133,15 @@ export default class produto_mediaRepository {
     }
 
     const records = await Promise.all(
-      mediaArray.map(async (file) => {
-        const fileName = `${randomUUID()}.${file.extname}`
-        const imagePath = `images/products/${fileName}`
-
-        await file.moveToDisk(imagePath)
-
-        const imageUrl = urlPublicaR2(imagePath)
-
-        return {
-          ...produtoImagemData,
-          media: imageUrl,
-        }
-      })
+      mediaArray.map(async (file) => ({
+        ...produtoImagemData,
+        // Era aqui que vivia a única cópia correcta deste caminho (UUID →
+        // `moveToDisk` → URL pública). Passou para app/helpers/imagem_r2.ts
+        // quando o `cliente` precisou do mesmo — duas cópias divergiriam, e a
+        // derivação inversa em `softDelete` depende do formato exacto que este
+        // lado produz.
+        media: await guardarImagem(file, 'images/products'),
+      }))
     )
 
     return produto_media.createMany(records)
@@ -164,21 +157,17 @@ export default class produto_mediaRepository {
   async softDelete(id: string, company_alias?: string) {
     const produtoImagem = await this.findOrFail(id, company_alias)
 
-    /**
-     * Extrair o path da imagem a partir da URL salva
-     */
-    const imagePath = new URL(produtoImagem.media).pathname
-      .replace(`/${env.get('R2_BUCKET')}/`, '')
-      .replace(/^\/+/, '')
+    // A derivação URL → caminho do objecto vive agora no helper, ao lado da
+    // função que produz a URL: são as duas metades do mesmo formato e têm de
+    // continuar a concordar.
+    //
+    // O helper também deixou de propagar erros do R2 (ver a nota lá). Antes, um
+    // `delete` falhado no R2 rebentava o pedido ANTES do soft delete na BD: o
+    // utilizador via um erro, a imagem continuava na lista, e tentar outra vez
+    // dava o mesmo. Agora a linha é sempre marcada como apagada, que é o que ele
+    // pediu, e um objecto órfão no bucket fica registado no log.
+    await apagarImagemPorUrl(produtoImagem.media)
 
-    /**
-     * Apagar do R2
-     */
-    await drive.use().delete(imagePath)
-
-    /**
-     * Soft delete no banco
-     */
     await produtoImagem.delete()
   }
 

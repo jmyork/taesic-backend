@@ -2947,3 +2947,146 @@ HTTP com os limites e com as duas recusas (limite zero, slug repetido) em portug
 > ⚠️ **`taesic-backoffice` não tem testes de browser** (só `e2e/bff-tunel.mjs`, que é uma
 > regressão do proxy e não abre browser nenhum). O ecrã de planos foi verificado por
 > `tsc`, por `next build` e pela API por baixo dele — não por execução da página.
+
+### 7.24 Auditoria de segurança — a fronteira da empresa nas chaves estrangeiras, e as imagens
+
+Auditoria pedida sobre 20 categorias de vulnerabilidade (Next.js + Caddy + VPS). A maior
+parte do sistema saiu limpa — e vale dizer quais, porque não voltar lá é metade do valor:
+ReDoS (as regexes têm prefixos disjuntos), segredos no bundle, LFI, XXE, poluição de
+protótipo (não há fusão profunda em lado nenhum), empilhamento de descontos (`desconto`
+0–100, cupão único, `Math.min(…, total)`, soma de pagamentos reconciliada), e o binding de
+rede da VPS (`ufw` com 22/80/443, MySQL em `127.0.0.1`).
+
+O que não saiu limpo foi o mesmo defeito repetido em quatro sítios, mais duas coisas na
+infraestrutura.
+
+#### O isolamento multi-tenant estava metade feito
+
+**`findOrFail(id, companyAlias)` protege o RECURSO. Nada protegia as CHAVES ESTRANGEIRAS
+escritas para dentro dele.** Vários validadores confirmavam só que a linha apontada existia
+— em qualquer sítio da base de dados:
+
+```ts
+.exists(async (db, value, __) => {
+  const exists = await db.from('user').where('id', value).first()
+  return !!exists
+})
+```
+
+O `__` no terceiro parâmetro é o sintoma: é o `FieldContext`, o único sítio de onde vem o
+`company_alias` da rota, e estava explicitamente ignorado. §7.14 já tinha deixado isto
+assinalado em aberto, com o `produto_media_validator` nomeado.
+
+| rota | o que dava | |
+|---|---|---|
+| `POST caixas` | abrir caixa em nome de funcionário de outra empresa | escrita cross-tenant |
+| `POST/PUT cliente` | `cliente_pai_id` de outra empresa | **escrita vira LEITURA** |
+| `PUT produto-medias/:id` | mover a nossa imagem para o produto de outra empresa | escrita cross-tenant |
+| `POST cobranca` | cobrança contra a subscrição de outra empresa | escrita cross-tenant |
+
+O caso do `cliente` é o pior porque não fica pela escrita: `cliente_pai` é uma relação LIDA
+de volta (`belongsTo` em `cliente.ts`, filtro em `cliente_repository.ts`), portanto apontá-la
+ao cliente de outra empresa serve a ficha do concorrente pela nossa própria API. Nenhum
+destes é furo de autenticação — o atacante entra pela porta, com conta verdadeira da empresa
+dele. É o que a OWASP chama BOLA.
+
+**Correcção**: `app/validators/pertence_a_empresa.ts`, um `exists()` com fronteira de
+empresa. Não é mecanismo novo — `existeNoDominio`/`papelDestaEmpresa` em `auth_validator.ts`
+já faziam isto desde sempre; os quatro validadores é que tinham ficado para trás. **Falha
+fechada**: sem `company_alias` no contexto devolve `false`, nunca "sem filtro".
+
+`tests/functional/validators_fronteira_empresa.spec.ts` (9 testes). **Tem dentes, e está
+provado**: revertida a correcção, as 5 rejeições falham e as 4 aceitações continuam a passar.
+Os testes de ACEITAÇÃO não são decoração — são o que impede a correcção de ser um
+`return false`, que passaria todas as rejeições e partiria o produto.
+
+> **Armadilha apanhada a escrever o teste**: a primeira versão do teste de rejeição do
+> cliente omitia `tipo` (obrigatório). Passava — mas por ser recusado por falta de `tipo`,
+> nunca chegando a exercitar a fronteira. **Um teste de rejeição só prova alguma coisa se
+> todos os OUTROS campos forem válidos.**
+
+#### As imagens de cliente iam para o disco do servidor, não para o R2
+
+`cliente.logo`/`foto` eram escritos por um `.transform()` DENTRO do validador, a chamar
+`file.move('uploads', ...)`. Quatro defeitos somados:
+
+1. Disco local em vez do R2, num caminho que **nada serve** — não existe `uploads/` na raiz
+   (há `public/uploads/`, que é outro sítio). Escritos e nunca mais lidos: a funcionalidade
+   estava partida de ponta a ponta. Confirmado no frontend, que nunca lê estes campos.
+2. 25 MB por pedido, sem limpeza, por qualquer utilizador autenticado — caminho para encher
+   o disco da VPS a partir de um `POST`, e com ele parar a produção e a BD.
+3. `move()` é assíncrono e `.transform()` é SÍNCRONO: a promessa nunca era aguardada nem
+   apanhada.
+4. I/O num validador escreve o ficheiro mesmo quando outro campo do pedido é recusado.
+
+**A regra que fica: o validador valida, o repositório escreve.** É o que o `produto_media`
+já fazia. `app/helpers/imagem_r2.ts` passou a ser o único caminho (`guardarImagem`,
+`caminhoDoObjecto`, `apagarImagemPorUrl`), e o `produto_media_repository` foi consolidado
+nele — a derivação inversa URL→caminho tem de continuar a concordar com `urlPublicaR2()`, e
+duas cópias divergiriam.
+
+> **Bug que EU introduzi e o teste apanhou**: escrevi `{ logo: await resolverImagem(...) }`
+> a partir da ideia — errada — de que o `merge()` do Lucid ignora `undefined`. **Não
+> ignora**: a chave existe e atribui `undefined` por cima do valor da BD. Um update que
+> mexesse só no nome APAGAVA a foto. A chave tem de estar AUSENTE, não a `undefined`.
+
+`tests/functional/cliente_imagens_r2.spec.ts` (9 testes) usa **`drive.fake('r2')`** — que
+exigiu acrescentar `fakes: { location: app.tmpPath('drive-fakes') }` a `config/drive.ts`.
+Sem isso não há forma de exercitar um upload sem falar com o R2 a sério, e um teste que
+falha por a rede estar em baixo não diz nada sobre o código. **Precedente novo neste
+projecto**; o `MultipartFileFactory` sozinho não chega, porque `moveToDisk()` lê o
+`tmpPath` — é preciso escrever um ficheiro de verdade e atribuí-lo.
+
+`softDelete` de cliente **não** apaga as imagens, ao contrário do de `produto_media`: aqui é
+um ALTERNADOR, e repor devolveria uma ficha com as imagens partidas.
+
+#### Infraestrutura
+
+- **`utils.taesic.bknkv.com` retirado do Caddyfile.** Expunha `/consultar-nif/:nif` e
+  `/consultar-bi/:bi` **sem autenticação, sem limitador** (`@adonisjs/limiter` nem é
+  dependência daquele projecto) **e sem shield**. Consulta de BI de cidadãos aberta ao
+  mundo, e cada pedido lança um Chromium (`chromium.launch()`), sem fila nem limite de
+  concorrência. Apagar não parte nada: o único consumidor é `nif_repository.ts:43`, que já
+  usa `http://127.0.0.1:3400`.
+- **Caddyfile**: tempos limite (não havia nenhum — Slowloris), `includeSubDomains` no HSTS,
+  `request_body max_size`.
+- **`X-Forwarded-For`: não se mexe nele no Caddy, e a primeira versão deste trabalho estava
+  errada.** Tinha posto `header_up X-Forwarded-For {remote_host}` nos quatro sites, para
+  substituir a cadeia em vez de lhe acrescentar. O `caddy validate` avisou que era
+  desnecessário — e é: o `reverse_proxy` só ACRESCENTA à cadeia quando a ligação vem de um
+  endereço declarado em `trusted_proxies`, e não há nenhum declarado. O que o cliente enviar
+  já é descartado por omissão.
+  **E não era só redundante — era uma mina.** No dia em que houver uma CDN à frente com
+  `trusted_proxies` declarado, o Caddy passaria a derivar bem o IP do visitante e aquela
+  linha sobrepunha-o com o endereço da CDN: todos os utilizadores a contar como um só, e os
+  limitadores por IP a barrar a plataforma inteira de uma vez. Retirada.
+  **Lição**: o aviso do `caddy validate` não era ruído. Um "unnecessary" numa directiva que
+  se escreveu de propósito é um sinal de que a premissa sobre o comportamento por omissão
+  está errada — vale sempre confirmar antes de o ignorar.
+- **Os cabeçalhos passaram a usar o operador `?`** ("define só se ainda não existir"). Sem
+  ele o Caddy SUBSTITUÍA o que a aplicação enviava — e estava a rebaixar o
+  `Referrer-Policy: no-referrer` do backoffice para `strict-origin-when-cross-origin`. Uma
+  linha escrita para melhorar a segurança estava a desfazer a decisão mais cuidada tomada na
+  aplicação.
+- **Limitação de ritmo**: `servidor-caddy-ratelimit.sh`. O `rate_limit` é módulo de
+  terceiros e exige reconstruir o binário; o bloco fica COMENTADO no Caddyfile e é o script
+  que o descomenta — depois de confirmar que o binário novo tem mesmo o módulo, e desfazendo
+  binário e configuração se o `validate` ou o `reload` falharem. **A ordem importa: primeiro
+  o binário, só depois a configuração.** Ao contrário deixa o site em baixo.
+- **`clx` removido** de `alaragest-webpage`. Nome com forma de typosquat do `clsx`, que está
+  lá ao lado, e zero usos em todo o projecto.
+
+#### Verificado
+
+**816 testes** (eram 807), `tsc --noEmit` limpo no backend e no frontend, `next build` a
+passar.
+
+O Caddyfile foi escrito numa máquina **sem binário do Caddy** e validado depois, no
+servidor. Valeu a pena: foi o `caddy validate` que apanhou o `header_up X-Forwarded-For`
+(acima) — quatro avisos que teriam passado despercebidos se o ficheiro tivesse sido
+aplicado sem validar. **Correr `caddy validate` antes do `reload`, sempre, e LER os avisos,
+não só o "Valid configuration" do fim.**
+
+O `servidor-caddy-ratelimit.sh` continua por executar — exige reconstruir o binário no
+servidor. O `sed` que ele usa para descomentar foi simulado sobre o Caddyfile real e produz
+sintaxe correcta, mas o script em si nunca correu.

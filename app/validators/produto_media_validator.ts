@@ -1,5 +1,5 @@
 import vine from '@vinejs/vine'
-import { randomUUID } from 'crypto'
+import { pertenceAEmpresa } from './pertence_a_empresa.js'
 
 export const createproduto_mediaValidator = vine.compile(
   vine.object({
@@ -45,19 +45,35 @@ export const updateproduto_mediaValidator = vine.compile(
     produto_id: vine
       .string()
       .escape()
-      .exists(async (db, value, __) => {
-        const exists = await db.from('produtos').where('id', value).first()
-        return !!exists
-      })
+      // O validador de CREATE (acima) já cruzava com `empresa.company_alias`; o
+      // de UPDATE não cruzava com nada. `PUT produto-medias/:id` com o
+      // `produto_id` de outra empresa passava a validação e o `r.merge(data)` do
+      // repositório gravava-o — a nossa imagem ficava pendurada no produto dela.
+      // Este é o caso nomeado em CLAUDE.md §7.14 como ficando em aberto.
+      .exists(pertenceAEmpresa({ tabela: 'produtos' }))
       .optional(),
-    imagem_url: vine
-      .file({ size: '25mb', extnames: ['jpg', 'jpeg', 'png', 'gif'] })
-      .transform((file) => {
-        const fileName = `${randomUUID()}.${file.extname}`
-        file.move('uploads', { name: fileName, overwrite: true })
-        return fileName
-      })
-      .optional(),
+    // REMOVIDO: `imagem_url`.
+    //
+    // Não era um campo a menos — era três defeitos sobrepostos:
+    //
+    // 1. `imagem_url` NÃO É COLUNA de `produto_media` (a coluna é `media`, ver
+    //    app/models/faturacao/produto_media.ts). O `r.merge(data)` do repositório
+    //    punha-a numa propriedade solta do objecto e nada era gravado. É a mesma
+    //    classe de "coluna fantasma" que §7.14 varreu — este caso escapou porque
+    //    vinha de um validador, não de um `@column()`.
+    // 2. `file.move('uploads', ...)` escreve no disco LOCAL do servidor, não no
+    //    R2 por onde todas as outras imagens passam (`moveToDisk` em
+    //    produto_media_repository.create()). Não existe `uploads/` na raiz do
+    //    projecto e nada serve esse caminho: o ficheiro era escrito e nunca mais
+    //    lido por ninguém. Sobrava só o custo — 25 MB por pedido, sem limpeza,
+    //    escritos por qualquer utilizador autenticado de qualquer empresa. É um
+    //    caminho para encher o disco do servidor a partir de um `PUT`.
+    // 3. O `.move()` é assíncrono e o `.transform()` do VineJS é síncrono: a
+    //    promessa nunca era aguardada nem apanhada. Um erro de escrita
+    //    desaparecia sem deixar rasto.
+    //
+    // Quem quiser mudar a imagem de um `produto_media` apaga e volta a criar,
+    // que é o caminho que passa pelo R2 e grava a URL correcta.
   })
 )
 

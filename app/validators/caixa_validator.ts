@@ -1,6 +1,7 @@
 import vine from '@vinejs/vine'
 import { userHasRole } from '../helpers/Utils.js'
 import { commonQueryFields } from './common_query_fields.js'
+import { pertenceAEmpresa } from './pertence_a_empresa.js'
 
 export const OpenCaixaValidator = vine.compile(
   vine.object({
@@ -52,10 +53,11 @@ export const createcaixaValidator = vine.compile(
       .string()
       .trim()
       .escape()
-      .exists(async (db, value, __) => {
-        const exists = await db.from('user').where('id', value).first()
-        return !!exists
-      }),
+      // A caixa é sempre da empresa da rota (`findOrFail` + `scopeToTenant`), mas
+      // o `user_id` escrito para DENTRO dela não era verificado contra empresa
+      // nenhuma: dava para abrir/actualizar uma caixa em nome de um funcionário
+      // de outra empresa. Ver app/validators/pertence_a_empresa.ts.
+      .exists(pertenceAEmpresa({ tabela: 'user' })),
     data_abertura: vine.date({ formats: ['iso8601'] }),
     data_fecho: vine.date({ formats: ['iso8601'] }),
     valor_inicial: vine.number().decimal([0, 12]),
@@ -71,10 +73,11 @@ export const updatecaixaValidator = vine.compile(
       .string()
       .trim()
       .escape()
-      .exists(async (db, value, __) => {
-        const exists = await db.from('user').where('id', value).first()
-        return !!exists
-      })
+      // A caixa é sempre da empresa da rota (`findOrFail` + `scopeToTenant`), mas
+      // o `user_id` escrito para DENTRO dela não era verificado contra empresa
+      // nenhuma: dava para abrir/actualizar uma caixa em nome de um funcionário
+      // de outra empresa. Ver app/validators/pertence_a_empresa.ts.
+      .exists(pertenceAEmpresa({ tabela: 'user' }))
       .optional(),
     data_abertura: vine.date({ formats: ['iso8601'] }).optional(),
     data_fecho: vine.date({ formats: ['iso8601'] }).optional(),

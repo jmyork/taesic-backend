@@ -1,6 +1,6 @@
 import { emailUtilizavel } from '../helpers/email_valido.js'
+import { pertenceAEmpresa } from './pertence_a_empresa.js'
 import vine from '@vinejs/vine'
-import { randomUUID } from 'crypto'
 import { commonQueryFields } from './common_query_fields.js'
 
 /**
@@ -83,30 +83,26 @@ export const createclienteValidator = vine.compile(
     limite_credito: vine.number().decimal([0, 12]).optional(),
     saldo: vine.number().decimal([0, 12]).optional(),
     observacao: vine.string().trim().escape().optional(),
-    logo: vine
-      .file({ size: '25mb', extnames: ['jpg', 'jpeg', 'png', 'gif'] })
-      .transform((file) => {
-        const fileName = `${randomUUID()}.${file.extname}`
-        file.move('uploads', { name: fileName, overwrite: true })
-        return fileName
-      })
-      .optional(),
-    foto: vine
-      .file({ size: '25mb', extnames: ['jpg', 'jpeg', 'png', 'gif'] })
-      .transform((file) => {
-        const fileName = `${randomUUID()}.${file.extname}`
-        file.move('uploads', { name: fileName, overwrite: true })
-        return fileName
-      })
-      .optional(),
+    // Sem `.transform()`. O validador VALIDA; quem escreve é o repositório, que
+    // sobe para o R2 e grava a URL pública — o mesmo caminho do `produto_media`.
+    //
+    // O `.transform()` que aqui estava chamava `file.move('uploads', ...)`: I/O
+    // dentro de um validador, para o disco local do servidor, com a promessa
+    // nunca aguardada. Ver o cabeçalho de app/helpers/imagem_r2.ts para os
+    // quatro defeitos que isso somava.
+    logo: vine.file({ size: '25mb', extnames: ['jpg', 'jpeg', 'png', 'gif'] }).optional(),
+    foto: vine.file({ size: '25mb', extnames: ['jpg', 'jpeg', 'png', 'gif'] }).optional(),
     cliente_pai_id: vine
       .string()
       .trim()
       .escape()
-      .exists(async (db, value, __) => {
-        const exists = await db.from('cliente').where('id', value).first()
-        return !!exists
-      })
+      // O pior caso dos `.exists()` sem âmbito, porque não fica pela escrita:
+      // `cliente_pai` é uma relação LIDA de volta (belongsTo em
+      // app/models/cliente.ts; filtro `cliente.cliente_pai_id` em
+      // cliente_repository.ts). Apontá-la ao cliente de outra empresa
+      // transformava uma escrita cross-tenant numa LEITURA cross-tenant da
+      // ficha de um concorrente, servida pela nossa própria API.
+      .exists(pertenceAEmpresa({ tabela: 'cliente' }))
       .optional(),
   })
 )
@@ -165,30 +161,26 @@ export const updateclienteValidator = vine.compile(
     limite_credito: vine.number().decimal([0, 12]).optional(),
     saldo: vine.number().decimal([0, 12]).optional(),
     observacao: vine.string().trim().escape().optional(),
-    logo: vine
-      .file({ size: '25mb', extnames: ['jpg', 'jpeg', 'png', 'gif'] })
-      .transform((file) => {
-        const fileName = `${randomUUID()}.${file.extname}`
-        file.move('uploads', { name: fileName, overwrite: true })
-        return fileName
-      })
-      .optional(),
-    foto: vine
-      .file({ size: '25mb', extnames: ['jpg', 'jpeg', 'png', 'gif'] })
-      .transform((file) => {
-        const fileName = `${randomUUID()}.${file.extname}`
-        file.move('uploads', { name: fileName, overwrite: true })
-        return fileName
-      })
-      .optional(),
+    // Sem `.transform()`. O validador VALIDA; quem escreve é o repositório, que
+    // sobe para o R2 e grava a URL pública — o mesmo caminho do `produto_media`.
+    //
+    // O `.transform()` que aqui estava chamava `file.move('uploads', ...)`: I/O
+    // dentro de um validador, para o disco local do servidor, com a promessa
+    // nunca aguardada. Ver o cabeçalho de app/helpers/imagem_r2.ts para os
+    // quatro defeitos que isso somava.
+    logo: vine.file({ size: '25mb', extnames: ['jpg', 'jpeg', 'png', 'gif'] }).optional(),
+    foto: vine.file({ size: '25mb', extnames: ['jpg', 'jpeg', 'png', 'gif'] }).optional(),
     cliente_pai_id: vine
       .string()
       .trim()
       .escape()
-      .exists(async (db, value, __) => {
-        const exists = await db.from('cliente').where('id', value).first()
-        return !!exists
-      })
+      // O pior caso dos `.exists()` sem âmbito, porque não fica pela escrita:
+      // `cliente_pai` é uma relação LIDA de volta (belongsTo em
+      // app/models/cliente.ts; filtro `cliente.cliente_pai_id` em
+      // cliente_repository.ts). Apontá-la ao cliente de outra empresa
+      // transformava uma escrita cross-tenant numa LEITURA cross-tenant da
+      // ficha de um concorrente, servida pela nossa própria API.
+      .exists(pertenceAEmpresa({ tabela: 'cliente' }))
       .optional(),
   })
 )

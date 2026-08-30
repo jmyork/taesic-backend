@@ -20,6 +20,7 @@ export interface Createproduto_mediaDTO {
   empresa_id?: string
 }
 export interface Updateproduto_mediaDTO {
-  imagem_url?: string
+  // `imagem_url` saiu daqui com o campo do validador: não é coluna de
+  // `produto_media` e nada a lia. Ver a nota em produto_media_validator.ts.
   produto_id?: string
 }

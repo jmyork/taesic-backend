@@ -1,7 +1,18 @@
+import type { MultipartFile } from '@adonisjs/core/bodyparser'
+
+/**
+ * `logo` e `foto` são o FICHEIRO enviado, não um caminho.
+ *
+ * Antes eram `string` porque o validador escrevia o ficheiro no disco local e
+ * devolvia o nome. Agora o validador só valida, e é
+ * `cliente_repository.create()/update()` que sobe para o R2 e grava a URL
+ * pública na coluna (que continua a ser `string` no model). Ver
+ * app/helpers/imagem_r2.ts.
+ */
 export interface CreateclienteDTO {
   cliente_pai_id?: string
-  foto?: string
-  logo?: string
+  foto?: MultipartFile
+  logo?: MultipartFile
   observacao?: string
   saldo?: number
   limite_credito?: number
@@ -69,8 +80,8 @@ export interface ClienteQueryDTO {
 
 export interface UpdateclienteDTO {
   cliente_pai_id?: string
-  foto?: string
-  logo?: string
+  foto?: MultipartFile
+  logo?: MultipartFile
   observacao?: string
   saldo?: number
   limite_credito?: number

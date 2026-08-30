@@ -5,6 +5,40 @@ import Empresa from '#models/empresa'
 import { ClienteQueryDTO, CreateclienteDTO, UpdateclienteDTO } from '#dtos/cliente_dto'
 import { applyCommonFilters, FieldSpec } from '../helpers/query_filters.js'
 import { proximoNumeroPorEmpresa } from '../helpers/sequencial_numero.js'
+import { apagarImagemPorUrl, resolverImagem } from '../helpers/imagem_r2.js'
+
+/** Prefixo dos objectos de cliente no bucket, à imagem de `images/products/`. */
+const PASTA_NO_R2 = 'images/clientes'
+
+/**
+ * As imagens que vieram no pedido, prontas a entrar num `merge()`.
+ *
+ * ⚠️ A CHAVE TEM DE ESTAR AUSENTE, não a `undefined`. Escrito primeiro como
+ *
+ *     { logo: await resolverImagem(logo), foto: await resolverImagem(foto) }
+ *
+ * a partir da ideia — errada — de que o `merge()` do Lucid ignora `undefined`.
+ * Não ignora: a chave existe, e o merge atribui `undefined` por cima do valor
+ * que veio da base de dados. Um update que mexesse só no nome APAGAVA a foto e o
+ * logótipo do cliente.
+ *
+ * Apanhado pelo teste "update que não menciona a imagem deixa-a como está", em
+ * `tests/functional/cliente_imagens_r2.spec.ts` — não por leitura de código.
+ */
+async function resolverImagens(
+  logo: CreateclienteDTO['logo'],
+  foto: CreateclienteDTO['foto']
+): Promise<{ logo?: string; foto?: string }> {
+  const resultado: { logo?: string; foto?: string } = {}
+
+  const novoLogo = await resolverImagem(logo, PASTA_NO_R2)
+  if (novoLogo) resultado.logo = novoLogo
+
+  const novaFoto = await resolverImagem(foto, PASTA_NO_R2)
+  if (novaFoto) resultado.foto = novaFoto
+
+  return resultado
+}
 
 const CLIENTE_FILTER_FIELDS: FieldSpec[] = [
   { kind: 'exact', column: 'cliente.numero', key: 'numero' },
@@ -80,21 +114,59 @@ export default class clienteRepository {
   }
 
   async create(data: CreateclienteDTO & { company_alias?: string }) {
-    const { company_alias, ...clienteData } = data
+    const { company_alias, logo, foto, ...clienteData } = data
+
+    // As imagens sobem ANTES de a transacção abrir. Um upload para o R2 é uma
+    // chamada de rede que pode levar segundos; feito lá dentro, mantinha uma
+    // transacção MySQL aberta — e com ela o bloqueio de linha que
+    // `proximoNumeroPorEmpresa` toma com `forUpdate()` sobre a empresa. Duas
+    // criações de cliente em simultâneo passariam a esperar uma pela rede da
+    // outra.
+    //
+    // O troco é que um erro DEPOIS daqui deixa o objecto órfão no R2. É o mesmo
+    // compromisso que `produto_media_repository.create()` já faz, e é o lado
+    // certo para errar: um ficheiro que ninguém referencia custa cêntimos, uma
+    // transacção presa custa a aplicação.
+    const imagens = await resolverImagens(logo, foto)
+
     if (company_alias) {
       const empresa = await Empresa.findByOrFail('company_alias', company_alias)
       return db.transaction(async (trx) => {
         const numero = await proximoNumeroPorEmpresa(trx, empresa.id, cliente)
-        return cliente.create({ ...clienteData, empresa_id: empresa.id, numero }, { client: trx })
+        return cliente.create(
+          { ...clienteData, ...imagens, empresa_id: empresa.id, numero },
+          { client: trx }
+        )
       })
     }
-    return cliente.create(clienteData)
+    return cliente.create({ ...clienteData, ...imagens })
   }
 
   async update(id: string, data: UpdateclienteDTO, companyAlias?: string) {
     const r = await this.findOrFail(id, companyAlias)
-    r.merge(data)
+
+    const { logo, foto, ...clienteData } = data
+
+    // Guardadas ANTES do merge: depois dele já não há como saber que objectos o
+    // cliente tinha, e ficariam para sempre no bucket sem ninguém a
+    // referenciá-los.
+    const logoAnterior = r.logo
+    const fotoAnterior = r.foto
+
+    const imagens = await resolverImagens(logo, foto)
+
+    r.merge({ ...clienteData, ...imagens })
     await r.save()
+
+    // Só DEPOIS de gravar. Apagar antes deixaria o cliente sem imagem nenhuma se
+    // o `save()` falhasse — a antiga já apagada e a nova por gravar.
+    if (imagens.logo && logoAnterior !== imagens.logo) {
+      await apagarImagemPorUrl(logoAnterior)
+    }
+    if (imagens.foto && fotoAnterior !== imagens.foto) {
+      await apagarImagemPorUrl(fotoAnterior)
+    }
+
     return r
   }
 
@@ -103,5 +175,11 @@ export default class clienteRepository {
     if (r.deletedAt) r.deletedAt = null
     else r.deletedAt = DateTime.now()
     await r.save()
+
+    // As imagens NÃO são apagadas aqui, ao contrário do que
+    // `produto_media_repository.softDelete()` faz. A diferença é real: este
+    // método é um ALTERNADOR — a linha acima repõe o cliente se ele já estivesse
+    // apagado. Apagar os objectos do R2 tornaria a reposição uma operação que
+    // devolve uma ficha com as imagens partidas, e sem nada a explicar porquê.
   }
 }
