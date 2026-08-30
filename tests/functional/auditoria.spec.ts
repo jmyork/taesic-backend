@@ -509,3 +509,46 @@ test.group('auditoria — poda por retenção', (group) => {
     assert.include(accoes, 'recente.b')
   })
 })
+
+/**
+ * As chaves do corpo do pedido são escolhidas por quem faz o pedido, e `__proto__`
+ * é uma delas.
+ *
+ * Num objecto normal, `saida['__proto__'] = x` não cria propriedade nenhuma —
+ * invoca o setter de `__proto__`. Não polui `Object.prototype` (o setter só troca
+ * o protótipo daquele objecto), mas o campo DESAPARECIA do registo: bastava
+ * chamar-lhe `__proto__` para o tornar invisível a quem investigasse o pedido.
+ * Num log que existe para forense de segurança, isso é uma forma de apagar rasto.
+ *
+ * `redigir()` passou a construir os objectos com `Object.create(null)`.
+ */
+test.group('auditoria — chaves hostis no corpo do pedido', () => {
+  test('um campo chamado __proto__ é REGISTADO, não engolido', ({ assert }) => {
+    const registado = redigir(JSON.parse('{"nome":"ok","__proto__":{"admin":true}}')) as Record<
+      string,
+      unknown
+    >
+
+    assert.isNotNull(registado)
+    assert.deepInclude(Object.keys(registado), '__proto__')
+    assert.equal(registado.nome, 'ok')
+  })
+
+  test('não polui Object.prototype', ({ assert }) => {
+    redigir(JSON.parse('{"__proto__":{"poluido":"sim"}}'))
+    redigir(JSON.parse('{"constructor":{"prototype":{"poluido":"sim"}}}'))
+
+    assert.isUndefined(({} as Record<string, unknown>).poluido)
+    assert.isUndefined((Object.prototype as Record<string, unknown>).poluido)
+  })
+
+  test('diferencas() também regista um campo __proto__', ({ assert }) => {
+    const mudou = diferencas(
+      JSON.parse('{"__proto__":"antes"}'),
+      JSON.parse('{"__proto__":"depois"}')
+    )
+
+    assert.isNotNull(mudou)
+    assert.deepInclude(Object.keys(mudou!.depois as object), '__proto__')
+  })
+})

@@ -112,8 +112,11 @@ export function diferencas(
   const d = depois ?? {}
   const campos = new Set([...Object.keys(a), ...Object.keys(d)])
 
-  const mudouAntes: Record<string, unknown> = {}
-  const mudouDepois: Record<string, unknown> = {}
+  // Sem protótipo, pela mesma razão de `limpar()` mais abaixo: um campo chamado
+  // `__proto__` tem de aparecer no registo como qualquer outro, e não ser
+  // engolido pelo setter.
+  const mudouAntes = Object.create(null) as Record<string, unknown>
+  const mudouDepois = Object.create(null) as Record<string, unknown>
 
   for (const campo of campos) {
     if (ehSensivel(campo)) continue
@@ -261,7 +264,21 @@ export function redigir(valor: unknown, limite = LIMITE_CAPTURA): unknown {
       return corte
     }
 
-    const saida: Record<string, unknown> = {}
+    // `Object.create(null)` e não `{}`: a CHAVE aqui vem do corpo do pedido (o
+    // middleware de auditoria passa `ctx.request.body()`), portanto é escolhida
+    // por quem faz o pedido.
+    //
+    // Num objecto normal, `saida['__proto__'] = x` não cria propriedade nenhuma —
+    // invoca o setter de `__proto__`. Isto NÃO polui `Object.prototype` (o setter
+    // só troca o protótipo deste objecto descartável), mas tem uma consequência
+    // que importa num registo de AUDITORIA: o campo desaparecia do log sem deixar
+    // rasto. Bastava chamar-lhe `__proto__` para o tornar invisível a quem
+    // investigasse o pedido depois.
+    //
+    // Sem protótipo, `__proto__` passa a ser uma propriedade de dados normal e
+    // fica registada como qualquer outra. `JSON.stringify` e `Object.keys`
+    // funcionam na mesma sobre objectos sem protótipo.
+    const saida = Object.create(null) as Record<string, unknown>
     for (const [chave, item] of Object.entries(v as Record<string, unknown>)) {
       saida[chave] = ehSensivel(chave) ? REDIGIDO : limpar(item, profundidade + 1)
     }
