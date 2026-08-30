@@ -1,6 +1,6 @@
 import { BaseMail } from '@adonisjs/mail'
 
-const FROM = 'noreply.taesic@bknkv.com'
+import { remetente } from '#mails/remetente'
 
 /**
  * Enviado para o endereço ANTIGO quando o email de um funcionário é alterado
@@ -29,7 +29,7 @@ export default class EmailAlteradoAvisoMail extends BaseMail {
   prepare() {
     this.message
       .to(this.destinatario)
-      .from(FROM)
+      .from(remetente())
       .subject('O email da sua conta foi alterado — Taesic')
       .htmlView('emails/email_alterado_aviso', {
         user: {

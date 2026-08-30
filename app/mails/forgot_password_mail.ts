@@ -1,6 +1,6 @@
 import { BaseMail } from '@adonisjs/mail'
 
-const FROM = 'noreply.taesic@bknkv.com'
+import { remetente } from '#mails/remetente'
 
 /**
  * Email de recuperação de palavra-passe (`auth_repository.forgot_password()`). Antes desta
@@ -22,7 +22,7 @@ export default class ForgotPasswordMail extends BaseMail {
   prepare() {
     this.message
       .to(this.destinatario)
-      .from(FROM)
+      .from(remetente())
       .subject('Redefinir a sua palavra-passe — Taesic')
       .htmlView('emails/reset_password', {
         user: {

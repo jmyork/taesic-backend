@@ -1,6 +1,6 @@
 import { BaseMail } from '@adonisjs/mail'
 
-const FROM = 'noreply.taesic@bknkv.com'
+import { remetente } from '#mails/remetente'
 
 /** Email com o código OTP de acesso ao painel de promotor (`promotor_auth_repository.pedirOtp()`). */
 export default class PromotorOtpMail extends BaseMail {
@@ -15,7 +15,7 @@ export default class PromotorOtpMail extends BaseMail {
   prepare() {
     this.message
       .to(this.destinatario)
-      .from(FROM)
+      .from(remetente())
       .subject('O seu código de acesso — Taesic')
       .htmlView('emails/promotor_otp', {
         nome: this.nome,

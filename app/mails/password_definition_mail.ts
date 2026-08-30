@@ -1,6 +1,6 @@
 import { BaseMail } from '@adonisjs/mail'
 
-const FROM = 'noreply.taesic@bknkv.com'
+import { remetente } from '#mails/remetente'
 
 /**
  * Email enviado quando um administrador cria a conta de um funcionário
@@ -24,7 +24,7 @@ export default class PasswordDefinitionMail extends BaseMail {
   prepare() {
     this.message
       .to(this.destinatario)
-      .from(FROM)
+      .from(remetente())
       .subject('A sua conta foi criada — defina a palavra-passe')
       .htmlView('emails/password_definition', {
         user: {

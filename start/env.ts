@@ -81,8 +81,12 @@ export default await Env.create(new URL('../', import.meta.url), {
   RESEND_BASE_URL: Env.schema.string.optional(),
 
   /*
-  | Remetente dos emails. O domínio tem de estar verificado na Resend, senão os
-  | envios são recusados. Opcional: ausente, usa-se `noreply@taesic.com`.
+  | Remetente dos emails. Opcional, e normalmente ausente: o endereço verificado
+  | está em `app/mails/remetente.ts`, uma definição só para as oito Mailables.
+  |
+  | Só se sobrepõe se for mesmo um ENDEREÇO. Um valor sem "@" é ignorado — este
+  | ficheiro dizia "usa-se noreply@taesic.com", duas Mailables acreditaram, e com
+  | `MAIL_FROM=BKNKV` no .env o que seguia para a Resend era a palavra `BKNKV`.
   */
   MAIL_FROM: Env.schema.string.optional(),
 

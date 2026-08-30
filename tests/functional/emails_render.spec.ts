@@ -8,6 +8,7 @@ import EmailAlteradoAvisoMail from '#mails/email_alterado_aviso_mail'
 import ForgotPasswordMail from '#mails/forgot_password_mail'
 import PasswordDefinitionMail from '#mails/password_definition_mail'
 import PromotorOtpMail from '#mails/promotor_otp_mail'
+import { escolherRemetente, REMETENTE_VERIFICADO } from '#mails/remetente'
 import type { BaseMail } from '@adonisjs/mail'
 
 /**
@@ -149,5 +150,138 @@ test.group('emails — todos os templates renderizam', (group) => {
     assert.include(html, 'novo@example.com')
     // Aviso puro: nada para clicar (ver EmailAlteradoAvisoMail).
     assert.notInclude(html, 'href="http')
+  })
+})
+
+/**
+ * O remetente — o campo que ninguém testava e que era o que estava partido.
+ *
+ * O grupo acima verifica o CORPO de todos os oito emails desde sempre, e nunca
+ * olhou para o `from`. Foi por aí que passou o defeito: `alerta_operacional` e
+ * `company_activated` usavam `env.get('MAIL_FROM', 'noreply@taesic.com')`, com
+ * um `.env` que tem `MAIL_FROM=BKNKV` — um NOME, não um endereço — e um valor
+ * por omissão num domínio que nunca foi verificado na Resend.
+ *
+ * Os dois falhavam com **422 Unprocessable Entity**, e falhavam SÓ eles: seis em
+ * oito funcionavam, o que é exactamente a proporção que faz uma avaria durar. O
+ * `company_activated` é o email que confirma a activação de uma empresa.
+ *
+ * Um `from` inválido não é recusado pelo AdonisJS nem por `@adonisjs/mail` — é
+ * recusado pela Resend, três saltos à frente, com uma mensagem que não diz qual
+ * dos campos está errado. Nada nesta aplicação o apanhava antes do envio real.
+ * Estes testes apanham.
+ */
+test.group('emails — todos saem do remetente verificado', (group) => {
+  let fakeMailer: ReturnType<typeof mail.fake>
+
+  group.each.setup(() => {
+    fakeMailer = mail.fake()
+    return () => {
+      mail.restore()
+      delete process.env.MAIL_FROM
+    }
+  })
+
+  async function remetenteDe(mailable: BaseMail): Promise<string> {
+    await mail.send(mailable)
+    const enviada = fakeMailer.mails.sent().at(-1) as any
+    return String(enviada.message.nodeMailerMessage.from ?? '')
+  }
+
+  /**
+   * As oito. Uma Mailable nova que não apareça aqui é uma Mailable que pode
+   * repetir este defeito sem ninguém dar por isso — por isso o teste seguinte
+   * conta os ficheiros da pasta e compara.
+   */
+  const TODAS: Array<[string, () => BaseMail]> = [
+    ['account_activation', () => new AccountActivationMail('a@e.com', 'Ana', 'Padaria', 'https://x/v/t')],
+    ['alerta_operacional', () => new AlertaOperacionalMail('a@e.com', 'Estoque crítico', ['linha'])],
+    ['company_activated', () => new CompanyActivatedMail('a@e.com', 'Ana', 'Padaria', 'https://x/r/t')],
+    ['email_alterado_activacao', () => new EmailAlteradoActivacaoMail('n@e.com', 'ze', 'Padaria', 'v@e.com', 'https://x/v/t')],
+    ['email_alterado_aviso', () => new EmailAlteradoAvisoMail('v@e.com', 'ze', 'Padaria', 'n@e.com')],
+    ['forgot_password', () => new ForgotPasswordMail('a@e.com', 'maria', 'https://x/r/t')],
+    ['password_definition', () => new PasswordDefinitionMail('a@e.com', 'ze', 'Padaria', 'https://x/r/t')],
+    ['promotor_otp', () => new PromotorOtpMail('a@e.com', 'Joana', '482913')],
+  ]
+
+  test('as oito Mailables saem de {REMETENTE_VERIFICADO}', async ({ assert }) => {
+    delete process.env.MAIL_FROM
+
+    for (const [nome, construir] of TODAS) {
+      const de = await remetenteDe(construir())
+      assert.equal(de, REMETENTE_VERIFICADO, `${nome}: remetente errado`)
+      assert.include(de, '@bknkv.com', `${nome}: o domínio verificado é bknkv.com`)
+    }
+  })
+
+  test('nenhuma Mailable ficou de fora desta lista', async ({ assert }) => {
+    // Um `from` errado só se vê em produção. Uma Mailable nova que não entre na
+    // lista acima escapa a este ficheiro inteiro — e o defeito volta.
+    const { readdirSync } = await import('node:fs')
+    const ficheiros = readdirSync(new URL('../../app/mails/', import.meta.url))
+      .filter((f) => f.endsWith('_mail.ts'))
+      .map((f) => f.replace('.ts', ''))
+
+    assert.deepEqual(
+      ficheiros.sort(),
+      TODAS.map(([n]) => `${n}_mail`).sort(),
+      'há Mailables em app/mails que não estão cobertas por este teste'
+    )
+  })
+
+  test('o valor por omissão antigo (noreply@taesic.com) não sobreviveu em lado nenhum', async ({ assert }) => {
+    // Domínio nunca verificado na Resend. Era o fallback das duas partidas.
+    for (const [nome, construir] of TODAS) {
+      assert.notInclude(await remetenteDe(construir()), 'taesic.com', `${nome}: ainda aponta para taesic.com`)
+    }
+  })
+})
+
+/**
+ * A decisão do remetente, verificada directamente.
+ *
+ * ⚠️ Estes testes NÃO mexem em `process.env`, e a primeira versão mexia.
+ *
+ * `env.get()` não lê o `process.env` ao vivo: o AdonisJS valida o ambiente no
+ * arranque e guarda o resultado; só se a chave estiver AUSENTE desse retrato é
+ * que cai para o `process.env` actual. Este projecto TEM `MAIL_FROM` no `.env`
+ * (o valor é `BKNKV`), portanto o retrato ganha sempre e um teste que escreva em
+ * `process.env.MAIL_FROM` não muda absolutamente nada.
+ *
+ * Escrevi três testes assim. Dois passaram — e passaram sem testar nada, porque
+ * o valor congelado (`BKNKV`) dá o mesmo resultado que eles esperavam. Foi o
+ * terceiro, o do endereço válido, que falhou e denunciou os outros dois.
+ *
+ * Por isso `escolherRemetente()` é uma função pura e é ela que se testa aqui: a
+ * regra fica verificada com todos os valores, e sem depender de um pormenor do
+ * carregamento do ambiente que se comporta de forma diferente em cada projecto.
+ */
+test.group('escolherRemetente — a regra', () => {
+  test('sem MAIL_FROM, o remetente verificado', ({ assert }) => {
+    assert.equal(escolherRemetente(undefined), REMETENTE_VERIFICADO)
+    assert.equal(escolherRemetente(''), REMETENTE_VERIFICADO)
+    assert.equal(escolherRemetente('   '), REMETENTE_VERIFICADO)
+  })
+
+  test('MAIL_FROM sem "@" é IGNORADA — foi isto que causou o 422', ({ assert }) => {
+    // `BKNKV` é o valor que está mesmo no .env de dev, de qua e de prd. Não é um
+    // endereço. Um `from` assim atravessa o AdonisJS sem um aviso e só é recusado
+    // pela Resend, com um 422 que não menciona o campo.
+    assert.equal(escolherRemetente('BKNKV'), REMETENTE_VERIFICADO)
+    assert.equal(escolherRemetente('Taesic'), REMETENTE_VERIFICADO)
+  })
+
+  test('MAIL_FROM com um endereço a sério é respeitada', ({ assert }) => {
+    assert.equal(escolherRemetente('outro@bknkv.com'), 'outro@bknkv.com')
+    // Com espaços à volta — o que acontece a quem edita um .env à mão.
+    assert.equal(escolherRemetente('  outro@bknkv.com  '), 'outro@bknkv.com')
+  })
+
+  test('o endereço verificado é o do domínio verificado, e não outro parecido', ({ assert }) => {
+    // Os dois enganos que já custaram um 422 cada: `taesic.bknkv.com` (o meu, no
+    // backoffice) e `taesic.com` (o fallback antigo daqui). Nenhum é verificado.
+    assert.equal(REMETENTE_VERIFICADO, 'noreply.taesic@bknkv.com')
+    assert.notInclude(REMETENTE_VERIFICADO, 'taesic.bknkv.com')
+    assert.notInclude(REMETENTE_VERIFICADO, '@taesic.com')
   })
 })

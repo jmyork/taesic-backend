@@ -1,5 +1,5 @@
 import { BaseMail } from '@adonisjs/mail'
-import env from '#start/env'
+import { remetente } from '#mails/remetente'
 
 /**
  * Email de boas-vindas enviado quando uma empresa é activada (listener de
@@ -20,7 +20,7 @@ export default class CompanyActivatedMail extends BaseMail {
   prepare() {
     this.message
       .to(this.destinatario)
-      .from(env.get('MAIL_FROM', 'noreply@taesic.com'))
+      .from(remetente())
       .subject('A sua empresa está activa — Taesic')
       .htmlView('emails/company_activated', {
         companyName: this.companyName,

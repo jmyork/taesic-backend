@@ -1,5 +1,5 @@
 import { BaseMail } from '@adonisjs/mail'
-import env from '#start/env'
+import { remetente } from '#mails/remetente'
 
 /**
  * Email genérico para alertas operacionais (estoque crítico, produto perto da validade,
@@ -19,7 +19,7 @@ export default class AlertaOperacionalMail extends BaseMail {
   prepare() {
     this.message
       .to(this.destinatario)
-      .from(env.get('MAIL_FROM', 'noreply@taesic.com'))
+      .from(remetente())
       .subject(`[Taesic] ${this.titulo}`)
       .htmlView('emails/alerta_operacional', {
         titulo: this.titulo,

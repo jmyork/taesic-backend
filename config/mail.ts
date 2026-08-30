@@ -12,8 +12,11 @@ import { defineConfig, transports } from '@adonisjs/mail'
  * que é preferível a arrancar e falhar silenciosamente em cada email de activação ou de
  * recuperação de palavra-passe.
  *
- * O remetente tem de ser um domínio verificado na Resend; em `MAIL_FROM` guarda-se o
- * endereço completo (ex.: `Taesic <nao-responder@o-teu-dominio.ao>`).
+ * O remetente NÃO se configura aqui — vive em `app/mails/remetente.ts`, um único
+ * endereço para as oito Mailables. Este comentário dizia que `MAIL_FROM` guardava
+ * o endereço completo, e era essa a leitura que estava por trás de duas Mailables
+ * o usarem como `from` — com `MAIL_FROM=BKNKV` no `.env`, o que a Resend recebia
+ * era a palavra `BKNKV` no lugar de um endereço, e respondia 422.
  */
 const mailConfig = defineConfig({
   default: 'resend',
