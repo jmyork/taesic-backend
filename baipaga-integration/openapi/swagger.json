@@ -1,0 +1,2359 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "internet banking",
+    "version": "v0.0.1-SNAPSHOT"
+  },
+  "servers": [
+    {
+      "url": "https://ib.bancobai.ao/QUAMDW-3G/internet-banking/api"
+    }
+  ],
+  "tags": [
+    {
+      "name": "External Partners",
+      "description": "Mobile Payments API for external partners integration. Requires API Key authentication via X-MP-ApiKey header."
+    }
+  ],
+  "paths": {
+    "/rest/partners/external/calculateCart": {
+      "post": {
+        "tags": [
+          "External Partners"
+        ],
+        "summary": "Calculate shopping cart total",
+        "description": "Calculates the total amount of a shopping cart including VAT. This endpoint computes the individual item totals, discounts, and VAT amounts based on the configured VAT percentages. Use this before creating a payment to validate cart totals.",
+        "operationId": "calculateTotalShoppingCart",
+        "parameters": [
+          {
+            "name": "X-MP-ApiKey",
+            "in": "header",
+            "description": "API Key for authentication",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Shopping cart to calculate",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CalculateTotalShoppingCartRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Shopping cart calculated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalculateTotalShoppingCartAmountResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid parameters or VAT calculation error"
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/rest/partners/external/payment/captive/cancel": {
+      "post": {
+        "tags": [
+          "External Partners"
+        ],
+        "summary": "Cancel captive payment",
+        "description": "Cancels a previously created captive (pre-authorization) payment. This releases the hold on the customer's account. The payment must be identified by either paymentId or externalReference.",
+        "operationId": "cancelMobilePaymentCaptiveRequestFromMerchant",
+        "parameters": [
+          {
+            "name": "X-MP-ApiKey",
+            "in": "header",
+            "description": "API Key for authentication",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Captive payment cancellation details",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelMobilePaymentCaptiveRequestFromMerchantRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Captive payment cancelled successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancelMobilePaymentCaptiveRequestFromMerchantResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid parameters or payment cannot be cancelled"
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "404": {
+            "description": "Payment not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/rest/partners/external/payment/captive/confirm": {
+      "post": {
+        "tags": [
+          "External Partners"
+        ],
+        "summary": "Confirm captive payment",
+        "description": "Confirms a previously created captive (pre-authorization) payment with the final amount. The final amount can be less than or equal to the maximum amount specified during creation. This completes the payment and transfers the final amount from the customer's account.",
+        "operationId": "confirmMobilePaymentCaptiveRequestFromMerchant",
+        "parameters": [
+          {
+            "name": "X-MP-ApiKey",
+            "in": "header",
+            "description": "API Key for authentication",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Captive payment confirmation details",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmMobilePaymentCaptiveRequestFromMerchantRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Captive payment confirmed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfirmMobilePaymentCaptiveRequestFromMerchantResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid parameters or final amount exceeds maximum"
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "404": {
+            "description": "Payment not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/rest/partners/external/payment/captive": {
+      "post": {
+        "tags": [
+          "External Partners"
+        ],
+        "summary": "Create captive (pre-authorization) payment",
+        "description": "Creates a captive payment request that pre-authorizes an estimated amount on the customer's account. The final amount can be different from the estimated amount but cannot exceed the maximum amount. This is useful for scenarios like fuel stations or hotels where the final amount is unknown at the time of authorization. The captive payment must be confirmed or cancelled within the validity period.",
+        "operationId": "generateNewMobilePaymentCaptiveRequestFromMerchant",
+        "parameters": [
+          {
+            "name": "X-MP-ApiKey",
+            "in": "header",
+            "description": "API Key for authentication",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Captive payment request details",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateNewMobilePaymentCaptiveRequestFromMerchantRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Captive payment created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerateNewMobilePaymentCaptiveRequestFromMerchantResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid parameters"
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/rest/partners/external/payment/request": {
+      "post": {
+        "tags": [
+          "External Partners"
+        ],
+        "summary": "Create fixed amount payment request",
+        "description": "Creates a new mobile payment request with a fixed amount. The customer will receive a push notification to approve the payment. Upon successful creation, a paymentId and expirationDate are returned. The payment must be confirmed by the customer before the expiration date.",
+        "operationId": "generateNewMobilePaymentRequestFromMerchant",
+        "parameters": [
+          {
+            "name": "X-MP-ApiKey",
+            "in": "header",
+            "description": "API Key for authentication",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "your-api-key-here"
+          }
+        ],
+        "requestBody": {
+          "description": "Payment request details",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateNewMobilePaymentRequestFromMerchantRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Payment request created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerateNewMobilePaymentRequestFromMerchantResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid parameters or validation error"
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/rest/partners/external/qrCode": {
+      "post": {
+        "tags": [
+          "External Partners"
+        ],
+        "summary": "Generate payment QR code",
+        "description": "Generates a QR code image for a payment at a specific acceptance point. The QR code can be scanned by customers to initiate a payment. The response contains the image as a Base64-encoded string.",
+        "operationId": "generateQRCode",
+        "parameters": [
+          {
+            "name": "X-MP-ApiKey",
+            "in": "header",
+            "description": "API Key for authentication",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "QR code generation details",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateQRCodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "QR code generated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerateQRCodeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid parameters"
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/rest/partners/external/cartVatPercentages": {
+      "get": {
+        "tags": [
+          "External Partners"
+        ],
+        "summary": "Get available VAT percentages",
+        "description": "Retrieves the list of available VAT percentages that can be applied to shopping cart items. Each VAT percentage has an ID, description, and value. Use these IDs when building a shopping cart to specify the VAT rate for each item.",
+        "operationId": "getCartItemVatPercentages",
+        "parameters": [
+          {
+            "name": "X-MP-ApiKey",
+            "in": "header",
+            "description": "API Key for authentication",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "VAT percentages retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CartItemVatPercentagesResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "404": {
+            "description": "VAT percentages not configured"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/rest/partners/external/merchants/{merchantId}/acceptancePoint/{acceptancePointId}": {
+      "get": {
+        "tags": [
+          "External Partners"
+        ],
+        "summary": "Get merchant acceptance point details",
+        "description": "Retrieves information about a specific acceptance point (store location) for a merchant. Returns the friendly name of the acceptance point which can be displayed to customers.",
+        "operationId": "getMerchantAcceptancePoint",
+        "parameters": [
+          {
+            "name": "X-MP-ApiKey",
+            "in": "header",
+            "description": "API Key for authentication",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "merchantId",
+            "in": "path",
+            "description": "Merchant identifier",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "acceptancePointId",
+            "in": "path",
+            "description": "Acceptance point identifier",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Acceptance point details retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetMerchantAcceptancePointResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "404": {
+            "description": "Merchant or acceptance point not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/rest/partners/external/payment": {
+      "get": {
+        "tags": [
+          "External Partners"
+        ],
+        "summary": "Get payment status",
+        "description": "Retrieves the current status of a mobile payment request. The payment can be queried by either paymentId or externalReference. The response includes a cryptographic signature (HMAC-SHA256) to ensure message authenticity and integrity.",
+        "operationId": "getMobilePaymentRequestFromMerchantStatus",
+        "parameters": [
+          {
+            "name": "X-MP-ApiKey",
+            "in": "header",
+            "description": "API Key for authentication",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "externalReference",
+            "in": "query",
+            "description": "External reference provided when creating the payment",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "paymentId",
+            "in": "query",
+            "description": "Payment ID returned when creating the payment",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Payment status retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetMobilePaymentRequestFromMerchantStatusResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid parameters"
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "404": {
+            "description": "Payment not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/rest/partners/external/payment/initiate": {
+      "post": {
+        "tags": [
+          "External Partners"
+        ],
+        "summary": "Initiate OTP-based payment",
+        "description": "Initiates a mobile payment request where the customer confirms via OTP in a WebView. The customer receives an OTP that must be entered in the confirmation URL to approve the payment. This flow is suitable for web-based checkout integrations.",
+        "operationId": "initiateMobilePaymentViaOtpRequestFromMerchant",
+        "parameters": [
+          {
+            "name": "X-MP-ApiKey",
+            "in": "header",
+            "description": "API Key for authentication",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "OTP payment initiation details",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InitiateMobilePaymentViaOtpRequestFromMerchantRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OTP payment initiated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InitiateMobilePaymentViaOtpRequestFromMerchantResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid parameters"
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/rest/partners/external/msisdn/{msisdn}/validate": {
+      "get": {
+        "tags": [
+          "External Partners"
+        ],
+        "summary": "Validate MSISDN for payments",
+        "description": "Validates whether the provided MSISDN (phone number) is associated with a valid customer who can receive mobile payment requests. This should be called before creating a payment to ensure the customer exists and is eligible for payments.",
+        "operationId": "validateMsisdnForPayments",
+        "parameters": [
+          {
+            "name": "X-MP-ApiKey",
+            "in": "header",
+            "description": "API Key for authentication",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "msisdn",
+            "in": "path",
+            "description": "Customer phone number (MSISDN) to validate",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": 244923456789
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "MSISDN validation result returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidateMsisdnForPaymentResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid MSISDN format"
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CalculateTotalShoppingCartAmountResponse": {
+        "type": "object",
+        "properties": {
+          "shoppingCart": {
+            "$ref": "#/components/schemas/ShoppingCartDetails"
+          }
+        },
+        "description": "Response containing the calculated shopping cart with totals and VAT breakdown"
+      },
+      "CartItemVatPercentage": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "description": {
+            "type": "string"
+          },
+          "value": {
+            "type": "number"
+          }
+        },
+        "description": "VAT percentage applied to this item"
+      },
+      "ShoppingCartDetails": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "description": "List of items in the shopping cart with calculated amounts",
+            "items": {
+              "$ref": "#/components/schemas/ShoppingCartItemDetails"
+            }
+          },
+          "totalCartItems": {
+            "type": "integer",
+            "description": "Total number of items in the cart",
+            "example": 5
+          },
+          "totalCartAmount": {
+            "type": "number",
+            "description": "Total cart amount before VAT",
+            "example": 10000
+          },
+          "totalCartDiscount": {
+            "type": "number",
+            "description": "Total discount applied to the cart",
+            "example": 500
+          },
+          "totalCartAmountWithVat": {
+            "type": "number",
+            "description": "Total cart amount including VAT",
+            "example": 11400
+          },
+          "totalCartAmountWithVatGroups": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number",
+              "description": "Breakdown of cart totals by VAT percentage group (key: VAT percentage, value: total amount for that rate)"
+            },
+            "description": "Breakdown of cart totals by VAT percentage group (key: VAT percentage, value: total amount for that rate)"
+          }
+        },
+        "description": "Detailed shopping cart with calculated totals and VAT breakdown"
+      },
+      "ShoppingCartItemDetails": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "Unique item identifier",
+            "format": "int64",
+            "example": 1
+          },
+          "amountPerItem": {
+            "type": "number",
+            "description": "Price per unit of this item",
+            "example": 250
+          },
+          "description": {
+            "type": "string",
+            "description": "Item description",
+            "example": "Product XYZ"
+          },
+          "count": {
+            "type": "integer",
+            "description": "Quantity of this item",
+            "format": "int32",
+            "example": 2
+          },
+          "discount": {
+            "type": "number",
+            "description": "Discount applied to this item",
+            "example": 50
+          },
+          "totalAmount": {
+            "type": "number",
+            "description": "Total amount for this item (amountPerItem * count - discount)",
+            "example": 450
+          },
+          "vatAmount": {
+            "type": "number",
+            "description": "VAT amount calculated for this item",
+            "example": 63
+          },
+          "vatPercentage": {
+            "$ref": "#/components/schemas/CartItemVatPercentage"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string",
+              "description": "Additional metadata as key-value pairs"
+            },
+            "description": "Additional metadata as key-value pairs"
+          }
+        },
+        "description": "Detailed information about a shopping cart item including calculated amounts and VAT"
+      },
+      "CalculateTotalShoppingCartRequest": {
+        "required": [
+          "shoppingCart"
+        ],
+        "type": "object",
+        "properties": {
+          "shoppingCart": {
+            "$ref": "#/components/schemas/ShoppingCart"
+          }
+        },
+        "description": "Request object for calculating shopping cart totals including VAT"
+      },
+      "CartItemVatPercentageCommonView": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "description": {
+            "type": "string"
+          },
+          "value": {
+            "type": "number"
+          }
+        },
+        "description": "VAT percentage information for a shopping cart item"
+      },
+      "ShoppingCart": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "description": "List of items in the shopping cart",
+            "items": {
+              "$ref": "#/components/schemas/ShoppingCartItem"
+            }
+          },
+          "totalCartItems": {
+            "type": "integer",
+            "description": "Total number of items in the cart",
+            "example": 5
+          },
+          "totalCartAmount": {
+            "type": "number",
+            "description": "Total cart amount before VAT",
+            "example": 10000
+          },
+          "totalCartDiscount": {
+            "type": "number",
+            "description": "Total discount applied to the cart",
+            "example": 500
+          },
+          "totalCartAmountWithVat": {
+            "type": "number",
+            "description": "Total cart amount including VAT",
+            "example": 11400
+          },
+          "totalCartAmountWithVatGroups": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number",
+              "description": "Breakdown of cart totals by VAT percentage group"
+            },
+            "description": "Breakdown of cart totals by VAT percentage group"
+          }
+        },
+        "description": "Shopping cart containing items with VAT calculations and totals"
+      },
+      "ShoppingCartItem": {
+        "type": "object",
+        "properties": {
+          "amountPerItem": {
+            "type": "number",
+            "description": "Price per unit of this item",
+            "example": 250
+          },
+          "description": {
+            "type": "string",
+            "description": "Item description",
+            "example": "Product XYZ"
+          },
+          "count": {
+            "type": "integer",
+            "description": "Quantity of this item",
+            "format": "int32",
+            "example": 2
+          },
+          "discount": {
+            "type": "number",
+            "description": "Discount applied to this item",
+            "example": 50
+          },
+          "totalAmount": {
+            "type": "number",
+            "description": "Total amount for this item (amountPerItem * count - discount)",
+            "example": 450
+          },
+          "vatAmount": {
+            "type": "number",
+            "description": "VAT amount calculated for this item",
+            "example": 63
+          },
+          "vatPercentage": {
+            "$ref": "#/components/schemas/CartItemVatPercentageCommonView"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string",
+              "description": "Additional metadata as key-value pairs"
+            },
+            "description": "Additional metadata as key-value pairs"
+          }
+        },
+        "description": "Individual item in a shopping cart with pricing, quantity, and VAT information"
+      },
+      "CancelMobilePaymentCaptiveRequestFromMerchantResponse": {
+        "type": "object",
+        "properties": {
+          "responseCode": {
+            "type": "string",
+            "description": "Response codes indicating the result of mobile payment operations. Code 0 indicates success, negative codes indicate various error conditions.",
+            "enum": [
+              "OK",
+              "FATAL",
+              "INVALID_PARAMETERS",
+              "INVALID_API_KEY",
+              "INVALID_CURRENCY",
+              "CORE_BANKING_UNAVAILABLE",
+              "CUSTOMER_NOT_FOUND_FOR_MSISDN",
+              "MAX_FAILED_RETRIES_REACHED",
+              "EXISTING_EXTERNAL_REFERENCE",
+              "INVALID_MSISDN",
+              "INVALID_EXTERNAL_REFERENCE",
+              "UNAUTHORIZED",
+              "INVALID_MSISDN_FORMAT",
+              "SHOPPING_CART_AMOUNT_NOT_EQUAL_TO_TOTAL_AMOUNT",
+              "SHOPPING_CART_VAT_PERCENTAGES_NOT_FOUND",
+              "ERROR_CALCULATING_SHOPPING_CART",
+              "UNKNOWN"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable message describing the result",
+            "example": "Success"
+          },
+          "paymentId": {
+            "type": "integer",
+            "description": "Unique identifier of the cancelled payment",
+            "format": "int64",
+            "example": 987654321
+          }
+        },
+        "description": "Response for cancelling a captive (pre-authorization) mobile payment"
+      },
+      "CancelMobilePaymentCaptiveRequestFromMerchantRequest": {
+        "type": "object",
+        "properties": {
+          "externalReference": {
+            "type": "string",
+            "description": "External reference provided when creating the captive payment",
+            "example": "CAPTIVE-2024-001"
+          },
+          "paymentId": {
+            "type": "integer",
+            "description": "Payment ID returned when creating the captive payment",
+            "format": "int64",
+            "example": 987654321
+          }
+        },
+        "description": "Request object for cancelling a captive (pre-authorization) mobile payment"
+      },
+      "ConfirmMobilePaymentCaptiveRequestFromMerchantResponse": {
+        "type": "object",
+        "properties": {
+          "responseCode": {
+            "type": "string",
+            "description": "Response codes indicating the result of mobile payment operations. Code 0 indicates success, negative codes indicate various error conditions.",
+            "enum": [
+              "OK",
+              "FATAL",
+              "INVALID_PARAMETERS",
+              "INVALID_API_KEY",
+              "INVALID_CURRENCY",
+              "CORE_BANKING_UNAVAILABLE",
+              "CUSTOMER_NOT_FOUND_FOR_MSISDN",
+              "MAX_FAILED_RETRIES_REACHED",
+              "EXISTING_EXTERNAL_REFERENCE",
+              "INVALID_MSISDN",
+              "INVALID_EXTERNAL_REFERENCE",
+              "UNAUTHORIZED",
+              "INVALID_MSISDN_FORMAT",
+              "SHOPPING_CART_AMOUNT_NOT_EQUAL_TO_TOTAL_AMOUNT",
+              "SHOPPING_CART_VAT_PERCENTAGES_NOT_FOUND",
+              "ERROR_CALCULATING_SHOPPING_CART",
+              "UNKNOWN"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable message describing the result",
+            "example": "Success"
+          },
+          "paymentId": {
+            "type": "integer",
+            "description": "Unique identifier of the confirmed payment",
+            "format": "int64",
+            "example": 987654321
+          }
+        },
+        "description": "Response for confirming a captive (pre-authorization) mobile payment"
+      },
+      "ConfirmMobilePaymentCaptiveRequestFromMerchantRequest": {
+        "required": [
+          "finalAmount"
+        ],
+        "type": "object",
+        "properties": {
+          "externalReference": {
+            "type": "string",
+            "description": "External reference provided when creating the captive payment",
+            "example": "CAPTIVE-2024-001"
+          },
+          "paymentId": {
+            "type": "integer",
+            "description": "Payment ID returned when creating the captive payment",
+            "format": "int64",
+            "example": 987654321
+          },
+          "finalAmount": {
+            "type": "number",
+            "description": "Final amount to capture (must be <= maxAmount specified during creation)",
+            "example": 1250
+          }
+        },
+        "description": "Request object for confirming a captive (pre-authorization) mobile payment with the final amount"
+      },
+      "GenerateNewMobilePaymentCaptiveRequestFromMerchantResponse": {
+        "type": "object",
+        "properties": {
+          "responseCode": {
+            "type": "string",
+            "description": "Response codes indicating the result of mobile payment operations. Code 0 indicates success, negative codes indicate various error conditions.",
+            "enum": [
+              "OK",
+              "FATAL",
+              "INVALID_PARAMETERS",
+              "INVALID_API_KEY",
+              "INVALID_CURRENCY",
+              "CORE_BANKING_UNAVAILABLE",
+              "CUSTOMER_NOT_FOUND_FOR_MSISDN",
+              "MAX_FAILED_RETRIES_REACHED",
+              "EXISTING_EXTERNAL_REFERENCE",
+              "INVALID_MSISDN",
+              "INVALID_EXTERNAL_REFERENCE",
+              "UNAUTHORIZED",
+              "INVALID_MSISDN_FORMAT",
+              "SHOPPING_CART_AMOUNT_NOT_EQUAL_TO_TOTAL_AMOUNT",
+              "SHOPPING_CART_VAT_PERCENTAGES_NOT_FOUND",
+              "ERROR_CALCULATING_SHOPPING_CART",
+              "UNKNOWN"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable message describing the result",
+            "example": "Success"
+          },
+          "paymentId": {
+            "type": "integer",
+            "description": "Unique identifier of the created captive payment",
+            "format": "int64",
+            "example": 987654321
+          }
+        },
+        "description": "Response for creating a captive (pre-authorization) mobile payment"
+      },
+      "GenerateNewMobilePaymentCaptiveRequestFromMerchantRequest": {
+        "required": [
+          "currency",
+          "customerMsisdn",
+          "estimatedAmount",
+          "externalReference",
+          "maxAmount"
+        ],
+        "type": "object",
+        "properties": {
+          "customerMsisdn": {
+            "type": "string",
+            "description": "Customer phone number (MSISDN) in international format",
+            "example": "244923456789"
+          },
+          "estimatedAmount": {
+            "type": "number",
+            "description": "Estimated payment amount (shown to customer during authorization)",
+            "example": 1000
+          },
+          "maxAmount": {
+            "type": "number",
+            "description": "Maximum amount that can be captured (must be >= estimatedAmount)",
+            "example": 1500
+          },
+          "currency": {
+            "type": "string",
+            "description": "Currency code (ISO 4217)",
+            "example": "AOA"
+          },
+          "shoppingCart": {
+            "$ref": "#/components/schemas/ShoppingCart"
+          },
+          "externalReference": {
+            "type": "string",
+            "description": "Unique reference provided by the merchant for this payment",
+            "example": "CAPTIVE-2024-001"
+          },
+          "description": {
+            "type": "string",
+            "description": "Payment description visible to the customer",
+            "example": "Fuel purchase at Gas Station XYZ"
+          }
+        },
+        "description": "Request object for creating a captive (pre-authorization) mobile payment request"
+      },
+      "GenerateNewMobilePaymentRequestFromMerchantResponse": {
+        "type": "object",
+        "properties": {
+          "responseCode": {
+            "type": "string",
+            "description": "Response codes indicating the result of mobile payment operations. Code 0 indicates success, negative codes indicate various error conditions.",
+            "enum": [
+              "OK",
+              "FATAL",
+              "INVALID_PARAMETERS",
+              "INVALID_API_KEY",
+              "INVALID_CURRENCY",
+              "CORE_BANKING_UNAVAILABLE",
+              "CUSTOMER_NOT_FOUND_FOR_MSISDN",
+              "MAX_FAILED_RETRIES_REACHED",
+              "EXISTING_EXTERNAL_REFERENCE",
+              "INVALID_MSISDN",
+              "INVALID_EXTERNAL_REFERENCE",
+              "UNAUTHORIZED",
+              "INVALID_MSISDN_FORMAT",
+              "SHOPPING_CART_AMOUNT_NOT_EQUAL_TO_TOTAL_AMOUNT",
+              "SHOPPING_CART_VAT_PERCENTAGES_NOT_FOUND",
+              "ERROR_CALCULATING_SHOPPING_CART",
+              "UNKNOWN"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable message describing the result",
+            "example": "Success"
+          },
+          "paymentId": {
+            "type": "integer",
+            "description": "Unique identifier of the created payment",
+            "format": "int64",
+            "example": 123456789
+          },
+          "expirationDate": {
+            "type": "string",
+            "description": "Date and time when the payment request expires",
+            "format": "date-time",
+            "example": "2024-12-31T23:59:59Z"
+          }
+        },
+        "description": "Response for creating a fixed amount mobile payment request"
+      },
+      "GenerateNewMobilePaymentRequestFromMerchantRequest": {
+        "required": [
+          "currency",
+          "customerMsisdn",
+          "externalReference",
+          "totalAmount"
+        ],
+        "type": "object",
+        "properties": {
+          "merchantId": {
+            "type": "integer",
+            "description": "Merchant identifier",
+            "format": "int64",
+            "example": 12345
+          },
+          "customerMsisdn": {
+            "type": "string",
+            "description": "Customer phone number (MSISDN) in international format",
+            "example": "244923456789"
+          },
+          "totalAmount": {
+            "type": "number",
+            "description": "Total payment amount",
+            "example": 1500
+          },
+          "currency": {
+            "type": "string",
+            "description": "Currency code (ISO 4217)",
+            "example": "AOA"
+          },
+          "shoppingCart": {
+            "$ref": "#/components/schemas/ShoppingCart"
+          },
+          "externalReference": {
+            "type": "string",
+            "description": "Unique reference provided by the merchant for this payment",
+            "example": "ORDER-2024-001"
+          },
+          "description": {
+            "type": "string",
+            "description": "Payment description visible to the customer",
+            "example": "Purchase at Store ABC"
+          },
+          "merchantNotes": {
+            "type": "string",
+            "description": "Internal notes for the merchant (not visible to customer)",
+            "example": "VIP customer - priority processing"
+          }
+        },
+        "description": "Request object for creating a fixed amount mobile payment request"
+      },
+      "GenerateQRCodeResponse": {
+        "type": "object",
+        "properties": {
+          "responseCode": {
+            "type": "string",
+            "description": "Response codes indicating the result of mobile payment operations. Code 0 indicates success, negative codes indicate various error conditions.",
+            "enum": [
+              "OK",
+              "FATAL",
+              "INVALID_PARAMETERS",
+              "INVALID_API_KEY",
+              "INVALID_CURRENCY",
+              "CORE_BANKING_UNAVAILABLE",
+              "CUSTOMER_NOT_FOUND_FOR_MSISDN",
+              "MAX_FAILED_RETRIES_REACHED",
+              "EXISTING_EXTERNAL_REFERENCE",
+              "INVALID_MSISDN",
+              "INVALID_EXTERNAL_REFERENCE",
+              "UNAUTHORIZED",
+              "INVALID_MSISDN_FORMAT",
+              "SHOPPING_CART_AMOUNT_NOT_EQUAL_TO_TOTAL_AMOUNT",
+              "SHOPPING_CART_VAT_PERCENTAGES_NOT_FOUND",
+              "ERROR_CALCULATING_SHOPPING_CART",
+              "UNKNOWN"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable message describing the result",
+            "example": "Success"
+          },
+          "imageExtension": {
+            "type": "string",
+            "description": "Image file extension/format",
+            "example": "png"
+          },
+          "encodeToString": {
+            "type": "string",
+            "description": "Base64-encoded QR code image content"
+          }
+        },
+        "description": "Response containing the generated QR code image for payment"
+      },
+      "GenerateQRCodeRequest": {
+        "required": [
+          "acceptancePointId",
+          "amount",
+          "currency"
+        ],
+        "type": "object",
+        "properties": {
+          "externalReference": {
+            "type": "string",
+            "description": "External reference for tracking the QR code payment",
+            "example": "QR-2024-001"
+          },
+          "acceptancePointId": {
+            "type": "integer",
+            "description": "Acceptance point (store location) identifier",
+            "format": "int64",
+            "example": 456
+          },
+          "width": {
+            "type": "integer",
+            "description": "Width of the QR code image in pixels",
+            "format": "int32",
+            "example": 300
+          },
+          "height": {
+            "type": "integer",
+            "description": "Height of the QR code image in pixels",
+            "format": "int32",
+            "example": 300
+          },
+          "amount": {
+            "type": "number",
+            "description": "Payment amount",
+            "example": 500
+          },
+          "currency": {
+            "type": "string",
+            "description": "Currency code (ISO 4217)",
+            "example": "AOA"
+          }
+        },
+        "description": "Request object for generating a QR code for payment"
+      },
+      "CartItemVatPercentageView": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "description": {
+            "type": "string"
+          },
+          "value": {
+            "type": "number"
+          }
+        },
+        "description": "VAT percentage option that can be applied to shopping cart items"
+      },
+      "CartItemVatPercentagesResponse": {
+        "type": "object",
+        "properties": {
+          "cartItemVatPercentageViewList": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CartItemVatPercentageView"
+            }
+          }
+        },
+        "description": "Response containing the list of available VAT percentages for shopping cart items"
+      },
+      "GetMerchantAcceptancePointResponse": {
+        "type": "object",
+        "properties": {
+          "responseCode": {
+            "type": "string",
+            "description": "Response codes indicating the result of mobile payment operations. Code 0 indicates success, negative codes indicate various error conditions.",
+            "enum": [
+              "OK",
+              "FATAL",
+              "INVALID_PARAMETERS",
+              "INVALID_API_KEY",
+              "INVALID_CURRENCY",
+              "CORE_BANKING_UNAVAILABLE",
+              "CUSTOMER_NOT_FOUND_FOR_MSISDN",
+              "MAX_FAILED_RETRIES_REACHED",
+              "EXISTING_EXTERNAL_REFERENCE",
+              "INVALID_MSISDN",
+              "INVALID_EXTERNAL_REFERENCE",
+              "UNAUTHORIZED",
+              "INVALID_MSISDN_FORMAT",
+              "SHOPPING_CART_AMOUNT_NOT_EQUAL_TO_TOTAL_AMOUNT",
+              "SHOPPING_CART_VAT_PERCENTAGES_NOT_FOUND",
+              "ERROR_CALCULATING_SHOPPING_CART",
+              "UNKNOWN"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable message describing the result",
+            "example": "Success"
+          },
+          "friendlyName": {
+            "type": "string",
+            "description": "User-friendly name of the acceptance point/store",
+            "example": "Downtown Store - Main Branch"
+          }
+        },
+        "description": "Response containing details of a merchant acceptance point (store location)"
+      },
+      "Account": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "accountNumber": {
+            "type": "string"
+          },
+          "accountType": {
+            "type": "string"
+          },
+          "customer": {
+            "$ref": "#/components/schemas/Customer"
+          },
+          "firstHolderName": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "creationDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastChangeDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "nib": {
+            "type": "string"
+          },
+          "bankingAccountName": {
+            "type": "string"
+          },
+          "bankingAccountDescription": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "UNKNOWN",
+              "ACTIVE",
+              "SUSPENDED",
+              "DELETED",
+              "INACTIVE",
+              "BLOCKED",
+              "CLOSED",
+              "LIQUIDATED"
+            ]
+          },
+          "product": {
+            "$ref": "#/components/schemas/AccountProduct"
+          },
+          "subProduct": {
+            "$ref": "#/components/schemas/AccountSubProduct"
+          },
+          "accountBranch": {
+            "$ref": "#/components/schemas/Branch"
+          },
+          "oldAccountNumber": {
+            "type": "string"
+          }
+        }
+      },
+      "AccountProduct": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "shouldBeUpdatedByJob": {
+            "type": "boolean"
+          }
+        }
+      },
+      "AccountSubProduct": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "accountProduct": {
+            "$ref": "#/components/schemas/AccountProduct"
+          },
+          "shouldBeUpdatedByJob": {
+            "type": "boolean"
+          }
+        }
+      },
+      "BankMovement": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "transactionDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "documentNumber": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "senderDescription": {
+            "type": "string"
+          },
+          "beneficiaryDescription": {
+            "type": "string"
+          },
+          "issueDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "issueAmount": {
+            "type": "number"
+          },
+          "issueCurrency": {
+            "type": "string"
+          },
+          "date": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "amount": {
+            "type": "number"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "sequenceNumber": {
+            "type": "string"
+          },
+          "bankingOperationNumber": {
+            "type": "string"
+          },
+          "bankingOperationCode": {
+            "type": "string"
+          },
+          "balance": {
+            "type": "number"
+          },
+          "balanceCurrency": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "typeId": {
+            "type": "string"
+          },
+          "operationTypology": {
+            "$ref": "#/components/schemas/MOperationTypology"
+          },
+          "orderNumberPosition": {
+            "type": "string"
+          },
+          "releaseDatePosition": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "operationTypeId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "canBeReused": {
+            "type": "boolean"
+          }
+        }
+      },
+      "Branch": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "externalId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "shortName": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string"
+          },
+          "postalCode": {
+            "type": "string"
+          },
+          "district": {
+            "type": "string"
+          },
+          "city": {
+            "type": "string"
+          },
+          "primaryPhoneNumber": {
+            "type": "string"
+          },
+          "secondaryPhoneNumber": {
+            "type": "string"
+          },
+          "faxNumber": {
+            "type": "string"
+          },
+          "managerName": {
+            "type": "string"
+          },
+          "managerPhoneNumber": {
+            "type": "string"
+          },
+          "managerEmail": {
+            "type": "string"
+          },
+          "schedule": {
+            "type": "string"
+          },
+          "importMd5": {
+            "type": "string"
+          },
+          "lastImportDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "shouldBeUpdatedByJob": {
+            "type": "boolean"
+          },
+          "email": {
+            "type": "string"
+          },
+          "longitude": {
+            "type": "number",
+            "format": "double"
+          },
+          "latitude": {
+            "type": "number",
+            "format": "double"
+          },
+          "oldExternalId": {
+            "type": "string"
+          },
+          "nameOnDirectoryService": {
+            "type": "string"
+          },
+          "listed": {
+            "type": "boolean"
+          }
+        }
+      },
+      "Channel": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        }
+      },
+      "ChannelOperation": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "canBeFavorite": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ClientSegment": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "descriptive": {
+            "type": "string"
+          },
+          "onlyAllowedOnBranches": {
+            "type": "string"
+          },
+          "vip": {
+            "type": "boolean"
+          },
+          "clientType": {
+            "$ref": "#/components/schemas/ClientType"
+          }
+        }
+      },
+      "ClientType": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        }
+      },
+      "Currency": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "language": {
+            "$ref": "#/components/schemas/Language"
+          }
+        }
+      },
+      "Customer": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
+          },
+          "externalId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "UNKNOWN",
+              "PRE_CREATED",
+              "PRE_ACTIVE",
+              "ACTIVE",
+              "SUSPENDED",
+              "DELETED",
+              "INACTIVE",
+              "BLOCKED",
+              "CLOSED"
+            ]
+          },
+          "isCompany": {
+            "type": "boolean",
+            "writeOnly": true
+          },
+          "bankingBranch": {
+            "$ref": "#/components/schemas/Branch"
+          },
+          "defaultAccount": {
+            "$ref": "#/components/schemas/Account"
+          },
+          "creationDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastChangeDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Account"
+            }
+          },
+          "fiscalNumber": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string"
+          },
+          "clientSegment": {
+            "$ref": "#/components/schemas/ClientSegment"
+          },
+          "syncNewAccounts": {
+            "type": "boolean"
+          },
+          "contacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CustomerContact"
+            }
+          },
+          "oldExternalId": {
+            "type": "string"
+          },
+          "managerId": {
+            "type": "string"
+          },
+          "company": {
+            "type": "boolean"
+          }
+        }
+      },
+      "CustomerContact": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "customer": {
+            "$ref": "#/components/schemas/Customer"
+          },
+          "type": {
+            "type": "string"
+          },
+          "contact": {
+            "type": "string"
+          },
+          "default": {
+            "type": "boolean"
+          }
+        }
+      },
+      "CustomerOperation": {
+        "type": "object",
+        "properties": {
+          "resultInfo": {
+            "$ref": "#/components/schemas/ResultInfo"
+          },
+          "operationCost": {
+            "$ref": "#/components/schemas/OperationCost"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "sessionId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "operationType": {
+            "$ref": "#/components/schemas/ChannelOperation"
+          },
+          "customerId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CustomerOperationStatus"
+          },
+          "startDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastChangeDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "movementDocumentNumber": {
+            "type": "string"
+          },
+          "movement": {
+            "$ref": "#/components/schemas/BankMovement"
+          },
+          "parameters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CustomerOperationParameter"
+            }
+          },
+          "description": {
+            "type": "string"
+          },
+          "channel": {
+            "$ref": "#/components/schemas/Channel"
+          }
+        },
+        "description": "Associated customer operation details"
+      },
+      "CustomerOperationParameter": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        }
+      },
+      "CustomerOperationStatus": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "languageCode": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        }
+      },
+      "GetMobilePaymentRequestFromMerchantStatusResponse": {
+        "type": "object",
+        "properties": {
+          "responseCode": {
+            "type": "string",
+            "description": "Response codes indicating the result of mobile payment operations. Code 0 indicates success, negative codes indicate various error conditions.",
+            "enum": [
+              "OK",
+              "FATAL",
+              "INVALID_PARAMETERS",
+              "INVALID_API_KEY",
+              "INVALID_CURRENCY",
+              "CORE_BANKING_UNAVAILABLE",
+              "CUSTOMER_NOT_FOUND_FOR_MSISDN",
+              "MAX_FAILED_RETRIES_REACHED",
+              "EXISTING_EXTERNAL_REFERENCE",
+              "INVALID_MSISDN",
+              "INVALID_EXTERNAL_REFERENCE",
+              "UNAUTHORIZED",
+              "INVALID_MSISDN_FORMAT",
+              "SHOPPING_CART_AMOUNT_NOT_EQUAL_TO_TOTAL_AMOUNT",
+              "SHOPPING_CART_VAT_PERCENTAGES_NOT_FOUND",
+              "ERROR_CALCULATING_SHOPPING_CART",
+              "UNKNOWN"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable message describing the result",
+            "example": "Success"
+          },
+          "payment": {
+            "$ref": "#/components/schemas/MobilePaymentView"
+          }
+        },
+        "description": "Response containing the status and details of a mobile payment request"
+      },
+      "Language": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        }
+      },
+      "MOperationTypology": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        }
+      },
+      "MobilePaymentView": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "Unique payment identifier",
+            "format": "int64",
+            "example": 123456789
+          },
+          "amount": {
+            "type": "number",
+            "description": "Payment amount",
+            "example": 1500
+          },
+          "currency": {
+            "type": "string",
+            "description": "Currency code (ISO 4217)",
+            "example": "AOA"
+          },
+          "accountId": {
+            "type": "integer",
+            "description": "Customer account identifier",
+            "format": "int64"
+          },
+          "description": {
+            "type": "string",
+            "description": "Payment description",
+            "example": "Purchase at Store ABC"
+          },
+          "accountNumber": {
+            "type": "string",
+            "description": "Customer account number"
+          },
+          "creationDate": {
+            "type": "string",
+            "description": "Date and time when the payment was created",
+            "format": "date-time"
+          },
+          "lastChangeDate": {
+            "type": "string",
+            "description": "Date and time of the last status change",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string",
+            "description": "Current payment status",
+            "enum": [
+              "PROCESSING",
+              "SUCCESS",
+              "ERROR",
+              "TIMEOUT",
+              "PENDING_CHALLENGE_RESPONSE",
+              "PENDING_SIGNATURE",
+              "REJECTED",
+              "EXPIRED",
+              "REVERSED",
+              "PARTIAL_REVERSED",
+              "PENDING_ACCEPTANCE",
+              "ACCEPTED",
+              "CANCELED",
+              "IN_PROGRESS",
+              "UNKNOWN"
+            ]
+          },
+          "statusDescription": {
+            "type": "string",
+            "description": "Human-readable status description",
+            "example": "Completed"
+          },
+          "statusId": {
+            "type": "integer",
+            "description": "Numeric status identifier",
+            "format": "int32"
+          },
+          "paymentTypeDescription": {
+            "type": "string",
+            "description": "Description of the payment type"
+          },
+          "hasReceipt": {
+            "type": "boolean",
+            "description": "Indicates if a receipt is available"
+          },
+          "channel": {
+            "$ref": "#/components/schemas/Channel"
+          },
+          "operationId": {
+            "type": "integer",
+            "description": "Associated operation identifier",
+            "format": "int64"
+          },
+          "merchant": {
+            "$ref": "#/components/schemas/MobilePaymentsMerchantView"
+          },
+          "acceptancePointId": {
+            "type": "integer",
+            "description": "Acceptance point (store location) identifier",
+            "format": "int64"
+          },
+          "totalReversed": {
+            "type": "number",
+            "description": "Total amount that has been reversed/refunded"
+          },
+          "maxReversible": {
+            "type": "number",
+            "description": "Maximum amount that can still be reversed"
+          },
+          "flow": {
+            "type": "string",
+            "description": "Payment flow type (fixed amount, captive, OTP)",
+            "enum": [
+              "PAYMENT_TO_MERCHANT",
+              "PAYMENT_REQUESTED_FROM_MERCHANT",
+              "PAYMENT_REQUESTED_FROM_MERCHANT_VIA_OTP",
+              "PAYMENT_REQUESTED_FROM_MERCHANT_CAPTIVE",
+              "PAYMENT_REQUESTED_FROM_MERCHANT_WIDGET"
+            ]
+          },
+          "customerOperation": {
+            "$ref": "#/components/schemas/CustomerOperation"
+          },
+          "externalReference": {
+            "type": "string",
+            "description": "External reference provided by the merchant",
+            "example": "ORDER-2024-001"
+          },
+          "callbackResult": {
+            "type": "string",
+            "description": "Result of the callback notification to the merchant"
+          },
+          "nonce": {
+            "type": "string",
+            "description": "Cryptographic nonce to prevent message replay attacks"
+          },
+          "signature": {
+            "type": "string",
+            "description": "HMAC-SHA256 signature for message authenticity. Computed as HMAC(sharedKey, id|nonce|externalReference|amount|lastChangeDate|merchant.externalId)"
+          },
+          "shoppingCart": {
+            "$ref": "#/components/schemas/ShoppingCartDetails"
+          },
+          "msisdn": {
+            "type": "string",
+            "description": "Customer phone number (MSISDN)",
+            "example": "244923456789"
+          },
+          "estimatedAmount": {
+            "type": "number",
+            "description": "Estimated amount for captive payments"
+          },
+          "maxAmount": {
+            "type": "number",
+            "description": "Maximum authorized amount for captive payments"
+          },
+          "captiveValidUntil": {
+            "type": "string",
+            "description": "Expiration date for captive payment authorization",
+            "format": "date-time"
+          },
+          "captiveAuthorization": {
+            "type": "string",
+            "description": "Captive payment authorization code from core banking"
+          },
+          "captiveBranch": {
+            "type": "string",
+            "description": "Branch code for captive payment"
+          },
+          "captiveOperationCode": {
+            "type": "string",
+            "description": "Operation code for captive payment"
+          },
+          "productExternalId": {
+            "type": "string",
+            "description": "External product identifier"
+          },
+          "expirationDate": {
+            "type": "string",
+            "description": "Payment expiration date",
+            "format": "date-time"
+          },
+          "merchantNotes": {
+            "type": "string",
+            "description": "Internal merchant notes"
+          },
+          "allowsInstallmentPayments": {
+            "type": "boolean",
+            "description": "Indicates if installment payment is available for this payment"
+          },
+          "reversible": {
+            "type": "boolean"
+          },
+          "favorite": {
+            "type": "boolean"
+          },
+          "favoritable": {
+            "type": "boolean"
+          }
+        },
+        "description": "Detailed view of a mobile payment including status, amounts, merchant info, and security signature"
+      },
+      "MobilePaymentsMerchantTransactionLimitView": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number"
+          },
+          "currency": {
+            "$ref": "#/components/schemas/Currency"
+          }
+        },
+        "description": "List of transaction limits configured for this merchant"
+      },
+      "MobilePaymentsMerchantView": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "Internal merchant identifier",
+            "format": "int64",
+            "example": 12345
+          },
+          "creationDate": {
+            "type": "string",
+            "description": "Date when the merchant was registered",
+            "format": "date-time"
+          },
+          "externalId": {
+            "type": "string",
+            "description": "External identifier used for integration",
+            "example": "MERCH-001"
+          },
+          "name": {
+            "type": "string",
+            "description": "Merchant business name",
+            "example": "ABC Store"
+          },
+          "description": {
+            "type": "string",
+            "description": "Merchant description",
+            "example": "Electronics and appliances retailer"
+          },
+          "flow": {
+            "type": "string",
+            "description": "Payment flow type supported by the merchant"
+          },
+          "imageUrl": {
+            "type": "string",
+            "description": "URL to merchant's logo image"
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Indicates if the merchant is currently active"
+          },
+          "acceptancePointId": {
+            "type": "integer",
+            "description": "Default acceptance point identifier for this merchant",
+            "format": "int64"
+          },
+          "friendlyName": {
+            "type": "string",
+            "description": "User-friendly display name",
+            "example": "ABC Store - Main"
+          },
+          "email": {
+            "type": "string",
+            "description": "Merchant contact email",
+            "example": "contact@abcstore.com"
+          },
+          "transactionLimitList": {
+            "type": "array",
+            "description": "List of transaction limits configured for this merchant",
+            "items": {
+              "$ref": "#/components/schemas/MobilePaymentsMerchantTransactionLimitView"
+            }
+          }
+        },
+        "description": "Merchant information including business details and configuration"
+      },
+      "OperationCost": {
+        "type": "object",
+        "properties": {
+          "comission": {
+            "type": "number"
+          },
+          "tax": {
+            "type": "number"
+          },
+          "stampDuty": {
+            "type": "number"
+          },
+          "account": {
+            "$ref": "#/components/schemas/Account"
+          },
+          "expensesTotalAmount": {
+            "type": "number"
+          },
+          "otherCostsTotalAmount": {
+            "type": "number"
+          },
+          "totalDebitAmount": {
+            "type": "number"
+          }
+        }
+      },
+      "ResultInfo": {
+        "type": "object",
+        "properties": {
+          "errorLevel": {
+            "type": "string",
+            "enum": [
+              "INFO",
+              "WARNING",
+              "ERROR"
+            ]
+          },
+          "errorCode": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "inDegradedMode": {
+            "type": "boolean"
+          }
+        }
+      },
+      "InitiateMobilePaymentViaOtpRequestFromMerchantResponse": {
+        "type": "object",
+        "properties": {
+          "responseCode": {
+            "type": "string",
+            "description": "Response codes indicating the result of mobile payment operations. Code 0 indicates success, negative codes indicate various error conditions.",
+            "enum": [
+              "OK",
+              "FATAL",
+              "INVALID_PARAMETERS",
+              "INVALID_API_KEY",
+              "INVALID_CURRENCY",
+              "CORE_BANKING_UNAVAILABLE",
+              "CUSTOMER_NOT_FOUND_FOR_MSISDN",
+              "MAX_FAILED_RETRIES_REACHED",
+              "EXISTING_EXTERNAL_REFERENCE",
+              "INVALID_MSISDN",
+              "INVALID_EXTERNAL_REFERENCE",
+              "UNAUTHORIZED",
+              "INVALID_MSISDN_FORMAT",
+              "SHOPPING_CART_AMOUNT_NOT_EQUAL_TO_TOTAL_AMOUNT",
+              "SHOPPING_CART_VAT_PERCENTAGES_NOT_FOUND",
+              "ERROR_CALCULATING_SHOPPING_CART",
+              "UNKNOWN"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable message describing the result",
+            "example": "Success"
+          },
+          "paymentId": {
+            "type": "integer",
+            "description": "Unique identifier of the initiated payment",
+            "format": "int64",
+            "example": 123456789
+          },
+          "confirmationUrl": {
+            "type": "string",
+            "description": "URL where the customer should be redirected to confirm the payment via OTP",
+            "example": "https://example.com/payment/confirm/abc123"
+          }
+        },
+        "description": "Response for initiating an OTP-based mobile payment"
+      },
+      "InitiateMobilePaymentViaOtpRequestFromMerchantRequest": {
+        "required": [
+          "currency",
+          "customerMsisdn",
+          "externalReference",
+          "totalAmount"
+        ],
+        "type": "object",
+        "properties": {
+          "customerMsisdn": {
+            "type": "string",
+            "description": "Customer phone number (MSISDN) in international format",
+            "example": "244923456789"
+          },
+          "totalAmount": {
+            "type": "number",
+            "description": "Total payment amount",
+            "example": 2500
+          },
+          "currency": {
+            "type": "string",
+            "description": "Currency code (ISO 4217)",
+            "example": "AOA"
+          },
+          "shoppingCart": {
+            "$ref": "#/components/schemas/ShoppingCart"
+          },
+          "externalReference": {
+            "type": "string",
+            "description": "Unique reference provided by the merchant for this payment",
+            "example": "OTP-ORDER-2024-001"
+          },
+          "description": {
+            "type": "string",
+            "description": "Payment description visible to the customer",
+            "example": "Online purchase at E-commerce Store"
+          }
+        },
+        "description": "Request object for initiating an OTP-based mobile payment where customer confirms via WebView"
+      },
+      "ValidateMsisdnForPaymentResponse": {
+        "type": "object",
+        "properties": {
+          "responseCode": {
+            "type": "string",
+            "description": "Response codes indicating the result of mobile payment operations. Code 0 indicates success, negative codes indicate various error conditions.",
+            "enum": [
+              "OK",
+              "FATAL",
+              "INVALID_PARAMETERS",
+              "INVALID_API_KEY",
+              "INVALID_CURRENCY",
+              "CORE_BANKING_UNAVAILABLE",
+              "CUSTOMER_NOT_FOUND_FOR_MSISDN",
+              "MAX_FAILED_RETRIES_REACHED",
+              "EXISTING_EXTERNAL_REFERENCE",
+              "INVALID_MSISDN",
+              "INVALID_EXTERNAL_REFERENCE",
+              "UNAUTHORIZED",
+              "INVALID_MSISDN_FORMAT",
+              "SHOPPING_CART_AMOUNT_NOT_EQUAL_TO_TOTAL_AMOUNT",
+              "SHOPPING_CART_VAT_PERCENTAGES_NOT_FOUND",
+              "ERROR_CALCULATING_SHOPPING_CART",
+              "UNKNOWN"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable message describing the result",
+            "example": "Success"
+          },
+          "valid": {
+            "type": "boolean",
+            "description": "Indicates whether the MSISDN is valid and can receive payment requests",
+            "example": true
+          }
+        },
+        "description": "Response for MSISDN validation indicating if the phone number is valid for payments"
+      }
+    }
+  }
+}

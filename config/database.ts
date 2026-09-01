@@ -15,7 +15,17 @@ const dbConfig = defineConfig({
       },
       migrations: {
         naturalSort: true,
-        paths: ['database/migrations'],
+        /**
+         * O segundo caminho é a integração com a facturação electrónica da AGT.
+         *
+         * As migrações desse módulo vivem com ele (`minfin-integration/migrations`)
+         * e não aqui, para o módulo inteiro caber numa pasta só — mas o dono do
+         * esquema continua a ser este projecto (regra 7.18), e por isso é este
+         * ficheiro que as regista. Com `naturalSort`, o Lucid ordena os dois
+         * caminhos em conjunto: os prefixos `1800...` correm depois dos `179...`
+         * já existentes.
+         */
+        paths: ['database/migrations', 'minfin-integration/migrations'],
       },
     },
   },

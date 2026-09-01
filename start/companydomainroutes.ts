@@ -270,6 +270,18 @@ router
 
         // Facturas: emissão a partir de uma venda fechada, numeração sequencial por empresa.
         // Não existia nenhuma funcionalidade de facturação na API antes desta.
+        // ANTES do resource: `GET facturas/:id` interceptaria estas duas — o mesmo
+        // motivo já documentado para `caixas/meu` e `produtos/catalogo`.
+        router
+            .get('facturas/vendas-por-facturar', [controllers.Factura, 'vendasPorFacturar'])
+            .as('domain_facturas.vendas_por_facturar')
+        router
+            .get('facturas/:id/proximos', [controllers.Factura, 'proximos'])
+            .as('domain_facturas.proximos')
+        router
+            .get('facturas/:id/vendas-cobertas', [controllers.Factura, 'vendasCobertas'])
+            .as('domain_facturas.vendas_cobertas')
+
         router.resource('facturas', controllers.Factura)
             .apiOnly()
             .except(['update', 'destroy'])

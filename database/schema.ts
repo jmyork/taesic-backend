@@ -417,8 +417,12 @@ export class EstoqueSchema extends BaseModel {
 }
 
 export class FacturaSchema extends BaseModel {
-  static $columns = ['clienteNif', 'clienteNome', 'createdAt', 'dataEmissao', 'deletedAt', 'empresaId', 'id', 'numero', 'observacoes', 'status', 'tipo', 'total', 'updatedAt', 'vendaId'] as const
+  static $columns = ['ano', 'clienteMorada', 'clienteNif', 'clienteNome', 'createdAt', 'dataEmissao', 'dataOperacao', 'deletedAt', 'documentoOrigemId', 'empresaId', 'hash', 'id', 'localOperacao', 'motivoAnulacao', 'numero', 'observacoes', 'periodoFim', 'periodoInicio', 'serie', 'softwareId', 'status', 'tipo', 'total', 'updatedAt', 'vendaId'] as const
   $columns = FacturaSchema.$columns
+  @column()
+  declare ano: number | null
+  @column()
+  declare clienteMorada: string | null
   @column()
   declare clienteNif: string | null
   @column()
@@ -428,21 +432,54 @@ export class FacturaSchema extends BaseModel {
   @column.dateTime()
   declare dataEmissao: DateTime
   @column.dateTime()
+  declare dataOperacao: DateTime | null
+  @column.dateTime()
   declare deletedAt: DateTime | null
   @column()
+  declare documentoOrigemId: string | null
+  @column()
   declare empresaId: string
+  @column()
+  declare hash: string | null
   @column({ isPrimary: true })
   declare id: string
+  @column()
+  declare localOperacao: string | null
+  @column()
+  declare motivoAnulacao: string | null
   @column()
   declare numero: number
   @column()
   declare observacoes: string | null
+  @column.date()
+  declare periodoFim: DateTime | null
+  @column.date()
+  declare periodoInicio: DateTime | null
+  @column()
+  declare serie: string | null
+  @column()
+  declare softwareId: string | null
   @column()
   declare status: string
   @column()
   declare tipo: string
   @column()
   declare total: string
+  @column.dateTime({ autoCreate: true, autoUpdate: true })
+  declare updatedAt: DateTime
+  @column()
+  declare vendaId: string | null
+}
+
+export class FacturaVendaSchema extends BaseModel {
+  static $columns = ['createdAt', 'facturaId', 'id', 'updatedAt', 'vendaId'] as const
+  $columns = FacturaVendaSchema.$columns
+  @column.dateTime({ autoCreate: true })
+  declare createdAt: DateTime
+  @column()
+  declare facturaId: string
+  @column({ isPrimary: true })
+  declare id: string
   @column.dateTime({ autoCreate: true, autoUpdate: true })
   declare updatedAt: DateTime
   @column()
@@ -525,6 +562,117 @@ export class MetodopagamentoSchema extends BaseModel {
   declare id: string
   @column()
   declare nome: string
+  @column.dateTime({ autoCreate: true, autoUpdate: true })
+  declare updatedAt: DateTime
+}
+
+export class MinfinDocumentoSchema extends BaseModel {
+  static $columns = ['createdAt', 'deletedAt', 'documentCancelReason', 'documentDate', 'documentNo', 'documentStatus', 'documentType', 'empresaId', 'errosJson', 'facturaId', 'hash', 'id', 'jwsDocumentSignature', 'submissaoId', 'updatedAt', 'veredicto'] as const
+  $columns = MinfinDocumentoSchema.$columns
+  @column.dateTime({ autoCreate: true })
+  declare createdAt: DateTime
+  @column.dateTime()
+  declare deletedAt: DateTime | null
+  @column()
+  declare documentCancelReason: string | null
+  @column.date()
+  declare documentDate: DateTime
+  @column()
+  declare documentNo: string
+  @column()
+  declare documentStatus: string
+  @column()
+  declare documentType: string
+  @column()
+  declare empresaId: string
+  @column()
+  declare errosJson: string | null
+  @column()
+  declare facturaId: string | null
+  @column()
+  declare hash: string | null
+  @column({ isPrimary: true })
+  declare id: string
+  @column()
+  declare jwsDocumentSignature: string | null
+  @column()
+  declare submissaoId: string
+  @column.dateTime({ autoCreate: true, autoUpdate: true })
+  declare updatedAt: DateTime
+  @column()
+  declare veredicto: string | null
+}
+
+export class MinfinSerieSchema extends BaseModel {
+  static $columns = ['createdAt', 'deletedAt', 'documentType', 'empresaId', 'errosJson', 'firstDocumentNumber', 'id', 'invoicingMethod', 'lastDocumentCreated', 'registadaEm', 'seriesCode', 'seriesStatus', 'seriesYear', 'updatedAt'] as const
+  $columns = MinfinSerieSchema.$columns
+  @column.dateTime({ autoCreate: true })
+  declare createdAt: DateTime
+  @column.dateTime()
+  declare deletedAt: DateTime | null
+  @column()
+  declare documentType: string
+  @column()
+  declare empresaId: string
+  @column()
+  declare errosJson: string | null
+  @column()
+  declare firstDocumentNumber: number
+  @column({ isPrimary: true })
+  declare id: string
+  @column()
+  declare invoicingMethod: string | null
+  @column()
+  declare lastDocumentCreated: string | null
+  @column.dateTime()
+  declare registadaEm: DateTime | null
+  @column()
+  declare seriesCode: string
+  @column()
+  declare seriesStatus: string | null
+  @column()
+  declare seriesYear: number
+  @column.dateTime({ autoCreate: true, autoUpdate: true })
+  declare updatedAt: DateTime
+}
+
+export class MinfinSubmissaoSchema extends BaseModel {
+  static $columns = ['avisosJson', 'createdAt', 'deletedAt', 'empresaId', 'errosJson', 'estado', 'id', 'nif', 'numeroDocumentos', 'pedidoJson', 'proximaConsultaEm', 'requestId', 'respostaJson', 'resultCode', 'submissionRef', 'tentativasEstado', 'ultimaConsultaEm', 'updatedAt'] as const
+  $columns = MinfinSubmissaoSchema.$columns
+  @column()
+  declare avisosJson: string | null
+  @column.dateTime({ autoCreate: true })
+  declare createdAt: DateTime
+  @column.dateTime()
+  declare deletedAt: DateTime | null
+  @column()
+  declare empresaId: string
+  @column()
+  declare errosJson: string | null
+  @column()
+  declare estado: string
+  @column({ isPrimary: true })
+  declare id: string
+  @column()
+  declare nif: string
+  @column()
+  declare numeroDocumentos: number
+  @column()
+  declare pedidoJson: string | null
+  @column.dateTime()
+  declare proximaConsultaEm: DateTime | null
+  @column()
+  declare requestId: string | null
+  @column()
+  declare respostaJson: string | null
+  @column()
+  declare resultCode: boolean | null
+  @column()
+  declare submissionRef: string
+  @column()
+  declare tentativasEstado: number
+  @column.dateTime()
+  declare ultimaConsultaEm: DateTime | null
   @column.dateTime({ autoCreate: true, autoUpdate: true })
   declare updatedAt: DateTime
 }

@@ -105,6 +105,44 @@ export default defineConfig({
         name: 'functional',
         timeout: 30000,
       },
+      /*
+       * A integração com a facturação electrónica da AGT.
+       *
+       * Suite própria, e os ficheiros ficam dentro do módulo — é a mesma razão
+       * das migrações em `config/database.ts`: o módulo cabe todo numa pasta.
+       *
+       * Não precisa de base de dados: exercita o cliente contra o servidor
+       * simulado (`minfin-integration/simulador/`), que é a única forma de
+       * testar isto enquanto a AGT não entregar endereços reais — o Blueprint
+       * entrega-os como `http://xxx.xxx.xxx.xxx:yyyy/`.
+       *
+       *     node ace test minfin
+       */
+      {
+        files: ['minfin-integration/testes/**/*.spec(.ts|.js)'],
+        name: 'minfin',
+        timeout: 30000,
+      },
+      /*
+       * A integração com o BAI Paga (pagamentos móveis do Banco BAI).
+       *
+       * Mesma razão da suite acima: o módulo cabe todo numa pasta, e os testes
+       * ficam lá dentro com ele.
+       *
+       * Não precisa de base de dados, e não toca no BAI: exercita o cliente
+       * contra o servidor simulado (`baipaga-integration/simulador/`). Além das
+       * razões habituais — cada chamada ao ambiente de qualidade deles consome
+       * uma referência externa — há uma que é só desta integração: a única
+       * maneira de afirmar que uma resposta FORJADA é recusada é forjar uma, e
+       * isso exige um servidor nosso.
+       *
+       *     node ace test baipaga
+       */
+      {
+        files: ['baipaga-integration/testes/**/*.spec(.ts|.js)'],
+        name: 'baipaga',
+        timeout: 30000,
+      },
     ],
     forceExit: false,
   },

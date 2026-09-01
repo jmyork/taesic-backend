@@ -160,9 +160,17 @@ test.group('relatorios_repository - dashboard executivo, IVA, despesas, comparat
 
     const facturaRepo = new FacturaRepository()
     const factura1 = await facturaRepo.emitir({ venda_id: venda1.id, tipo: 'Factura', company_alias: empresa.company_alias })
-    await facturaRepo.anular({ id: factura1.id, company_alias: empresa.company_alias })
+    await facturaRepo.anular({ id: factura1.id, company_alias: empresa.company_alias, motivo_anulacao: 'I' })
 
-    await facturaRepo.emitir({ venda_id: venda2.id, tipo: 'Nota de Crédito', company_alias: empresa.company_alias })
+    /*
+     * A nota de crédito tem de dizer o que rectifica — a AGT recusa-a com E13 sem
+     * essa referência, e o art.º 10.º do Decreto Presidencial 71/25 exige-a. Daí a
+     * factura da venda 2 nascer primeiro: até esta passagem, este teste emitia a
+     * nota agarrada a uma venda e sem origem nenhuma, o que já não é um documento
+     * válido.
+     */
+    const factura2 = await facturaRepo.emitir({ venda_id: venda2.id, tipo: 'Factura', company_alias: empresa.company_alias })
+    await facturaRepo.emitir({ tipo: 'Nota de Crédito', documento_origem_id: factura2.id, total: 500, company_alias: empresa.company_alias })
 
     const repo = new RelatoriosRepository()
     const anulados = await repo.relatorioDocumentosAnulados({ company_alias: empresa.company_alias })

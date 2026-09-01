@@ -348,6 +348,11 @@ export const PERMISSOES_PADRAO: PermissaoPadrao[] = [
   { nome: 'domain_facturas.show', descricao: 'Ver factura específica' },
   { nome: 'domain_facturas.store', descricao: 'Emitir factura' },
   { nome: 'domain_facturas.anular', descricao: 'Anular factura' },
+  // Leitura pura, e é o que decide o que o ecrã oferece: sem elas o utilizador
+  // volta a ver os catorze tipos e descobre o que não pode fazer pelo erro.
+  { nome: 'domain_facturas.proximos', descricao: 'Ver o que se pode emitir a seguir a um documento' },
+  { nome: 'domain_facturas.vendas_por_facturar', descricao: 'Listar as vendas ainda por facturar' },
+  { nome: 'domain_facturas.vendas_cobertas', descricao: 'Ver as vendas que um documento titula' },
   // ==================== CUPOM DOMAIN ====================
   { nome: 'domain_cupom.index', descricao: 'Listar cupões' },
   { nome: 'domain_cupom.show', descricao: 'Ver cupão específico' },
@@ -795,6 +800,9 @@ export const PERMISSOES_POR_PAPEL: Record<string, string[]> = {
 
     // Facturas (4 perms)
     'domain_facturas.index',
+    'domain_facturas.proximos',
+    'domain_facturas.vendas_por_facturar',
+    'domain_facturas.vendas_cobertas',
     'domain_facturas.show',
     'domain_facturas.store',
     'domain_facturas.anular',
@@ -1245,6 +1253,9 @@ export const PERMISSOES_POR_PAPEL: Record<string, string[]> = {
 
     // facturas (emitir, nunca anular — só o Admin anula)
     'domain_facturas.index',
+    'domain_facturas.proximos',
+    'domain_facturas.vendas_por_facturar',
+    'domain_facturas.vendas_cobertas',
     'domain_facturas.show',
     'domain_facturas.store',
     // cupom (leitura — precisa de saber que cupons existem)
@@ -1345,6 +1356,9 @@ export const PERMISSOES_POR_PAPEL: Record<string, string[]> = {
     'domain_metodo_pagamento.show',
     // facturas (emitir, nunca anular — só o Admin anula)
     'domain_facturas.index',
+    'domain_facturas.proximos',
+    'domain_facturas.vendas_por_facturar',
+    'domain_facturas.vendas_cobertas',
     'domain_facturas.show',
     // cupom (leitura — precisa de saber que cupons existem)
     'domain_cupom.index',
@@ -1488,6 +1502,9 @@ export const PERMISSOES_POR_PAPEL: Record<string, string[]> = {
 
     // facturas (emitir, nunca anular — só o Admin anula)
     'domain_facturas.index',
+    'domain_facturas.proximos',
+    'domain_facturas.vendas_por_facturar',
+    'domain_facturas.vendas_cobertas',
     'domain_facturas.show',
     'domain_facturas.store',
 
@@ -1650,6 +1667,9 @@ export const PERMISSOES_POR_PAPEL: Record<string, string[]> = {
 
     // facturas (emitir, nunca anular — só o Admin anula)
     'domain_facturas.index',
+    'domain_facturas.proximos',
+    'domain_facturas.vendas_por_facturar',
+    'domain_facturas.vendas_cobertas',
     'domain_facturas.show',
     'domain_facturas.store',
 
@@ -1764,6 +1784,9 @@ export const PERMISSOES_POR_PAPEL: Record<string, string[]> = {
 
     // Facturas (read only)
     'domain_facturas.index',
+    'domain_facturas.proximos',
+    'domain_facturas.vendas_por_facturar',
+    'domain_facturas.vendas_cobertas',
     'domain_facturas.show',
 
     // Cupom (read only)

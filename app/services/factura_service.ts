@@ -19,4 +19,19 @@ export default class FacturaService {
   anular(data: AnularFacturaDTO) {
     return this.repo.anular(data)
   }
+
+  /** O que se pode emitir a seguir a este documento. */
+  proximos(data: ShowFacturaDTO) {
+    return this.repo.proximos(data)
+  }
+
+  /** As vendas que este documento cobre — a factura global cobre várias. */
+  vendasCobertas(data: ShowFacturaDTO) {
+    return this.repo.vendasCobertas(data)
+  }
+
+  /** As vendas fechadas que ainda não foram tituladas por nenhum documento. */
+  vendasPorFacturar(companyAlias: string, limite?: number) {
+    return this.repo.vendasPorFacturar(companyAlias, limite)
+  }
 }

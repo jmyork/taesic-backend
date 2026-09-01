@@ -115,11 +115,11 @@ test.group('factura_repository', (group) => {
     const repo = new FacturaRepository()
     const emitida = await repo.emitir({ venda_id: venda.id, tipo: 'Factura', company_alias: empresa.company_alias })
 
-    const anulada = await repo.anular({ id: emitida.id, company_alias: empresa.company_alias })
+    const anulada = await repo.anular({ id: emitida.id, company_alias: empresa.company_alias, motivo_anulacao: 'I' })
     assert.equal(anulada.status, 'anulada')
 
     try {
-      await repo.anular({ id: emitida.id, company_alias: empresa.company_alias })
+      await repo.anular({ id: emitida.id, company_alias: empresa.company_alias, motivo_anulacao: 'I' })
       assert.fail('deveria ter rejeitado anular uma factura já anulada')
     } catch (error) {
       assert.instanceOf(error, FacturaJaAnuladaException)
@@ -140,24 +140,49 @@ test.group('factura_repository', (group) => {
     assert.equal(encontrada.id, emitida.id)
   })
 
-  // emitir() devolve a instância recém-criada pelo Model.create(), que nunca passa pelo join
-  // de baseQuery() — só findOrFail()/paginate() (usados por show/index) trazem os dados da
-  // empresa emissora. O frontend depende deste contrato: navega para /facturas/:id depois de
-  // emitir, nunca tenta ler nome/nif da empresa a partir da resposta de emissão diretamente.
-  test('só findOrFail/paginate (não o retorno de emitir) incluem o nome/nif da empresa emissora, via serializeExtras', async ({
-    assert,
-  }) => {
+  /*
+   * ── O contrato mudou, e mudou de propósito ──────────────────────────────────
+   *
+   * Este teste afirmava o inverso: que `emitir()` devolvia a instância crua do
+   * `Model.create()`, SEM os campos que `baseQuery()` acrescenta por join. O
+   * comentário que o acompanhava dizia que o frontend não dependia disso — e não
+   * dependia mesmo, porque navegava para `/facturas/:id` a seguir.
+   *
+   * Deixou de servir quando o join passou a trazer também o VENDEDOR: a resposta
+   * da emissão vinha com `vendedor_nome` vazio e a da leitura vinha preenchida, e
+   * isso foi visível a exercitar o fluxo por HTTP. O mesmo recurso com duas formas
+   * conforme o verbo é uma armadilha para quem escreva o próximo ecrã — e a
+   * releitura custa uma consulta numa operação que já abriu uma transacção.
+   */
+  test('emitir() devolve o documento na MESMA forma que findOrFail()', async ({ assert }) => {
     const { empresa, user, pos } = await createTenant()
     const caixa = await createCaixa(user, pos)
     const venda = await createVenda(caixa, { status: 'fechada', total: 1000 })
 
     const repo = new FacturaRepository()
-    const emitida = await repo.emitir({ venda_id: venda.id, tipo: 'Factura', company_alias: empresa.company_alias })
-    assert.isUndefined((emitida.toJSON() as any).empresa_nome)
+    const emitida = await repo.emitir({
+      venda_id: venda.id,
+      tipo: 'Factura',
+      company_alias: empresa.company_alias,
+    })
+    const encontrada = await repo.findOrFail({
+      id: emitida.id,
+      company_alias: empresa.company_alias,
+    })
 
-    const encontrada = await repo.findOrFail({ id: emitida.id, company_alias: empresa.company_alias })
-    const json = encontrada.toJSON() as any
-    assert.equal(json.empresa_nome, empresa.nome)
-    assert.equal(json.empresa_nif, empresa.nif)
+    const daEmissao = emitida.toJSON() as any
+    const daLeitura = encontrada.toJSON() as any
+
+    assert.equal(daEmissao.empresa_nome, empresa.nome)
+    assert.equal(daEmissao.empresa_nif, empresa.nif)
+
+    // O vendedor é o que motivou a mudança: sai de vendas→caixa→user e só existe
+    // no caminho do join.
+    assert.equal(daEmissao.vendedor_nome, daLeitura.vendedor_nome)
+    assert.isNotNull(daEmissao.vendedor_nome)
+
+    for (const campo of ['empresa_nome', 'empresa_nif', 'referencia', 'designacao']) {
+      assert.equal(daEmissao[campo], daLeitura[campo], `${campo} difere entre emitir e ler`)
+    }
   })
 })
