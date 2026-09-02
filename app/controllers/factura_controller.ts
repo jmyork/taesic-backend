@@ -189,18 +189,29 @@ export default class FacturaController {
   async anular({ request, params, response }: HttpContext) {
     // O motivo é obrigatório — ver `AnularFacturaValidator`. Sem ele o documento
     // anulado fica impossível de comunicar à AGT.
-    const { motivo_anulacao } = await request.validateUsing(AnularFacturaValidator)
+    const { motivo_anulacao, alcance } = await request.validateUsing(AnularFacturaValidator)
 
     const data = await this.service.anular({
       id: params.id,
       company_alias: params.company_alias,
       motivo_anulacao,
+      alcance,
     })
 
-    return response.ok({
-      data,
-      message: `${data.designacao} ${data.referencia} anulada com sucesso`,
-      status: 200,
-    })
+    /*
+     * A mensagem nomeia os documentos arrastados, não só o pedido.
+     *
+     * Quem anula uma factura desfaz também o recibo que a liquidou e a nota que a
+     * rectificou — e tem de o saber pela resposta, não por reparar mais tarde que
+     * a lista encolheu.
+     */
+    const arrastados: string[] = (data as any).$extras?.referencias_anuladas ?? []
+
+    const message =
+      arrastados.length > 0
+        ? `${data.designacao} ${data.referencia} anulada, e com ela ${arrastados.join(', ')}.`
+        : `${data.designacao} ${data.referencia} anulada com sucesso`
+
+    return response.ok({ data, message, status: 200 })
   }
 }

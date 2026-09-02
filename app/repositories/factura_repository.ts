@@ -7,6 +7,7 @@ import FacturaVenda from '#models/faturacao/factura_venda'
 import Cliente from '#models/cliente'
 import Empresa from '#models/empresa'
 import { proximoNumeroPorSerie } from '../helpers/sequencial_numero.js'
+import { identificacaoDoSoftware } from '../helpers/software_de_facturacao.js'
 import { aceitaVencimento, definicaoDe, serieDefault } from '../helpers/tipos_de_documento.js'
 import {
   type EstadoDoDocumento,
@@ -31,7 +32,6 @@ import VendaJaFacturadaException from '#exceptions/venda_ja_facturada_exception'
 import DocumentoJaPagoException from '#exceptions/documento_ja_pago_exception'
 import DocumentoSemDividaException from '#exceptions/documento_sem_divida_exception'
 import ValorExcedeOrigemException from '#exceptions/valor_excede_origem_exception'
-import DocumentoComDependentesException from '#exceptions/documento_com_dependentes_exception'
 import FacturaJaAnuladaException from '#exceptions/factura_ja_anulada_exception'
 import ValorDoDocumentoEmFaltaException from '#exceptions/valor_do_documento_em_falta_exception'
 import PeriodoDeFacturacaoInvalidoException from '#exceptions/periodo_de_facturacao_invalido_exception'
@@ -797,6 +797,14 @@ export default class FacturaRepository {
           venda_id: venda?.id ?? null,
           emitido_por_user_id: data.emitido_por_user_id ?? null,
           documento_origem_id: origem?.id ?? null,
+          /*
+           * O programa que emitiu, gravado no acto — art.º 10.º n.º 1 j).
+           *
+           * Gravado e não lido ao imprimir: a versão muda e o número de validação
+           * pode ser reemitido, e uma factura de Março reimpressa em Novembro tem
+           * de continuar a dizer com que programa foi feita.
+           */
+          software_id: identificacaoDoSoftware(),
           numero: proximoNumero,
           serie,
           ano,
@@ -1054,9 +1062,26 @@ export default class FacturaRepository {
    * que desaparecesse do conjunto deixaria um buraco por explicar na sequência
    * numérica. Quem imprime decide o que faz com eles.
    */
-  async documentosDaOperacao(data: ShowFacturaDTO) {
-    const inicial = await this.findOrFail(data)
-
+  /**
+   * Os ids de TODOS os documentos da mesma operação — este incluído.
+   *
+   * ── Porque é que isto vive sozinho ───────────────────────────────────────────
+   *
+   * Porque «a operação» é lida por dois sítios com consequências muito
+   * diferentes: `documentosDaOperacao()` imprime-a, e `anular()` anula-a. Duas
+   * travessias divergiriam, e a divergência seria exactamente a pior possível —
+   * um conjunto para mostrar e outro para destruir. Com uma só, o que o ecrã
+   * avisa e o que a anulação faz não podem deixar de concordar.
+   *
+   * Segue as duas ligações, nas duas direcções, até o conjunto deixar de crescer:
+   *
+   *  · `documento_origem_id` para baixo e para cima — a corrente entre documentos
+   *  · `venda_id` ao lado — os que nascem da mesma venda sem se apontarem
+   *
+   * Os anulados VÊM: fazem parte da história da operação, e quem imprime tem de
+   * os ver. Quem anula filtra-os depois — não há nada a desfazer neles.
+   */
+  private async idsDaOperacao(inicial: Factura): Promise<string[]> {
     const ids = new Set<string>([inicial.id])
     const vendas = new Set<string>()
     if (inicial.venda_id) vendas.add(inicial.venda_id)
@@ -1083,8 +1108,17 @@ export default class FacturaRepository {
         if (l.venda_id) vendas.add(l.venda_id)
       }
 
+      // O limite de voltas é salvaguarda contra um ciclo em dados corrompidos;
+      // normalmente o conjunto estabiliza em duas ou três.
       if (ids.size + vendas.size === antes) break
     }
+
+    return [...ids]
+  }
+
+  async documentosDaOperacao(data: ShowFacturaDTO) {
+    const inicial = await this.findOrFail(data)
+    const ids = await this.idsDaOperacao(inicial)
 
     /*
      * A releitura passa por `baseQuery()` de propósito: os documentos vão ser
@@ -1097,7 +1131,7 @@ export default class FacturaRepository {
      */
     return this.baseQuery()
       .where('empresa.company_alias', data.company_alias)
-      .whereIn('factura.id', [...ids])
+      .whereIn('factura.id', ids)
       .whereNull('factura.deleted_at')
       .orderBy('factura.data_emissao', 'asc')
       .orderBy('factura.numero', 'asc')
@@ -1138,29 +1172,150 @@ export default class FacturaRepository {
     }
 
     /*
-     * REGRA 6 — um documento com dependentes não se anula.
+     * ── REGRA 6 — anular arrasta consigo tudo o que depende do documento ────────
      *
-     * Anular uma factura que já tem recibo ou nota de crédito deixaria esses
-     * documentos a apontar para algo que já não produz efeitos — e eles
-     * continuariam válidos, a liquidar e a rectificar um documento que deixou de
-     * existir para efeitos fiscais. Anula-se de fora para dentro.
+     * A regra dizia o contrário: um documento com dependentes NÃO se anulava, e
+     * quem quisesse desfazer uma factura tinha de ir anular à mão, pela ordem
+     * certa, o recibo que a liquidou, a nota que a rectificou e o aviso que a
+     * cobrou — descobrindo quais eram por tentativa e erro, porque a recusa não
+     * dizia quantos nem onde estavam.
      *
-     * Os já anulados não contam: se o recibo foi anulado, a factura volta a poder
-     * sê-lo.
+     * O que a regra protegia continua a valer, e é isso que a cascata garante: um
+     * documento válido nunca pode ficar a apontar para outro que deixou de
+     * produzir efeitos. Um recibo que liquida uma factura anulada declara ter
+     * recebido por conta de nada; uma nota de crédito sobre ela credita o que
+     * nunca foi devido. A diferença é quem faz o trabalho.
+     *
+     * ── Dois alcances, e a diferença é a DIRECÇÃO ───────────────────────────────
+     *
+     * `dependentes` (omissão) — para baixo, e só para baixo:
+     *
+     *   · anular a FACTURA arrasta o recibo, a nota e o aviso. Como tudo pende
+     *     dela, o resultado é a operação inteira;
+     *   · anular o RECIBO desfaz só o recibo, e a factura volta a estar por
+     *     receber. É o que se quer quando alguém confirma um recebimento na linha
+     *     errada — corrige-se o engano sem desfazer uma venda que aconteceu.
+     *
+     * `operacao` — tudo o que `documentosDaOperacao()` mostra, incluindo a ORIGEM
+     * e os irmãos pela venda. É para quando a operação inteira não devia ter
+     * acontecido, e desfaz mesmo a venda.
+     *
+     * ── Porque é que o de omissão é o mais estreito ─────────────────────────────
+     *
+     * Porque com ele ainda se consegue tudo: para desfazer a operação inteira
+     * basta anular o documento que está na raiz. Ao contrário — com `operacao` por
+     * omissão — deixava de haver forma nenhuma de corrigir um recibo sem anular a
+     * factura, e a factura reemitida levaria número novo. O alcance mais largo é
+     * uma acção que se pede, nunca o efeito de omissão de um clique.
+     *
+     * Os já anulados não entram: um documento anulado não produz efeitos, portanto
+     * não há nada a desfazer nele.
      */
-    const dependente = await Factura.query()
-      .where('documento_origem_id', factura.id)
-      .whereNot('status', 'anulada')
-      .whereNull('deleted_at')
-      .first()
+    const emCascata =
+      data.alcance === 'operacao'
+        ? await this.outrosDaOperacao(factura)
+        : await this.dependentesEmCadeia(factura.id)
 
-    if (dependente) {
-      throw new DocumentoComDependentesException()
+    return db.transaction(async (trx) => {
+      // Já vêm do mais recente para o mais antigo — ver `outrosDaOperacao`.
+      for (const dependente of emCascata) {
+        dependente.status = 'anulada'
+        dependente.motivo_anulacao = data.motivo_anulacao
+        /*
+         * Porque é que ESTE foi anulado, escrito no próprio documento.
+         *
+         * `motivo_anulacao` só admite 'I' ou 'N' (adquirente mal identificado, ou
+         * documento não entregue) e nenhum deles descreve «arrastado por outro».
+         * Sem esta linha, um recibo anulado sem ninguém lhe ter tocado ficava sem
+         * explicação — e é ela que aparece impressa no documento.
+         */
+        dependente.observacoes = [
+          dependente.observacoes,
+          `Anulado por arrastamento: faz parte da operação de ${factura.referencia ?? 'outro documento'}, que foi anulada.`,
+        ]
+          .filter(Boolean)
+          .join('\n')
+        dependente.useTransaction(trx)
+        await dependente.save()
+      }
+
+      factura.status = 'anulada'
+      factura.motivo_anulacao = data.motivo_anulacao
+      factura.useTransaction(trx)
+      await factura.save()
+
+      /*
+       * Quantos foram, para quem anulou saber o que aconteceu além do que pediu.
+       * Anular uma factura e ver desaparecer três documentos sem aviso é pior do
+       * que a recusa que isto substitui.
+       */
+      factura.$extras.anulados_em_cascata = emCascata.length
+      factura.$extras.referencias_anuladas = emCascata.map((d) => d.referencia).filter(Boolean)
+
+      return factura
+    })
+  }
+
+  /**
+   * Todos os documentos que DEPENDEM deste, em cadeia e do mais afastado para o
+   * mais próximo — a ordem por que têm de ser anulados.
+   *
+   * Segue `documento_origem_id` só para baixo. A cadeia é real e não teórica:
+   * creditar uma nota de débito dá `NC → ND → FT`, e uma factura a prazo paga e
+   * depois corrigida tem `RC` e `NC` pendurados ao mesmo tempo.
+   *
+   * A ordem inversa da descoberta (os netos antes dos filhos) garante que em
+   * nenhum instante existe um documento válido a apontar para um anulado — nem
+   * sequer a meio da transacção.
+   *
+   * O limite de voltas é salvaguarda contra um ciclo em dados corrompidos; o
+   * `vistos` impede o mesmo documento de entrar duas vezes.
+   */
+  private async dependentesEmCadeia(id: string): Promise<Factura[]> {
+    const encontrados: Factura[] = []
+    const vistos = new Set<string>([id])
+    let nivel = [id]
+
+    for (let volta = 0; volta < 10 && nivel.length > 0; volta++) {
+      const filhos = await Factura.query()
+        .whereIn('documento_origem_id', nivel)
+        .whereNot('status', 'anulada')
+        .whereNull('deleted_at')
+
+      nivel = []
+      for (const filho of filhos) {
+        if (vistos.has(filho.id)) continue
+        vistos.add(filho.id)
+        encontrados.push(filho)
+        nivel.push(filho.id)
+      }
     }
 
-    factura.status = 'anulada'
-    factura.motivo_anulacao = data.motivo_anulacao
-    await factura.save()
-    return factura
+    return encontrados.reverse()
+  }
+
+  /**
+   * Os OUTROS documentos da operação deste, ainda por anular.
+   *
+   * O conjunto é o mesmo que `documentosDaOperacao()` mostra — pela mesma
+   * travessia, de propósito: o que o ecrã avisa e o que a anulação faz não podem
+   * deixar de concordar. Tira-se o próprio (é anulado à parte, em último) e os já
+   * anulados (não há nada a desfazer neles).
+   *
+   * Vêm por emissão DESCENDENTE: os mais recentes primeiro. É a ordem por que se
+   * desfaz uma operação — o recibo antes da factura que ele liquidou —, e mantê-la
+   * significa que em nenhum instante existe um documento válido a apontar para um
+   * anulado, nem sequer a meio da transacção.
+   */
+  private async outrosDaOperacao(factura: Factura): Promise<Factura[]> {
+    const ids = (await this.idsDaOperacao(factura)).filter((id) => id !== factura.id)
+    if (ids.length === 0) return []
+
+    return Factura.query()
+      .whereIn('id', ids)
+      .whereNot('status', 'anulada')
+      .whereNull('deleted_at')
+      .orderBy('data_emissao', 'desc')
+      .orderBy('numero', 'desc')
   }
 }

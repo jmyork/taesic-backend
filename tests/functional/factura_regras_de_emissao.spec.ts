@@ -2,11 +2,11 @@ import { test } from '@japa/runner'
 import { DateTime } from 'luxon'
 import testUtils from '@adonisjs/core/services/test_utils'
 import FacturaRepository from '#repositories/factura_repository'
+import Factura from '#models/faturacao/factura'
 import VendaJaFacturadaException from '#exceptions/venda_ja_facturada_exception'
 import DocumentoJaPagoException from '#exceptions/documento_ja_pago_exception'
 import DocumentoSemDividaException from '#exceptions/documento_sem_divida_exception'
 import ValorExcedeOrigemException from '#exceptions/valor_excede_origem_exception'
-import DocumentoComDependentesException from '#exceptions/documento_com_dependentes_exception'
 import VendaObrigatoriaException from '#exceptions/venda_obrigatoria_exception'
 import VendaNaoFechadaException from '#exceptions/venda_nao_fechada_exception'
 import VendaForaDoPeriodoException from '#exceptions/venda_fora_do_periodo_exception'
@@ -324,10 +324,23 @@ test.group('factura — regra 4: a nota de crédito não excede a origem', (grou
   })
 })
 
-test.group('factura — regra 6: anular de fora para dentro', (group) => {
+/**
+ * REGRA 6 — anular arrasta consigo tudo o que depende do documento.
+ *
+ * A regra dizia o contrário: um documento com dependentes não se anulava, e quem
+ * quisesse desfazer uma factura tinha de ir anular à mão, pela ordem certa, o
+ * recibo que a liquidou e a nota que a rectificou — descobrindo quais eram por
+ * tentativa e erro, porque a recusa não dizia quantos nem onde estavam.
+ *
+ * O que a regra protegia continua a valer e é o que estes testes guardam: um
+ * documento válido nunca fica a apontar para outro que deixou de produzir
+ * efeitos. Mudou quem faz o trabalho.
+ */
+test.group('factura — regra 6: anular arrasta os dependentes', (group) => {
   group.each.setup(() => testUtils.db().withGlobalTransaction())
 
-  test('não se anula um documento que já tem recibo emitido', async ({ assert }) => {
+  /** Uma factura a prazo, o recibo que a liquidou e a nota que a rectificou. */
+  async function facturaComDependentes() {
     const { empresa, user, pos } = await createTenant()
     const caixa = await createCaixa(user, pos)
     const venda = await createVenda(caixa, { status: 'fechada', total: 5000 })
@@ -340,25 +353,118 @@ test.group('factura — regra 6: anular de fora para dentro', (group) => {
       company_alias: empresa.company_alias,
     })
 
-    const recibo = await repo.emitir({
-      tipo: 'Recibo',
+    const nota = await repo.emitir({
+      tipo: 'Nota de Crédito',
       documento_origem_id: factura.id,
-      total: 5000,
+      total: 1000,
       company_alias: empresa.company_alias,
     })
 
-    try {
-      await repo.anular({
-        id: factura.id,
-        company_alias: empresa.company_alias,
-        motivo_anulacao: 'I',
-      })
-      assert.fail('anulou uma factura que tem recibo emitido sobre ela')
-    } catch (error) {
-      assert.instanceOf(error, DocumentoComDependentesException)
-    }
+    const recibo = await repo.emitir({
+      tipo: 'Recibo',
+      documento_origem_id: factura.id,
+      total: 4000,
+      company_alias: empresa.company_alias,
+    })
 
-    // Anulado o recibo, a factura já pode ser anulada — de fora para dentro.
+    return { empresa, repo, factura, recibo, nota }
+  }
+
+  test('anular a factura anula o recibo e a nota que dependiam dela', async ({ assert }) => {
+    const { empresa, repo, factura, recibo, nota } = await facturaComDependentes()
+
+    const anulada = await repo.anular({
+      id: factura.id,
+      company_alias: empresa.company_alias,
+      motivo_anulacao: 'I',
+    })
+
+    assert.equal(anulada.status, 'anulada')
+    assert.equal(anulada.$extras.anulados_em_cascata, 2)
+
+    for (const dependente of [recibo, nota]) {
+      const relido = await Factura.findOrFail(dependente.id)
+      assert.equal(relido.status, 'anulada')
+      assert.include(
+        relido.observacoes ?? '',
+        'Anulado por arrastamento',
+        'o documento tem de dizer porque foi anulado sem ninguém lhe ter tocado'
+      )
+    }
+  })
+
+  /*
+   * A assimetria, e é o coração desta regra. Se este teste cair, cancelar um
+   * recibo lançado por engano passa a anular a venda de alguém.
+   */
+  test('anular o recibo NÃO anula a factura que ele liquidava', async ({ assert }) => {
+    const { empresa, repo, factura, recibo } = await facturaComDependentes()
+
+    await repo.anular({
+      id: recibo.id,
+      company_alias: empresa.company_alias,
+      motivo_anulacao: 'I',
+    })
+
+    const relida = await Factura.findOrFail(factura.id)
+    assert.equal(relida.status, 'emitida', 'a factura titula uma venda que aconteceu')
+    assert.isNull(relida.motivo_anulacao)
+  })
+
+  /*
+   * A cadeia é real e não teórica: creditar uma nota de débito dá NC → ND → FT.
+   * Uma versão que só descesse um nível deixaria a nota de crédito válida sobre
+   * uma nota de débito anulada.
+   */
+  test('arrasta em cadeia, não só o primeiro nível', async ({ assert }) => {
+    const { empresa, user, pos } = await createTenant()
+    const caixa = await createCaixa(user, pos)
+    const venda = await createVenda(caixa, { status: 'fechada', total: 5000 })
+
+    const repo = new FacturaRepository()
+    const factura = await repo.emitir({
+      venda_id: venda.id,
+      tipo: 'Factura-Recibo',
+      company_alias: empresa.company_alias,
+    })
+
+    const debito = await repo.emitir({
+      tipo: 'Nota de Débito',
+      documento_origem_id: factura.id,
+      total: 500,
+      company_alias: empresa.company_alias,
+    })
+
+    const credito = await repo.emitir({
+      tipo: 'Nota de Crédito',
+      documento_origem_id: debito.id,
+      total: 500,
+      company_alias: empresa.company_alias,
+    })
+
+    const anulada = await repo.anular({
+      id: factura.id,
+      company_alias: empresa.company_alias,
+      motivo_anulacao: 'N',
+    })
+
+    assert.equal(anulada.$extras.anulados_em_cascata, 2)
+    assert.equal((await Factura.findOrFail(debito.id)).status, 'anulada')
+    assert.equal(
+      (await Factura.findOrFail(credito.id)).status,
+      'anulada',
+      'o segundo nível também — senão a nota credita uma nota anulada'
+    )
+  })
+
+  /*
+   * Um documento anulado não produz efeitos, portanto não há nada a desfazer
+   * nele. Contá-lo faria a mensagem prometer a quem anula um trabalho que não
+   * aconteceu.
+   */
+  test('os já anulados não entram na conta', async ({ assert }) => {
+    const { empresa, repo, factura, recibo } = await facturaComDependentes()
+
     await repo.anular({
       id: recibo.id,
       company_alias: empresa.company_alias,
@@ -371,7 +477,30 @@ test.group('factura — regra 6: anular de fora para dentro', (group) => {
       motivo_anulacao: 'I',
     })
 
+    assert.equal(anulada.$extras.anulados_em_cascata, 1, 'só a nota de crédito restava')
+  })
+
+  test('um documento sozinho anula-se sem arrastar nada', async ({ assert }) => {
+    const { empresa, user, pos } = await createTenant()
+    const caixa = await createCaixa(user, pos)
+    const venda = await createVenda(caixa, { status: 'fechada', total: 5000 })
+
+    const repo = new FacturaRepository()
+    const factura = await repo.emitir({
+      venda_id: venda.id,
+      tipo: 'Factura-Recibo',
+      company_alias: empresa.company_alias,
+    })
+
+    const anulada = await repo.anular({
+      id: factura.id,
+      company_alias: empresa.company_alias,
+      motivo_anulacao: 'I',
+    })
+
     assert.equal(anulada.status, 'anulada')
+    assert.equal(anulada.$extras.anulados_em_cascata, 0)
+    assert.isEmpty(anulada.observacoes ?? '', 'não se escreve arrastamento em quem foi pedido')
   })
 })
 
@@ -672,5 +801,179 @@ test.group('regras de emissão — o que pode vir a seguir (sem BD)', () => {
         temDependentes: false,
       })
     )
+  })
+})
+
+/**
+ * REGRA 6b — anular a OPERAÇÃO inteira, quando é isso que se quer.
+ *
+ * ── Porque é que são duas acções e não um alcance por omissão ────────────────
+ *
+ * `dependentes` (o de omissão) desce; `operacao` sobe também. A diferença
+ * decide-se por uma pergunta prática: com o estreito ainda se consegue tudo —
+ * para desfazer a operação inteira basta anular o documento que está na raiz. Ao
+ * contrário não: com o largo por omissão, deixava de haver forma nenhuma de
+ * corrigir um recibo lançado por engano sem anular a factura, e a factura
+ * reemitida levaria número novo.
+ *
+ * O alcance largo desfaz uma venda. É uma acção que se pede.
+ */
+test.group('factura — regra 6b: anular a operação inteira', (group) => {
+  group.each.setup(() => testUtils.db().withGlobalTransaction())
+
+  /** Uma factura a prazo, a nota que a rectificou e o recibo que a liquidou. */
+  async function operacaoCompleta() {
+    const { empresa, user, pos } = await createTenant()
+    const caixa = await createCaixa(user, pos)
+    const venda = await createVenda(caixa, { status: 'fechada', total: 5000 })
+
+    const repo = new FacturaRepository()
+    const factura = await repo.emitir({
+      venda_id: venda.id,
+      tipo: 'Factura',
+      data_vencimento: daquiA30Dias(),
+      company_alias: empresa.company_alias,
+    })
+
+    const nota = await repo.emitir({
+      tipo: 'Nota de Crédito',
+      documento_origem_id: factura.id,
+      total: 1000,
+      company_alias: empresa.company_alias,
+    })
+
+    const recibo = await repo.emitir({
+      tipo: 'Recibo',
+      documento_origem_id: factura.id,
+      total: 4000,
+      company_alias: empresa.company_alias,
+    })
+
+    return { empresa, repo, factura, recibo, nota }
+  }
+
+  /*
+   * O caso que a acção existe para servir: entrar por uma PONTA e desfazer tudo.
+   * Com o alcance de omissão, anular o recibo deixaria a factura de pé.
+   */
+  test('entrando pelo recibo, desfaz também a factura', async ({ assert }) => {
+    const { empresa, repo, factura, recibo, nota } = await operacaoCompleta()
+
+    const anulado = await repo.anular({
+      id: recibo.id,
+      company_alias: empresa.company_alias,
+      motivo_anulacao: 'N',
+      alcance: 'operacao',
+    })
+
+    assert.equal(anulado.status, 'anulada')
+    assert.equal(anulado.$extras.anulados_em_cascata, 2, 'a factura e a nota')
+
+    for (const outro of [factura, nota]) {
+      assert.equal((await Factura.findOrFail(outro.id)).status, 'anulada')
+    }
+  })
+
+  /*
+   * A garantia que separa as duas acções. Se este teste cair, o alcance largo
+   * passou a ser o de omissão — e corrigir um recibo passa a desfazer a venda.
+   */
+  test('sem pedir o alcance, o recibo cai sozinho', async ({ assert }) => {
+    const { empresa, repo, factura, recibo } = await operacaoCompleta()
+
+    await repo.anular({
+      id: recibo.id,
+      company_alias: empresa.company_alias,
+      motivo_anulacao: 'N',
+    })
+
+    assert.equal(
+      (await Factura.findOrFail(factura.id)).status,
+      'emitida',
+      'a factura titula uma venda que aconteceu'
+    )
+  })
+
+  /*
+   * Chega-se ao mesmo conjunto por qualquer porta — é o que faz de «operação» uma
+   * coisa e não um ponto de vista. Se o resultado dependesse de onde se clicou,
+   * o aviso do ecrã não poderia prometer nada.
+   */
+  test('o conjunto é o mesmo, entre por onde entrar', async ({ assert }) => {
+    const pelaNota = await operacaoCompleta()
+    const porNota = await pelaNota.repo.anular({
+      id: pelaNota.nota.id,
+      company_alias: pelaNota.empresa.company_alias,
+      motivo_anulacao: 'N',
+      alcance: 'operacao',
+    })
+
+    const pelaFactura = await operacaoCompleta()
+    const porFactura = await pelaFactura.repo.anular({
+      id: pelaFactura.factura.id,
+      company_alias: pelaFactura.empresa.company_alias,
+      motivo_anulacao: 'N',
+      alcance: 'operacao',
+    })
+
+    assert.equal(porNota.$extras.anulados_em_cascata, porFactura.$extras.anulados_em_cascata)
+  })
+
+  /*
+   * Os irmãos pela VENDA, que não se apontam uns aos outros: a factura de
+   * adiantamento e o documento final da entrega ligam-se pela venda. O alcance
+   * estreito nunca lá chega — é a segunda coisa que distingue os dois.
+   */
+  test('apanha os irmãos ligados pela venda, que a cascata estreita não alcança', async ({
+    assert,
+  }) => {
+    const { empresa, user, pos } = await createTenant()
+    const caixa = await createCaixa(user, pos)
+    const venda = await createVenda(caixa, { status: 'fechada', total: 3000 })
+
+    const repo = new FacturaRepository()
+    const adiantamento = await repo.emitir({
+      venda_id: venda.id,
+      tipo: 'Factura de Adiantamento',
+      company_alias: empresa.company_alias,
+    })
+
+    const entrega = await repo.emitir({
+      venda_id: venda.id,
+      tipo: 'Factura-Recibo',
+      company_alias: empresa.company_alias,
+    })
+
+    // Estreito: não se tocam, portanto não se arrastam.
+    const estreito = await repo.anular({
+      id: adiantamento.id,
+      company_alias: empresa.company_alias,
+      motivo_anulacao: 'I',
+    })
+    assert.equal(estreito.$extras.anulados_em_cascata, 0)
+    assert.equal((await Factura.findOrFail(entrega.id)).status, 'emitida')
+
+    // Largo: a venda liga-os, e caem juntos.
+    const outra = await createVenda(caixa, { status: 'fechada', total: 3000 })
+    const fa = await repo.emitir({
+      venda_id: outra.id,
+      tipo: 'Factura de Adiantamento',
+      company_alias: empresa.company_alias,
+    })
+    const fr = await repo.emitir({
+      venda_id: outra.id,
+      tipo: 'Factura-Recibo',
+      company_alias: empresa.company_alias,
+    })
+
+    const largo = await repo.anular({
+      id: fa.id,
+      company_alias: empresa.company_alias,
+      motivo_anulacao: 'I',
+      alcance: 'operacao',
+    })
+
+    assert.equal(largo.$extras.anulados_em_cascata, 1)
+    assert.equal((await Factura.findOrFail(fr.id)).status, 'anulada')
   })
 })

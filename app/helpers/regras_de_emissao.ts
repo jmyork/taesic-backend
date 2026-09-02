@@ -332,7 +332,22 @@ export function proximosDocumentos(estado: EstadoDoDocumento): AccaoPossivel[] {
 
 /** Um documento com dependentes não se anula — ver `anular()` no repositório. */
 export function podeSerAnulado(estado: EstadoDoDocumento): boolean {
-  return !estado.anulado && !estado.temDependentes
+  /*
+   * Ter dependentes deixou de impedir.
+   *
+   * Impedia, e o raciocínio era sólido: um recibo que liquida uma factura anulada
+   * declara ter recebido por conta de nada. O que estava errado era a saída — a
+   * recusa punha em cima de quem anula o trabalho de descobrir, por tentativa e
+   * erro, quais eram os dependentes e por que ordem os desfazer.
+   *
+   * A garantia mantém-se, e agora é o sistema que a cumpre: `anular()` arrasta em
+   * cadeia tudo o que depende do documento, de fora para dentro, na mesma
+   * transacção. Nunca a origem — anular um recibo não anula a factura.
+   *
+   * `temDependentes` continua no estado porque descreve o documento e é lido por
+   * quem mostra o ecrã; deixou é de decidir isto.
+   */
+  return !estado.anulado
 }
 
 /**

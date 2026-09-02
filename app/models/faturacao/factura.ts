@@ -268,6 +268,16 @@ export default class factura extends BaseModel {
        */
       valor_em_divida: this.$extras.valor_em_divida,
       dias_em_atraso: this.$extras.dias_em_atraso,
+
+      /*
+       * O que a anulação arrastou consigo — preenchido só por `anular()`.
+       *
+       * Anular uma factura desfaz também o recibo, a nota e o aviso que dependiam
+       * dela. Ver três documentos desaparecer sem aviso é pior do que a recusa que
+       * isto substituiu, por isso o número e as referências voltam para quem pediu.
+       */
+      anulados_em_cascata: this.$extras.anulados_em_cascata,
+      referencias_anuladas: this.$extras.referencias_anuladas,
     }
   }
 }

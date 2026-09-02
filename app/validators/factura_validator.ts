@@ -228,6 +228,14 @@ export const EmitirFacturaValidator = vine.compile(
  */
 export const AnularFacturaValidator = vine.compile(
   vine.object({
+    /*
+     * Até onde vai a anulação. Ausente vale `dependentes` — o alcance estreito.
+     *
+     * O largo (`operacao`) desfaz também a factura de origem e, com ela, a venda.
+     * Tem de vir escrito no pedido: um alcance que se ganhasse por omissão seria
+     * uma venda desfeita por um clique que ninguém leu.
+     */
+    alcance: vine.enum(['dependentes', 'operacao'] as const).optional(),
     motivo_anulacao: vine.enum(['I', 'N'] as const),
   })
 )

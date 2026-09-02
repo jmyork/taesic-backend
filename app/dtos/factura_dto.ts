@@ -90,11 +90,31 @@ export interface FacturaQueryDTO {
   deleted?: 'deleted' | 'all' | null
 }
 
+/**
+ * Até onde vai a anulação.
+ *
+ *  · `dependentes` (omissão) — o documento e tudo o que DEPENDE dele. Anular a
+ *    factura arrasta o recibo, as notas e os avisos; anular o recibo desfaz só o
+ *    recibo, e a factura volta a estar por receber.
+ *
+ *  · `operacao` — o documento e TODOS os da mesma operação, incluindo a origem e
+ *    os irmãos pela venda. Anular o recibo desfaz também a factura.
+ *
+ * São duas acções diferentes e não um parâmetro de afinação. A primeira é o que
+ * se faz quando um documento saiu errado; a segunda é o que se faz quando a
+ * operação inteira não devia ter acontecido — e desfaz uma venda, portanto tem de
+ * ser pedida por quem a quer, nunca ser o efeito de omissão de um clique.
+ */
+export type AlcanceDaAnulacao = 'dependentes' | 'operacao'
+
 export interface AnularFacturaDTO {
   id: string
   company_alias: string
   /** `I` ou `N` — obrigatório, imposto no validator. */
   motivo_anulacao: MotivoAnulacao
+
+  /** Ver `AlcanceDaAnulacao`. Omitido vale `'dependentes'`. */
+  alcance?: AlcanceDaAnulacao
 }
 
 export interface ShowFacturaDTO {
