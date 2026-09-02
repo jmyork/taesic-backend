@@ -2,9 +2,35 @@ import { DateTime } from 'luxon'
 import db from '@adonisjs/lucid/services/db'
 import Empresa from '#models/empresa'
 import { RelatoriosFilterDTO } from '#dtos/relatorios_dto'
+import { TIPOS_QUE_LIQUIDAM } from '../helpers/regras_de_emissao.js'
 
 /** Só vendas fechadas contam como receita real — mesma convenção de metricas_repository.ts. */
 const STATUS_FATURADA = 'fechada'
+
+/**
+ * O adiantamento por entregar NÃO é receita — e é a única regra nova aqui.
+ *
+ * ── Porque é que `status = 'fechada'` deixou de chegar ────────────────────────
+ *
+ * Chegava enquanto todas as vendas fechadas eram a mesma coisa: dinheiro recebido
+ * e produto entregue no mesmo acto. Com o adiantamento deixou de ser: recebe-se
+ * hoje por uma entrega futura, a venda fecha, e não houve venda nenhuma no sentido
+ * que interessa a um relatório de ganhos — houve um sinal.
+ *
+ * Contá-lo como receita inflacionaria o mês em que o dinheiro entrou e esvaziaria
+ * aquele em que o produto sai. E, pior, o custo desses artigos ainda não existe
+ * (o stock não saiu), pelo que a margem apareceria em 100%.
+ *
+ * A venda a crédito, ao contrário, **é** receita: o produto foi entregue, a
+ * operação realizou-se, e o que falta é o pagamento — que é uma questão de
+ * tesouraria (`valor_por_receber`), não de reconhecimento.
+ *
+ * `entregue_em IS NOT NULL` fecha o ciclo: entregue o produto, o adiantamento
+ * passa a contar, no período da ENTREGA.
+ */
+const SQL_RECEITA_RECONHECIDA = `(
+  vendas.condicao_pagamento <> 'adiantamento' OR vendas.entregue_em IS NOT NULL
+)`
 const LIMIT_TOP_OMISSAO = 10
 
 type Periodo = { inicio: Date; fim: Date }
@@ -37,6 +63,14 @@ export default class RelatoriosRepository {
       query = query.where('vendas.status', filtro.status)
     } else {
       query = query.where('vendas.status', STATUS_FATURADA)
+      /*
+       * Só quando o chamador NÃO pediu um estado explícito.
+       *
+       * Quem pede `status` está a olhar para as vendas em bruto (o relatório de
+       * vendas, o de descontos) e não para os ganhos — e nesse caso esconder-lhe os
+       * adiantamentos seria esconder operações que existiram mesmo.
+       */
+      query = query.whereRaw(SQL_RECEITA_RECONHECIDA)
     }
 
     if (periodo) {
@@ -72,6 +106,10 @@ export default class RelatoriosRepository {
       .join('lote_produto', 'lote_produto.id', 'venda_itens.lote_produto_id')
       .where('empresa.company_alias', filtro.company_alias)
       .where('vendas.status', STATUS_FATURADA)
+      // O custo acompanha a receita: sem entrega não houve saída de armazém, e
+      // portanto não há custo dessa mercadoria. Contá-lo aqui daria margem negativa
+      // no mês do sinal e margem de 100% no mês da entrega.
+      .whereRaw(SQL_RECEITA_RECONHECIDA)
       .whereNull('venda_itens.deleted_at')
       .whereBetween('vendas.created_at', [periodo.inicio, periodo.fim])
 
@@ -104,11 +142,31 @@ export default class RelatoriosRepository {
 
   /**
    * Dashboard executivo: todos os KPIs principais numa só chamada, calculados com o menor
-   * número de queries possível (agregações no MySQL, nunca somando em JS). `valor_por_receber`
-   * fica sempre 0 — este projecto não tem conceito de venda a crédito ao cliente final
-   * (fecho de venda exige pagamento total imediato, ver VendaSemPagamentoException/
-   * VendaPagamentoIncompletoException); "contas a receber" reais existem só ao nível da
-   * plataforma (cobrança de subscrição às empresas — ver relatorios_plataforma_repository.ts).
+   * número de queries possível (agregações no MySQL, nunca somando em JS).
+   *
+   * ── `valor_por_receber_mes` deixou de ser zero ──────────────────────────────
+   *
+   * Esteve fixo em `0` durante toda a vida deste módulo, com um comentário a
+   * explicar que este projecto não tinha venda a crédito ao cliente final — e era
+   * verdade: o fecho da venda exigia o pagamento completo. Passou a haver, e o
+   * número passa a sair de onde tem de sair: as facturas com data de vencimento e
+   * sem recibo por cima. É a mesma definição que `contasAReceber()` usa, e as duas
+   * não podem divergir sem uma delas mentir.
+   *
+   * ── Três números que antes eram um só ───────────────────────────────────────
+   *
+   * O que entrou em caixa, o que foi reconhecido como receita e o que está por
+   * receber eram indistinguíveis quando toda a venda era paga no acto. Deixaram de
+   * ser, e o dashboard passa a separá-los:
+   *
+   *   `valor_recebido_mes`       dinheiro que entrou (inclui adiantamentos)
+   *   `faturacao_mes`            receita reconhecida (exclui adiantamentos por entregar)
+   *   `valor_por_receber_mes`    dívida viva (facturas a prazo por liquidar)
+   *   `adiantamentos_por_entregar`  dinheiro recebido por entregas que faltam fazer
+   *
+   * O último é uma responsabilidade, não um ganho — é dinheiro que a empresa tem e
+   * ainda deve em mercadoria. Aparece aqui precisamente para não ser confundido
+   * com lucro por quem olha só para o saldo de caixa.
    */
   async dashboardExecutivo(filtro: RelatoriosFilterDTO) {
     const agora = DateTime.now()
@@ -169,6 +227,72 @@ export default class RelatoriosRepository {
       .sum('caixa.total_caixa as total')
       .first()
 
+    /*
+     * O QUE ESTÁ POR RECEBER — o número que esteve fixo em zero desde sempre.
+     *
+     * Não é filtrado pelo período: uma dívida de Março continua por receber em
+     * Setembro, e escondê-la porque o mês mudou seria o contrário do que um mapa de
+     * cobranças serve para fazer. O nome do campo mantém o sufixo `_mes` só por o
+     * consumidor já o ler assim — mudá-lo partiria o dashboard sem ganho nenhum.
+     *
+     * As notas entram na conta: creditar uma factura reduz o que há a receber dela,
+     * debitar aumenta. Cobrar o valor original de uma factura já creditada é
+     * reclamar dinheiro que a própria empresa reconheceu não lhe ser devido.
+     */
+    const porReceberRow = await db
+      .from('factura')
+      .join('empresa', 'empresa.id', 'factura.empresa_id')
+      .where('empresa.company_alias', filtro.company_alias)
+      .whereNotNull('factura.data_vencimento')
+      .whereNot('factura.status', 'anulada')
+      .whereNull('factura.deleted_at')
+      .whereNotExists((q) =>
+        q
+          .from('factura as recibo')
+          .whereRaw('recibo.documento_origem_id = factura.id')
+          .whereIn('recibo.tipo', [...TIPOS_QUE_LIQUIDAM])
+          .whereNot('recibo.status', 'anulada')
+          .whereNull('recibo.deleted_at')
+      )
+      .select(
+        db.raw(`COALESCE(SUM(
+            factura.total
+              + COALESCE((SELECT SUM(nd.total) FROM factura AS nd
+                           WHERE nd.documento_origem_id = factura.id
+                             AND nd.tipo = 'Nota de Débito'
+                             AND nd.status <> 'anulada' AND nd.deleted_at IS NULL), 0)
+              - COALESCE((SELECT SUM(nc.total) FROM factura AS nc
+                           WHERE nc.documento_origem_id = factura.id
+                             AND nc.tipo = 'Nota de Crédito'
+                             AND nc.status <> 'anulada' AND nc.deleted_at IS NULL), 0)
+          ), 0) as total`),
+        db.raw(`COALESCE(SUM(CASE WHEN factura.data_vencimento < CURDATE() THEN 1 ELSE 0 END), 0) as vencidas`)
+      )
+      .first()
+
+    /*
+     * ADIANTAMENTOS POR ENTREGAR — dinheiro que entrou e mercadoria que falta sair.
+     *
+     * É uma RESPONSABILIDADE, não um ganho, e está aqui exactamente por isso:
+     * quem olha para o saldo de caixa vê este dinheiro lá dentro e, sem esta linha,
+     * conta-o como lucro. Não é — é uma entrega por fazer.
+     */
+    const adiantamentosRow = await db
+      .from('vendas')
+      .join('caixa', 'caixa.id', 'vendas.caixa_id')
+      .join('pos', 'pos.id', 'caixa.pos_id')
+      .join('empresa', 'empresa.id', 'pos.empresa_id')
+      .where('empresa.company_alias', filtro.company_alias)
+      .where('vendas.status', 'fechada')
+      .where('vendas.condicao_pagamento', 'adiantamento')
+      .whereNull('vendas.entregue_em')
+      .whereNull('vendas.deleted_at')
+      .select(
+        db.raw('COUNT(*) as quantidade'),
+        db.raw('COALESCE(SUM(vendas.total), 0) as total')
+      )
+      .first()
+
     const vendasPorTipo = await this.baseVendas(filtro, mes)
       .groupBy('vendas.venda_tipo')
       .select('vendas.venda_tipo')
@@ -192,8 +316,22 @@ export default class RelatoriosRepository {
       numero_clientes_mes: Number(numeroClientesRow?.quantidade ?? 0),
       ticket_medio_mes: faturacaoMes.quantidade > 0 ? Number((faturacaoMes.total / faturacaoMes.quantidade).toFixed(2)) : 0,
       valor_recebido_mes: Number(valorRecebidoRow?.total ?? 0),
-      // Sem conceito de venda a crédito ao cliente final neste projecto — ver nota acima.
-      valor_por_receber_mes: 0,
+
+      /*
+       * O que está por receber, a sério. Ver a nota do cabeçalho: esteve fixo em
+       * `0` enquanto nenhuma venda podia fechar sem o dinheiro em cima do balcão.
+       *
+       * `documentos_vencidos` vai à parte porque é a pergunta que se faz a seguir —
+       * do que está por receber, quanto já passou do prazo.
+       */
+      valor_por_receber_mes: Number(porReceberRow?.total ?? 0),
+      documentos_vencidos: Number(porReceberRow?.vencidas ?? 0),
+
+      /* Dinheiro recebido por entregas que faltam fazer. Responsabilidade, não ganho. */
+      adiantamentos_por_entregar: {
+        quantidade: Number(adiantamentosRow?.quantidade ?? 0),
+        total: Number(adiantamentosRow?.total ?? 0),
+      },
       lucro_bruto_mes: lucroBrutoMes,
       margem_lucro_mes: margemLucroMes,
       iva_liquidado_mes: await this.ivaLiquidado(filtro.company_alias, faturacaoMes.total),

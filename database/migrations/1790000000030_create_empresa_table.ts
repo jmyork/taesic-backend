@@ -1,6 +1,7 @@
 import { BaseSchema } from '@adonisjs/lucid/schema'
 
 import { temTabela, temRestricao } from '../helpers/esquema.js'
+import { PRAZO_PAGAMENTO_PADRAO_DIAS } from '../../app/helpers/prazo_de_pagamento.js'
 
 export default class extends BaseSchema {
   protected tableName = 'empresa'
@@ -37,6 +38,29 @@ export default class extends BaseSchema {
           table.uuid('suspensa_por').nullable()
           table.string('ramo_actuacao', 64).nullable()
           table.timestamp('onboarding_concluido_em').nullable()
+
+          /**
+           * O prazo de pagamento que esta empresa pratica nas vendas a crédito.
+           *
+           * ── É o valor PROPOSTO, não uma imposição ──────────────────────────
+           *
+           * O tecto é o mesmo para toda a gente e vive em
+           * `app/helpers/prazo_de_pagamento.ts`, imposto no validator. O que fica
+           * aqui é o que a empresa costuma dar: um retalhista dá oito dias, um
+           * grossista dá trinta, e obrigar os dois ao mesmo número faria com que
+           * quem dá menos tivesse de o escrever à mão em cada venda a prazo — e,
+           * mais cedo ou mais tarde, se enganasse.
+           *
+           * Cada venda concreta congela o prazo acordado em
+           * `vendas.prazo_pagamento_dias`: mudar esta coluna não pode alterar a
+           * data de vencimento de uma factura já emitida.
+           *
+           * Com valor por omissão e nunca `NOT NULL` sem ele (regra 7.20) —
+           * `empresa` é a tabela por onde passa o registo de todos os inquilinos,
+           * e uma escrita que falhe aqui não degrada uma funcionalidade, tranca o
+           * registo inteiro.
+           */
+          table.smallint('prazo_pagamento_dias').unsigned().notNullable().defaultTo(PRAZO_PAGAMENTO_PADRAO_DIAS)
           table.primary(['id'])
           table.unique(['company_alias'], { indexName: 'empresa_company_alias_unique' })
           table.index(['deleted_at'], 'empresa_deleted_at_index')

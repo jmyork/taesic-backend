@@ -5,6 +5,18 @@ export interface EmitirFacturaDTO {
   company_alias: string
   tipo: FacturaTipo
 
+  /**
+   * Quem está a emitir.
+   *
+   * Não vem do corpo do pedido — vem da sessão, posto pelo controlador. Deixá-lo
+   * ser enviado permitiria emitir um documento em nome de outra pessoa, que é
+   * precisamente o que a identificação do emissor existe para impedir.
+   *
+   * Opcional porque há um emissor legítimo que não é uma pessoa: a varredura
+   * diária de avisos de cobrança (`aviso-cobranca:emitir`) corre sem sessão.
+   */
+  emitido_por_user_id?: string | null
+
   /** Obrigatório só nos tipos com `exigeVenda` — ver `tipos_de_documento.ts`. */
   venda_id?: string
 
@@ -18,11 +30,34 @@ export interface EmitirFacturaDTO {
   periodo_inicio?: Date
   periodo_fim?: Date
 
+  /**
+   * A data em que o documento tem de estar pago — o que o torna uma conta a
+   * receber. Obrigatória nos tipos com `vencimento: 'exige'` (a `Factura`),
+   * recusada nos que a proíbem. Ver `tipos_de_documento.ts`.
+   */
+  data_vencimento?: Date
+
   /** Sem isto, a série por omissão do tipo e do ano (`FT2026`). */
   serie?: string
 
   data_operacao?: Date
   local_operacao?: string
+
+  /**
+   * A CONTRAPARTE do documento, quando ela não se deriva de nada.
+   *
+   * Nos documentos que nascem de uma venda ou de outro documento, estes campos são
+   * IGNORADOS: o adquirente é o da venda ou o da origem, e aceitar aqui um nome
+   * diferente permitiria emitir um recibo em nome de outra pessoa que não a que
+   * consta da factura que ele liquida.
+   *
+   * Existem para os que nascem sozinhos — e sobretudo para a **autofacturação**,
+   * onde a contraparte é o FORNECEDOR e não um cliente. Sem eles, uma
+   * autofacturação saía sem dizer em nome de quem foi emitida, que é a única coisa
+   * que a define.
+   */
+  cliente_nome?: string
+  cliente_nif?: string
   cliente_morada?: string
 
   /** Exigido nos tipos que não nascem de uma venda; ignorado nos outros. */
@@ -44,6 +79,13 @@ export interface FacturaQueryDTO {
   vendedor_id?: string
   data_inicio?: Date
   data_fim?: Date
+
+  /** Só o que está por receber — facturas com vencimento e sem recibo por cima. */
+  em_divida?: boolean
+
+  /** Só o que já passou do prazo. Implica `em_divida`. */
+  vencidas?: boolean
+
   q?: string
   deleted?: 'deleted' | 'all' | null
 }
@@ -58,4 +100,25 @@ export interface AnularFacturaDTO {
 export interface ShowFacturaDTO {
   id: string
   company_alias: string
+}
+
+/**
+ * Confirmar que o dinheiro de uma factura a crédito entrou.
+ *
+ * Emite o recibo que a liquida — é o único caminho pelo qual uma conta a receber
+ * sai do mapa de cobranças, e é deliberado que emita um documento em vez de
+ * marcar um campo: quem paga tem direito ao recibo, e um estado gravado sem
+ * documento seria a empresa a saber que recebeu e o cliente a não ter prova.
+ */
+export interface ConfirmarRecebimentoDTO {
+  id: string
+  company_alias: string
+
+  /** Quem confirmou — assina o recibo. Posto pelo controlador, nunca pelo pedido. */
+  emitido_por_user_id?: string | null
+
+  /** Quando o dinheiro entrou, se não foi hoje. */
+  data_recebimento?: Date
+
+  observacoes?: string
 }

@@ -3,10 +3,10 @@ import testUtils from '@adonisjs/core/services/test_utils'
 import CaixaRepository from '#repositories/caixa_repository'
 import VendasRepository from '#repositories/vendas_repository'
 import VendaItensRepository from '#repositories/venda_itens_repository'
-import FacturaRepository from '#repositories/factura_repository'
 import ProdutosReembolsoRepository from '#repositories/produtos_reembolso_repository'
 import Lote from '#models/faturacao/lote'
 import Vendas from '#models/faturacao/vendas'
+import Factura from '#models/faturacao/factura'
 import { createTenant, createProduto, createLote, pagarVenda } from '../helpers/fixtures.js'
 
 /**
@@ -66,15 +66,34 @@ test.group('fluxo ponta-a-ponta: caixa -> venda -> factura -> reembolso', (group
     const loteAposFecho = await Lote.findOrFail(lote.id)
     assert.equal(Number(loteAposFecho.quantidade_em_estoque), 48)
 
-    // 5. Emitir factura — numeração sequencial por empresa, começa em 1
-    const facturaRepo = new FacturaRepository()
-    const factura = await facturaRepo.emitir({
-      company_alias: companyAlias,
-      venda_id: venda.id,
-      tipo: 'Factura',
-    })
+    /*
+     * 5. O DOCUMENTO FISCAL já existe — foi emitido pelo próprio fecho.
+     *
+     * Este passo era uma segunda chamada, à mão, a `facturaRepo.emitir()`. Deixou de
+     * poder ser: o fecho da venda passou a emitir o documento dentro da sua própria
+     * transacção, e uma emissão manual por cima recusa-se com `VendaJaFacturada` —
+     * que é exactamente a regra a funcionar.
+     *
+     * Sem cliente indicado e a pronto pagamento, o documento é uma FACTURA GENÉRICA:
+     * não há NIF que o documento possa nomear, e é esse o documento que o decreto
+     * tem para o caso. Ver `documentoDaVenda()`.
+     */
+    const factura = await Factura.query()
+      .where('venda_id', venda.id)
+      .whereNull('deleted_at')
+      .firstOrFail()
+
+    assert.equal(factura.tipo, 'Factura Genérica', 'venda a pronto pagamento e sem NIF')
     assert.equal(factura.numero, 1)
     assert.equal(Number(factura.total), 2000)
+    assert.isNull(
+      factura.data_vencimento,
+      'paga no acto — não pode aparecer no mapa de contas a receber'
+    )
+
+    // E vem junto com a venda que o fecho devolveu, para o ponto de venda o poder
+    // imprimir sem um segundo pedido.
+    assert.equal((vendaFechada.$extras.documento as any)?.id, factura.id)
 
     // 6. Reembolso parcial de 1 unidade — devolve stock (48 -> 49) e recalcula o total da venda
     const vendaItem = await itensRepo.paginate(1, 10, { venda_id: venda.id, company_alias: companyAlias })
@@ -91,6 +110,15 @@ test.group('fluxo ponta-a-ponta: caixa -> venda -> factura -> reembolso', (group
 
     const vendaAposReembolso = await Vendas.findOrFail(venda.id)
     assert.equal(Number(vendaAposReembolso.total), 1000)
+
+    // A NOTA DE CRÉDITO do reembolso, pela diferença (2000 -> 1000).
+    const notaDeCredito = await Factura.query()
+      .where('documento_origem_id', factura.id)
+      .where('tipo', 'Nota de Crédito')
+      .whereNull('deleted_at')
+      .firstOrFail()
+
+    assert.equal(Number(notaDeCredito.total), 1000)
 
     // 7. Fechar o caixa
     const caixaFechado = await caixaRepo.close(caixa.id, { user_id: user.id, company_alias: companyAlias })

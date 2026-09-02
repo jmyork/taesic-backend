@@ -63,6 +63,23 @@ export interface DefinicaoDeTipo {
   exigeVenda: boolean
 
   /**
+   * PODE trazer a venda que lhe deu origem, sem ser obrigatório.
+   *
+   * Existe por causa de um só tipo, e vale a pena dizer qual: a factura de
+   * adiantamento. Ela tanto pode ser um sinal recebido à cabeça, sem nada
+   * escolhido ainda, como pode sair do balcão com o carrinho já feito — dinheiro
+   * cobrado hoje, produto entregue depois. No segundo caso a venda existe, tem
+   * itens, e é dela que o documento tira as linhas; deixá-la de fora dava uma
+   * factura de adiantamento sem artigos nenhuns.
+   *
+   * `exigeVenda` implica sempre isto — ver a invariante em
+   * `tests/unit/tipos_de_documento.spec.ts`. Nos tipos que a proíbem, ir buscar a
+   * venda «se ela vier» abriria a porta a um recibo agarrado a uma venda por
+   * engano, que é precisamente o que a separação entre os dois campos impede.
+   */
+  aceitaVenda: boolean
+
+  /**
    * Exige `documento_origem_id`.
    *
    * A nota de crédito é o caso que a AGT verifica (E13), mas a razão é a mesma nos
@@ -82,6 +99,47 @@ export interface DefinicaoDeTipo {
    * `factura_venda`, congeladas no momento da emissão.
    */
   exigeVendas: boolean
+
+  /**
+   * O documento nasce em dívida? — e é `factura.data_vencimento` que o diz.
+   *
+   * ── É esta coluna que define o que é uma conta a receber ─────────────────
+   *
+   * O sistema precisava de uma resposta para «o que é que esta empresa tem por
+   * receber», e a resposta não se pode ler do tipo. Uma `Factura` emitida ao
+   * balcão e paga no acto e uma `Factura` a 30 dias são o mesmo tipo e são
+   * coisas opostas para quem gere tesouraria.
+   *
+   * Passa a ler-se de um sítio só, e é uma regra de uma linha:
+   *
+   *     está em dívida  ⇔  tem `data_vencimento`  e  não tem recibo por cima
+   *
+   * Daí os três valores. `exige` na `Factura`, porque no fluxo de venda ela é
+   * exactamente o documento da venda a prazo — uma factura sem data de
+   * pagamento seria uma dívida sem prazo, e um aviso de cobrança sobre ela
+   * nunca teria a partir de quando ser emitido. `proibe` em tudo o que é pago
+   * no acto (a factura-recibo, a genérica, o adiantamento) e em tudo o que não
+   * titula uma dívida (os recibos, as notas, os estornos): uma data de
+   * vencimento nesses documentos punha-os a aparecer no mapa de cobranças.
+   * `permite` só na factura global, que tanto pode fechar um período já
+   * liquidado como um período a pagar.
+   */
+  vencimento: 'exige' | 'permite' | 'proibe'
+
+  /**
+   * Exige que quem emite diga o NOME e o NIF da contraparte.
+   *
+   * Verdadeiro num tipo só, e vale a pena dizer qual e porquê: a
+   * **autofacturação**. Ela é emitida pelo ADQUIRENTE em nome do fornecedor — é
+   * isso, e só isso, que a distingue de uma factura-recibo normal. Um documento
+   * destes sem o fornecedor identificado não diz em nome de quem foi emitido, e
+   * portanto não é uma autofacturação: é uma factura-recibo com o nome errado.
+   *
+   * Nos outros a contraparte deriva-se (da venda, ou do documento de origem) ou é
+   * legitimamente desconhecida (a factura genérica existe precisamente para o
+   * comprador que não se identifica).
+   */
+  exigeContraparte: boolean
 }
 
 /**
@@ -101,9 +159,12 @@ export const TIPOS_DE_DOCUMENTO = {
     categoria: 'factura',
     eRecibo: false,
     exigeVenda: true,
+    aceitaVenda: true,
     exigeOrigem: false,
     exigePeriodo: false,
     exigeVendas: false,
+    vencimento: 'exige',
+    exigeContraparte: false,
   },
 
   'Factura-Recibo': {
@@ -112,9 +173,12 @@ export const TIPOS_DE_DOCUMENTO = {
     categoria: 'factura',
     eRecibo: false,
     exigeVenda: true,
+    aceitaVenda: true,
     exigeOrigem: false,
     exigePeriodo: false,
     exigeVendas: false,
+    vencimento: 'proibe',
+    exigeContraparte: false,
   },
 
   /**
@@ -135,9 +199,12 @@ export const TIPOS_DE_DOCUMENTO = {
     categoria: 'factura',
     eRecibo: false,
     exigeVenda: true,
+    aceitaVenda: true,
     exigeOrigem: false,
     exigePeriodo: false,
     exigeVendas: false,
+    vencimento: 'proibe',
+    exigeContraparte: false,
   },
 
   /**
@@ -152,9 +219,12 @@ export const TIPOS_DE_DOCUMENTO = {
     categoria: 'factura',
     eRecibo: false,
     exigeVenda: false,
+    aceitaVenda: false,
     exigeOrigem: false,
     exigePeriodo: true,
     exigeVendas: true,
+    vencimento: 'permite',
+    exigeContraparte: false,
   },
 
   /**
@@ -167,9 +237,12 @@ export const TIPOS_DE_DOCUMENTO = {
     categoria: 'factura',
     eRecibo: false,
     exigeVenda: false,
+    aceitaVenda: true,
     exigeOrigem: false,
     exigePeriodo: false,
     exigeVendas: false,
+    vencimento: 'proibe',
+    exigeContraparte: false,
   },
 
   /**
@@ -185,9 +258,12 @@ export const TIPOS_DE_DOCUMENTO = {
     categoria: 'factura',
     eRecibo: false,
     exigeVenda: false,
+    aceitaVenda: false,
     exigeOrigem: false,
     exigePeriodo: false,
     exigeVendas: false,
+    vencimento: 'proibe',
+    exigeContraparte: true,
   },
 
   /* ── Documentos fiscalmente relevantes (art.º 4.º) ────────────────────────── */
@@ -203,9 +279,12 @@ export const TIPOS_DE_DOCUMENTO = {
     categoria: 'documento_equivalente',
     eRecibo: false,
     exigeVenda: false,
+    aceitaVenda: false,
     exigeOrigem: true,
     exigePeriodo: false,
     exigeVendas: false,
+    vencimento: 'proibe',
+    exigeContraparte: false,
   },
 
   /** Rectifica para MAIS um documento anterior. */
@@ -215,48 +294,26 @@ export const TIPOS_DE_DOCUMENTO = {
     categoria: 'documento_equivalente',
     eRecibo: false,
     exigeVenda: false,
+    aceitaVenda: false,
     exigeOrigem: true,
     exigePeriodo: false,
     exigeVendas: false,
+    vencimento: 'proibe',
+    exigeContraparte: false,
   },
 
-  'Talão de Venda': {
-    codigo: 'TV',
-    designacao: 'Talão de Venda',
-    categoria: 'documento_equivalente',
-    eRecibo: false,
-    exigeVenda: true,
-    exigeOrigem: false,
-    exigePeriodo: false,
-    exigeVendas: false,
-  },
-
-  /**
-   * `AC` leva LINHAS; `AR` leva RECIBO. Um caracter de diferença no código da
-   * AGT, campos obrigatórios opostos — está assinalado nos mesmos termos em
-   * `minfin-integration/dominio/tipos_documento.ts`, e é a confusão mais fácil de
-   * fazer nesta tabela inteira.
-   */
   'Aviso de Cobrança': {
     codigo: 'AC',
     designacao: 'Aviso de Cobrança',
     categoria: 'documento_equivalente',
     eRecibo: false,
     exigeVenda: false,
+    aceitaVenda: false,
     exigeOrigem: true,
     exigePeriodo: false,
     exigeVendas: false,
-  },
-
-  'Aviso de Cobrança-Recibo': {
-    codigo: 'AR',
-    designacao: 'Aviso de Cobrança-Recibo',
-    categoria: 'documento_equivalente',
-    eRecibo: true,
-    exigeVenda: false,
-    exigeOrigem: true,
-    exigePeriodo: false,
-    exigeVendas: false,
+    vencimento: 'proibe',
+    exigeContraparte: false,
   },
 
   /** O recibo de uma factura. Liquida um documento que já existe. */
@@ -266,9 +323,12 @@ export const TIPOS_DE_DOCUMENTO = {
     categoria: 'documento_equivalente',
     eRecibo: true,
     exigeVenda: false,
+    aceitaVenda: false,
     exigeOrigem: true,
     exigePeriodo: false,
     exigeVendas: false,
+    vencimento: 'proibe',
+    exigeContraparte: false,
   },
 
   /**
@@ -281,9 +341,12 @@ export const TIPOS_DE_DOCUMENTO = {
     categoria: 'documento_equivalente',
     eRecibo: true,
     exigeVenda: false,
+    aceitaVenda: false,
     exigeOrigem: false,
     exigePeriodo: false,
     exigeVendas: false,
+    vencimento: 'proibe',
+    exigeContraparte: false,
   },
 
   /** Devolução de um valor já recebido. */
@@ -293,9 +356,12 @@ export const TIPOS_DE_DOCUMENTO = {
     categoria: 'documento_equivalente',
     eRecibo: false,
     exigeVenda: false,
+    aceitaVenda: false,
     exigeOrigem: true,
     exigePeriodo: false,
     exigeVendas: false,
+    vencimento: 'proibe',
+    exigeContraparte: false,
   },
 } as const satisfies Record<string, DefinicaoDeTipo>
 
@@ -330,6 +396,26 @@ export const TIPOS_QUE_EXIGEM_ORIGEM = tiposOnde((d) => d.exigeOrigem)
 export const TIPOS_QUE_EXIGEM_PERIODO = tiposOnde((d) => d.exigePeriodo)
 export const TIPOS_QUE_EXIGEM_VENDAS = tiposOnde((d) => d.exigeVendas)
 export const TIPOS_DE_RECIBO = tiposOnde((d) => d.eRecibo)
+
+/** Os que PODEM trazer uma venda — os que a exigem mais a factura de adiantamento. */
+export const TIPOS_QUE_ACEITAM_VENDA = tiposOnde((d) => d.aceitaVenda)
+
+/**
+ * As duas listas do vencimento, e são as duas que o validator precisa.
+ *
+ * A negativa não é o complemento da positiva: no meio ficam os que o PERMITEM (a
+ * factura global), que não entram em nenhuma das duas. Um `enum` com dois estados
+ * teria de escolher um lado para ela, e qualquer dos lados estaria errado.
+ */
+export const TIPOS_QUE_EXIGEM_CONTRAPARTE = tiposOnde((d) => d.exigeContraparte)
+
+export const TIPOS_QUE_EXIGEM_VENCIMENTO = tiposOnde((d) => d.vencimento === 'exige')
+export const TIPOS_QUE_PROIBEM_VENCIMENTO = tiposOnde((d) => d.vencimento === 'proibe')
+
+/** Aceita data de vencimento — exige-a ou permite-a. */
+export function aceitaVencimento(tipo: FacturaTipo): boolean {
+  return TIPOS_DE_DOCUMENTO[tipo].vencimento !== 'proibe'
+}
 
 export function definicaoDe(tipo: FacturaTipo): DefinicaoDeTipo {
   return TIPOS_DE_DOCUMENTO[tipo]

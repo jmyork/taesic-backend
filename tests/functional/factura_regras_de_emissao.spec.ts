@@ -1,12 +1,15 @@
 import { test } from '@japa/runner'
+import { DateTime } from 'luxon'
 import testUtils from '@adonisjs/core/services/test_utils'
 import FacturaRepository from '#repositories/factura_repository'
 import VendaJaFacturadaException from '#exceptions/venda_ja_facturada_exception'
 import DocumentoJaPagoException from '#exceptions/documento_ja_pago_exception'
+import DocumentoSemDividaException from '#exceptions/documento_sem_divida_exception'
 import ValorExcedeOrigemException from '#exceptions/valor_excede_origem_exception'
 import DocumentoComDependentesException from '#exceptions/documento_com_dependentes_exception'
 import VendaObrigatoriaException from '#exceptions/venda_obrigatoria_exception'
 import VendaNaoFechadaException from '#exceptions/venda_nao_fechada_exception'
+import VendaForaDoPeriodoException from '#exceptions/venda_fora_do_periodo_exception'
 import { proximosDocumentos, tiposParaUmaVenda } from '../../app/helpers/regras_de_emissao.js'
 import { createTenant, createCaixa, createVenda } from '../helpers/fixtures.js'
 
@@ -18,10 +21,13 @@ import { createTenant, createCaixa, createVenda } from '../helpers/fixtures.js'
  * encontrado na base de desenvolvimento foi uma venda de 20.000 Kz com OITO
  * documentos fiscais a titulá-la.
  */
+/** O prazo de uma factura a crédito, para os testes não repetirem a conta. */
+const daquiA30Dias = () => DateTime.now().plus({ days: 30 }).toJSDate()
+
 test.group('factura — regra 1: uma venda, um documento que a titula', (group) => {
   group.each.setup(() => testUtils.db().withGlobalTransaction())
 
-  const TITULAM = ['Factura', 'Factura-Recibo', 'Factura Genérica', 'Talão de Venda'] as const
+  const TITULAM = ['Factura', 'Factura-Recibo', 'Factura Genérica'] as const
 
   for (const primeiro of TITULAM) {
     test(`depois de ${primeiro}, a mesma venda recusa outro documento titulador`, async ({
@@ -63,6 +69,7 @@ test.group('factura — regra 1: uma venda, um documento que a titula', (group) 
     const primeira = await repo.emitir({
       venda_id: venda.id,
       tipo: 'Factura',
+      data_vencimento: daquiA30Dias(),
       company_alias: empresa.company_alias,
     })
 
@@ -75,6 +82,7 @@ test.group('factura — regra 1: uma venda, um documento que a titula', (group) 
     const segunda = await repo.emitir({
       venda_id: venda.id,
       tipo: 'Factura',
+      data_vencimento: daquiA30Dias(),
       company_alias: empresa.company_alias,
     })
 
@@ -95,6 +103,7 @@ test.group('factura — regra 1: uma venda, um documento que a titula', (group) 
     const factura = await repo.emitir({
       venda_id: venda.id,
       tipo: 'Factura',
+      data_vencimento: daquiA30Dias(),
       company_alias: empresa.company_alias,
     })
 
@@ -113,7 +122,7 @@ test.group('factura — regras 2, 3 e 5: pagamento', (group) => {
   group.each.setup(() => testUtils.db().withGlobalTransaction())
 
   /** Uma factura-recibo titula a operação E o pagamento no mesmo acto. */
-  for (const tipoPago of ['Factura-Recibo', 'Talão de Venda'] as const) {
+  for (const tipoPago of ['Factura-Recibo', 'Factura Genérica'] as const) {
     test(`não se emite recibo sobre ${tipoPago}`, async ({ assert }) => {
       const { empresa, user, pos } = await createTenant()
       const caixa = await createCaixa(user, pos)
@@ -135,7 +144,8 @@ test.group('factura — regras 2, 3 e 5: pagamento', (group) => {
         })
         assert.fail(`emitiu recibo sobre ${tipoPago}, que já inclui o pagamento`)
       } catch (error) {
-        assert.instanceOf(error, DocumentoJaPagoException)
+        // Nunca foi uma dívida — não é o mesmo que ter sido paga.
+        assert.instanceOf(error, DocumentoSemDividaException)
       }
     })
   }
@@ -149,6 +159,7 @@ test.group('factura — regras 2, 3 e 5: pagamento', (group) => {
     const factura = await repo.emitir({
       venda_id: venda.id,
       tipo: 'Factura',
+      data_vencimento: daquiA30Dias(),
       company_alias: empresa.company_alias,
     })
 
@@ -193,7 +204,8 @@ test.group('factura — regras 2, 3 e 5: pagamento', (group) => {
       })
       assert.fail('emitiu aviso de cobrança sobre um documento já pago')
     } catch (error) {
-      assert.instanceOf(error, DocumentoJaPagoException)
+      // Uma factura-recibo é paga no acto: nunca houve dívida a cobrar.
+      assert.instanceOf(error, DocumentoSemDividaException)
     }
   })
 })
@@ -210,6 +222,7 @@ test.group('factura — regra 4: a nota de crédito não excede a origem', (grou
     const factura = await repo.emitir({
       venda_id: venda.id,
       tipo: 'Factura',
+      data_vencimento: daquiA30Dias(),
       company_alias: empresa.company_alias,
     })
 
@@ -235,6 +248,7 @@ test.group('factura — regra 4: a nota de crédito não excede a origem', (grou
     const factura = await repo.emitir({
       venda_id: venda.id,
       tipo: 'Factura',
+      data_vencimento: daquiA30Dias(),
       company_alias: empresa.company_alias,
     })
 
@@ -261,6 +275,7 @@ test.group('factura — regra 4: a nota de crédito não excede a origem', (grou
     const factura = await repo.emitir({
       venda_id: venda.id,
       tipo: 'Factura',
+      data_vencimento: daquiA30Dias(),
       company_alias: empresa.company_alias,
     })
 
@@ -294,6 +309,7 @@ test.group('factura — regra 4: a nota de crédito não excede a origem', (grou
     const factura = await repo.emitir({
       venda_id: venda.id,
       tipo: 'Factura',
+      data_vencimento: daquiA30Dias(),
       company_alias: empresa.company_alias,
     })
 
@@ -320,6 +336,7 @@ test.group('factura — regra 6: anular de fora para dentro', (group) => {
     const factura = await repo.emitir({
       venda_id: venda.id,
       tipo: 'Factura',
+      data_vencimento: daquiA30Dias(),
       company_alias: empresa.company_alias,
     })
 
@@ -358,6 +375,18 @@ test.group('factura — regra 6: anular de fora para dentro', (group) => {
   })
 })
 
+/**
+ * O período do MÊS CORRENTE.
+ *
+ * As vendas de teste nascem agora, e a regra 7 exige que caiam dentro do período
+ * declarado. Fixar '2026-01-01' fazia os testes passarem em Janeiro e falharem
+ * no resto do ano — que é a pior forma de um teste falhar.
+ */
+const periodoDeHoje = () => ({
+  periodo_inicio: DateTime.now().startOf('month').toJSDate(),
+  periodo_fim: DateTime.now().toJSDate(),
+})
+
 test.group('factura global — cobre várias vendas', (group) => {
   group.each.setup(() => testUtils.db().withGlobalTransaction())
 
@@ -372,8 +401,7 @@ test.group('factura global — cobre várias vendas', (group) => {
     const global = await repo.emitir({
       tipo: 'Factura Global',
       vendas_ids: [v1.id, v2.id, v3.id],
-      periodo_inicio: new Date('2026-01-01'),
-      periodo_fim: new Date('2026-01-31'),
+      ...periodoDeHoje(),
       // Mandado de propósito e propositadamente errado: tem de ser ignorado.
       total: 999999,
       company_alias: empresa.company_alias,
@@ -399,13 +427,17 @@ test.group('factura global — cobre várias vendas', (group) => {
     await repo.emitir({
       tipo: 'Factura Global',
       vendas_ids: [v1.id, v2.id],
-      periodo_inicio: new Date('2026-01-01'),
-      periodo_fim: new Date('2026-01-31'),
+      ...periodoDeHoje(),
       company_alias: empresa.company_alias,
     })
 
     try {
-      await repo.emitir({ venda_id: v1.id, tipo: 'Factura', company_alias: empresa.company_alias })
+      await repo.emitir({
+        venda_id: v1.id,
+        tipo: 'Factura',
+        data_vencimento: daquiA30Dias(),
+        company_alias: empresa.company_alias,
+      })
       assert.fail('facturou uma venda que já está dentro de uma factura global')
     } catch (error) {
       assert.instanceOf(error, VendaJaFacturadaException)
@@ -415,8 +447,7 @@ test.group('factura global — cobre várias vendas', (group) => {
       await repo.emitir({
         tipo: 'Factura Global',
         vendas_ids: [v2.id],
-        periodo_inicio: new Date('2026-02-01'),
-        periodo_fim: new Date('2026-02-28'),
+        ...periodoDeHoje(),
         company_alias: empresa.company_alias,
       })
       assert.fail('cobriu a mesma venda em duas facturas globais')
@@ -443,8 +474,7 @@ test.group('factura global — cobre várias vendas', (group) => {
     await repo.emitir({
       tipo: 'Factura Global',
       vendas_ids: [v1.id],
-      periodo_inicio: new Date('2026-01-01'),
-      periodo_fim: new Date('2026-01-31'),
+      ...periodoDeHoje(),
       company_alias: empresa.company_alias,
     })
 
@@ -470,14 +500,65 @@ test.group('factura global — cobre várias vendas', (group) => {
       await new FacturaRepository().emitir({
         tipo: 'Factura Global',
         vendas_ids: [daA.id, daB.id],
-        periodo_inicio: new Date('2026-01-01'),
-        periodo_fim: new Date('2026-01-31'),
+        ...periodoDeHoje(),
         company_alias: tenantA.empresa.company_alias,
       })
       assert.fail('aceitou uma venda de outra empresa na factura global')
     } catch (error) {
       assert.instanceOf(error, VendaObrigatoriaException)
     }
+  })
+
+  /**
+   * REGRA 7 — as vendas têm de cair dentro do período declarado.
+   *
+   * Sem esta verificação, uma global de Janeiro podia cobrir vendas de Março: o
+   * documento declarava um período e titulava outro, e o total não batia com
+   * nada.
+   */
+  test('recusa vendas fora do período declarado', async ({ assert }) => {
+    const { empresa, user, pos } = await createTenant()
+    const caixa = await createCaixa(user, pos)
+    const venda = await createVenda(caixa, { status: 'fechada', total: 1000 })
+
+    try {
+      await new FacturaRepository().emitir({
+        tipo: 'Factura Global',
+        vendas_ids: [venda.id],
+        // A venda é de hoje; o período é de 2020.
+        periodo_inicio: new Date('2020-01-01'),
+        periodo_fim: new Date('2020-01-31'),
+        company_alias: empresa.company_alias,
+      })
+      assert.fail('cobriu uma venda de fora do período declarado')
+    } catch (error) {
+      assert.instanceOf(error, VendaForaDoPeriodoException)
+    }
+  })
+
+  /**
+   * O fim do período é inclusivo até ao FIM DO DIA.
+   *
+   * `vendas.created_at` é um timestamp: comparar com a data seca deixaria de fora
+   * tudo o que foi vendido nesse dia depois da meia-noite — ou seja, o dia
+   * inteiro. É a mesma armadilha do filtro de datas da listagem.
+   */
+  test('uma venda de hoje cabe num período que termina hoje', async ({ assert }) => {
+    const { empresa, user, pos } = await createTenant()
+    const caixa = await createCaixa(user, pos)
+    const venda = await createVenda(caixa, { status: 'fechada', total: 1000 })
+
+    const hoje = DateTime.now()
+
+    const global = await new FacturaRepository().emitir({
+      tipo: 'Factura Global',
+      vendas_ids: [venda.id],
+      periodo_inicio: hoje.startOf('month').toJSDate(),
+      periodo_fim: hoje.toJSDate(),
+      company_alias: empresa.company_alias,
+    })
+
+    assert.equal(Number(global.total), 1000)
   })
 
   test('recusa a lista se alguma venda não estiver fechada', async ({ assert }) => {
@@ -490,8 +571,7 @@ test.group('factura global — cobre várias vendas', (group) => {
       await new FacturaRepository().emitir({
         tipo: 'Factura Global',
         vendas_ids: [fechada.id, aberta.id],
-        periodo_inicio: new Date('2026-01-01'),
-        periodo_fim: new Date('2026-01-31'),
+        ...periodoDeHoje(),
         company_alias: empresa.company_alias,
       })
       assert.fail('cobriu uma venda ainda aberta')
@@ -502,10 +582,10 @@ test.group('factura global — cobre várias vendas', (group) => {
 })
 
 test.group('regras de emissão — o que pode vir a seguir (sem BD)', () => {
-  test('de uma venda fechada só saem os quatro que a titulam', ({ assert }) => {
+  test('de uma venda fechada só saem os três que a titulam', ({ assert }) => {
     assert.deepEqual(
       tiposParaUmaVenda().map((a) => a.tipo),
-      ['Factura', 'Factura-Recibo', 'Factura Genérica', 'Talão de Venda']
+      ['Factura', 'Factura-Recibo', 'Factura Genérica']
     )
   })
 
@@ -513,6 +593,7 @@ test.group('regras de emissão — o que pode vir a seguir (sem BD)', () => {
     const accoes = proximosDocumentos({
       tipo: 'Factura',
       anulado: false,
+      aCredito: true,
       liquidado: false,
       temDependentes: false,
     }).map((a) => a.tipo)
@@ -532,6 +613,7 @@ test.group('regras de emissão — o que pode vir a seguir (sem BD)', () => {
     const accoes = proximosDocumentos({
       tipo: 'Factura',
       anulado: false,
+      aCredito: true,
       liquidado: true,
       temDependentes: true,
     }).map((a) => a.tipo)
@@ -545,6 +627,8 @@ test.group('regras de emissão — o que pode vir a seguir (sem BD)', () => {
     const accoes = proximosDocumentos({
       tipo: 'Factura-Recibo',
       anulado: false,
+      // Paga no acto: nunca nasceu em dívida, e é isso que lhe tira o recibo.
+      aCredito: false,
       liquidado: false,
       temDependentes: false,
     }).map((a) => a.tipo)
@@ -565,6 +649,7 @@ test.group('regras de emissão — o que pode vir a seguir (sem BD)', () => {
     const accoes = proximosDocumentos({
       tipo: 'Factura Global',
       anulado: false,
+      aCredito: true,
       liquidado: false,
       temDependentes: false,
     }).map((a) => a.tipo)
@@ -582,6 +667,7 @@ test.group('regras de emissão — o que pode vir a seguir (sem BD)', () => {
       proximosDocumentos({
         tipo: 'Factura',
         anulado: true,
+        aCredito: true,
         liquidado: false,
         temDependentes: false,
       })

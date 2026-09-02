@@ -14,6 +14,7 @@ import CaixaAlreadyClosedException from '#exceptions/caixa_already_closed_except
 import CaixaIsAlreadyOpenException from '#exceptions/caixa_is_already_open_exception'
 import UserIsNotAPosWorkerException from '#exceptions/user_is_not_a_pos_worker_exception'
 import CaixaHasOpenVendaException from '#exceptions/caixa_has_open_venda_exception'
+import FechoDiarioRepository from './fecho_diario_repository.js'
 
 /** Estados de venda cujo `total` já reflecte dinheiro efectivamente cobrado nesta caixa —
  * 'aberta'/'cancelada' nunca têm `total` preenchido (só é calculado no fecho). */
@@ -62,11 +63,62 @@ export default class caixaRepository {
 
     const totalVendas = vendasDaCaixa.reduce((soma, venda) => soma + Number(venda.total), 0)
 
+    /*
+     * ── O dinheiro em caixa deixou de ser a soma das vendas ────────────────────
+     *
+     * Era, e podia ser, enquanto nenhuma venda fechava sem o pagamento completo. A
+     * venda a crédito acabou com isso: fecha, entra em `total_vendas`, e não põe um
+     * kwanza na gaveta. Continuar a somá-la a `total_caixa` daria uma caixa a
+     * declarar dinheiro que ninguém recebeu — e o fecho do dia a acusar uma falta
+     * do valor exacto da venda a prazo.
+     *
+     * `total_vendas` fica como está: é volume de negócio, e uma venda a prazo é uma
+     * venda. `total_caixa` passa a ser o dinheiro que de facto lá está.
+     *
+     * ── A fórmula, e porque é que é um mínimo ─────────────────────────────────
+     *
+     *     dinheiro retido = min(pagamentos da venda, total actual da venda)
+     *
+     * Parece torcido e é a única expressão que responde certo aos quatro casos —
+     * verificado um a um, porque cada um deles já partiu uma versão mais simples:
+     *
+     *   venda a pronto     pagou 1.000, total 1.000  →  1.000   (a soma de sempre)
+     *   venda a crédito    pagou     0, total 1.000  →      0   (não entrou nada)
+     *   adiantamento       pagou 1.000, total 1.000  →  1.000   (entrou mesmo)
+     *   reembolso parcial  pagou 1.000, total   700  →    700   (devolveu 300)
+     *
+     * Somar só os pagamentos falha o reembolso: as linhas de `vendapagamento`
+     * ficam lá, e a caixa continuaria a declarar dinheiro que saiu pela porta.
+     * Somar só `vendas.total` falha o crédito. O mínimo apanha os dois, porque um
+     * reembolso reduz `vendas.total` e uma venda a prazo nunca teve pagamento.
+     */
+    const idsDasVendas = vendasDaCaixa.map((venda) => venda.id)
+
+    let totalRecebido = 0
+
+    if (idsDasVendas.length > 0) {
+      const pagamentos = (await db
+        .from('vendapagamento')
+        .if(Boolean(trx), (q) => q.useTransaction(trx!))
+        .whereIn('venda_id', idsDasVendas)
+        .whereNull('deleted_at')
+        .groupBy('venda_id')
+        .select('venda_id')
+        .sum('valor as total')) as { venda_id: string; total: string | number | null }[]
+
+      const pagoPorVenda = new Map(pagamentos.map((p) => [p.venda_id, Number(p.total ?? 0)]))
+
+      totalRecebido = vendasDaCaixa.reduce((soma, venda) => {
+        const pago = pagoPorVenda.get(venda.id) ?? 0
+        return soma + Math.min(pago, Number(venda.total))
+      }, 0)
+    }
+
     const registoCaixaQuery = caixa.query(trx ? { client: trx } : undefined)
     const registoCaixa = await registoCaixaQuery.where('caixa.id', caixaId).select('caixa.*').firstOrFail()
 
     registoCaixa.total_vendas = totalVendas
-    registoCaixa.total_caixa = Number(registoCaixa.valor_inicial) + totalVendas
+    registoCaixa.total_caixa = Number(registoCaixa.valor_inicial) + totalRecebido
     await registoCaixa.save()
 
     return registoCaixa
@@ -114,6 +166,12 @@ export default class caixaRepository {
     if(!userIsPosWorker && !(await userHasRole(data.user_id!, ['Admin']))){
       throw new UserIsNotAPosWorkerException()
     }
+    // Uma caixa deixada aberta de um dia anterior não pode travar a abertura da caixa de
+    // hoje. Sem isto o utilizador ficava sem saída: a venda recusava por a caixa ser de
+    // ontem, e abrir uma nova recusava com "já tem uma caixa aberta". Fecha-se primeiro
+    // (anulando as vendas que lá ficaram por concluir) e só depois se avalia o resto.
+    await new FechoDiarioRepository().fecharCaixasDeDiasAnteriores(data.user_id!)
+
     // verificar se tem um caixa aberto deste user
     const caixaAberto = await this.baseQuery()
       .join('user', 'caixa.user_id', 'user.id')

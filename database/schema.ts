@@ -309,7 +309,7 @@ export class DespesaSchema extends BaseModel {
 }
 
 export class EmpresaSchema extends BaseModel {
-  static $columns = ['companyAlias', 'contacto', 'createdAt', 'deletedAt', 'id', 'inadiplente', 'localizacao', 'nif', 'nome', 'onboardingConcluidoEm', 'ramoActuacao', 'regimeIva', 'status', 'suspensaEm', 'suspensaMotivo', 'suspensaPor', 'tamanho', 'taxaIvaId', 'updatedAt', 'userId', 'verified'] as const
+  static $columns = ['companyAlias', 'contacto', 'createdAt', 'deletedAt', 'id', 'inadiplente', 'localizacao', 'nif', 'nome', 'onboardingConcluidoEm', 'prazoPagamentoDias', 'ramoActuacao', 'regimeIva', 'status', 'suspensaEm', 'suspensaMotivo', 'suspensaPor', 'tamanho', 'taxaIvaId', 'updatedAt', 'userId', 'verified'] as const
   $columns = EmpresaSchema.$columns
   @column()
   declare companyAlias: string | null
@@ -331,6 +331,8 @@ export class EmpresaSchema extends BaseModel {
   declare nome: string | null
   @column.dateTime()
   declare onboardingConcluidoEm: DateTime | null
+  @column()
+  declare prazoPagamentoDias: number
   @column()
   declare ramoActuacao: string | null
   @column()
@@ -417,7 +419,7 @@ export class EstoqueSchema extends BaseModel {
 }
 
 export class FacturaSchema extends BaseModel {
-  static $columns = ['ano', 'clienteMorada', 'clienteNif', 'clienteNome', 'createdAt', 'dataEmissao', 'dataOperacao', 'deletedAt', 'documentoOrigemId', 'empresaId', 'hash', 'id', 'localOperacao', 'motivoAnulacao', 'numero', 'observacoes', 'periodoFim', 'periodoInicio', 'serie', 'softwareId', 'status', 'tipo', 'total', 'updatedAt', 'vendaId'] as const
+  static $columns = ['ano', 'clienteMorada', 'clienteNif', 'clienteNome', 'createdAt', 'dataEmissao', 'dataOperacao', 'dataVencimento', 'deletedAt', 'documentoOrigemId', 'emitidoPorUserId', 'empresaId', 'hash', 'id', 'localOperacao', 'motivoAnulacao', 'numero', 'observacoes', 'periodoFim', 'periodoInicio', 'serie', 'softwareId', 'status', 'tipo', 'total', 'updatedAt', 'vendaId'] as const
   $columns = FacturaSchema.$columns
   @column()
   declare ano: number | null
@@ -433,10 +435,14 @@ export class FacturaSchema extends BaseModel {
   declare dataEmissao: DateTime
   @column.dateTime()
   declare dataOperacao: DateTime | null
+  @column.date()
+  declare dataVencimento: DateTime | null
   @column.dateTime()
   declare deletedAt: DateTime | null
   @column()
   declare documentoOrigemId: string | null
+  @column()
+  declare emitidoPorUserId: string | null
   @column()
   declare empresaId: string
   @column()
@@ -1489,7 +1495,7 @@ export class VendapagamentoSchema extends BaseModel {
 }
 
 export class VendaSchema extends BaseModel {
-  static $columns = ['caixaId', 'clienteOnlineId', 'clientePresencialId', 'createdAt', 'cupomId', 'deletedAt', 'empresaId', 'id', 'motivoCancelamento', 'motivoReembolso', 'numero', 'status', 'total', 'updatedAt', 'valorDesconto', 'vendaTipo'] as const
+  static $columns = ['caixaId', 'clienteOnlineId', 'clientePresencialId', 'condicaoPagamento', 'createdAt', 'cupomId', 'deletedAt', 'empresaId', 'entregueEm', 'id', 'motivoCancelamento', 'motivoReembolso', 'numero', 'prazoPagamentoDias', 'status', 'total', 'updatedAt', 'valorDesconto', 'vendaTipo'] as const
   $columns = VendaSchema.$columns
   @column()
   declare caixaId: string | null
@@ -1497,6 +1503,8 @@ export class VendaSchema extends BaseModel {
   declare clienteOnlineId: string | null
   @column()
   declare clientePresencialId: string | null
+  @column()
+  declare condicaoPagamento: string
   @column.dateTime({ autoCreate: true })
   declare createdAt: DateTime
   @column()
@@ -1505,6 +1513,8 @@ export class VendaSchema extends BaseModel {
   declare deletedAt: DateTime | null
   @column()
   declare empresaId: string | null
+  @column.dateTime()
+  declare entregueEm: DateTime | null
   @column({ isPrimary: true })
   declare id: string
   @column()
@@ -1513,6 +1523,8 @@ export class VendaSchema extends BaseModel {
   declare motivoReembolso: string | null
   @column()
   declare numero: number | null
+  @column()
+  declare prazoPagamentoDias: number | null
   @column()
   declare status: string
   @column()

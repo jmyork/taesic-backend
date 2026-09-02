@@ -1,6 +1,6 @@
 import type { HttpContext } from '@adonisjs/core/http'
 import vendasService from '#services/vendas_service'
-import { CloseVendaValidator, CreateVendaValidator, ShowVendaValidator, VendasQueryValidator } from '#validators/vendas_validator'
+import { AjustarVendaValidator, CloseVendaValidator, CreateVendaValidator, ShowVendaValidator, VendasQueryValidator } from '#validators/vendas_validator'
 import { VendasQueryDTO } from '#dtos/vendas_dto'
 import { userHasRole } from '../helpers/Utils.js'
 import posRepository from '#repositories/pos_repository'
@@ -99,6 +99,18 @@ export default class vendassController {
                 })
             }
 
+            // A caixa estava aberta, mas era de um dia anterior: foi fechada agora. É um
+            // caso à parte do anterior porque quem está a vender viu a caixa aberta há um
+            // instante — sem esta mensagem parecia que a venda falhou sem razão.
+            if (error.code === 'CAIXA_DIA_ANTERIOR_FECHADA') {
+                return response.unprocessableEntity({
+                    data: null,
+                    message: error.message,
+                    code: 'CAIXA_DIA_ANTERIOR_FECHADA',
+                    status: 422,
+                })
+            }
+
             // Erro de validação do Vine
             if (error.messages) {
                 return response.badRequest({
@@ -163,14 +175,85 @@ export default class vendassController {
     // encontrado" (Lucid) já são traduzidos de forma consistente pelo handler global
     // (app/exceptions/handler.ts) — repetir `if (error.code === 'X') {...}` aqui só
     // escondia qualquer excepção nova (não listada) atrás de um 500 genérico.
-    async close({ request, response, params }: HttpContext) {
+    async close({ request, response, params, auth }: HttpContext) {
         const payload = await CloseVendaValidator.validate({ ...params, ...request.body() })
-        await this.service.close({ ...payload, company_alias: params.company_alias })
+        const venda = await this.service.close({
+            ...payload,
+            company_alias: params.company_alias,
+            user_id: auth.user?.id,
+        })
 
+        /*
+         * A resposta passou a trazer a venda — e, com ela, o DOCUMENTO FISCAL emitido
+         * no fecho (em `$extras.documento`).
+         *
+         * Antes devolvia `data: null`, e podia: não havia documento nenhum a emitir. O
+         * ponto de venda precisa dele imediatamente — é o que imprime e o que mostra no
+         * ecrã de sucesso —, e obrigá-lo a ir buscá-lo num segundo pedido significaria
+         * adivinhar por que critério, com o utilizador a olhar para uma venda concluída
+         * sem saber que documento saiu.
+         *
+         * `user_id` passou a ir também: as saídas de armazém do fecho são registadas em
+         * nome de quem as fez, e sem ele a movimentação ficava sem responsável.
+         */
         return response.ok({
-            data: null,
+            data: venda,
             message: 'Venda fechada com sucesso',
             status: 200,
+        })
+    }
+
+    // ==================== ENTREGAR (adiantamento) ====================
+    /**
+     * Registar a entrega do produto de uma venda por adiantamento.
+     *
+     * É o passo que fecha o ciclo: dá baixa no armazém (que não saiu no fecho, porque
+     * não houve entrega), marca a venda como entregue — é a partir daqui que ela conta
+     * como receita — e emite o documento que a titula.
+     *
+     * Sem try/catch: o handler global traduz `VendaNaoEAdiantamento` (409),
+     * `VendaJaEntregue` (409) e o resto. Um catch genérico devolveria 500 a todos, que
+     * é o erro que este projecto já cometeu quatro vezes (§7.4, §7.17, §7.21, §7.22).
+     */
+    async entregar({ response, params, auth }: HttpContext) {
+        const payload = await ShowVendaValidator.validate(params)
+
+        const venda = await this.service.entregar({
+            ...payload,
+            company_alias: params.company_alias,
+            user_id: auth.user?.id,
+        })
+
+        return response.ok({
+            data: venda,
+            message: 'Entrega registada e documento emitido',
+            status: 200,
+        })
+    }
+
+    // ==================== AJUSTAR (nota de débito) ====================
+    /**
+     * Ajustar uma venda fechada para cima — emite a nota de débito.
+     *
+     * A venda não é reescrita: já há um documento fiscal a dizer quanto ela valia, e
+     * um documento fiscal emitido não se reescreve. O acréscimo vive na nota, que é o
+     * documento que a lei tem para isto. Devolve a NOTA, que é o que há de novo.
+     */
+    async ajustar({ request, response, params, auth }: HttpContext) {
+        const { id } = await ShowVendaValidator.validate(params)
+        const payload = await request.validateUsing(AjustarVendaValidator)
+
+        const nota = await this.service.ajustar({
+            id,
+            company_alias: params.company_alias,
+            user_id: auth.user?.id,
+            ...payload,
+        })
+
+        return response.created({
+            data: nota,
+            message: `${nota.designacao} ${nota.referencia} emitida com sucesso`,
+            status: 201,
         })
     }
 

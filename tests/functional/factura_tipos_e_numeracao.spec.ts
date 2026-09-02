@@ -14,6 +14,18 @@ import {
 import { createTenant, createCaixa, createVenda } from '../helpers/fixtures.js'
 
 /**
+ * O período do MÊS CORRENTE.
+ *
+ * As vendas de teste nascem agora, e a regra 7 exige que caiam dentro do período
+ * declarado pela factura global. Um período fixo fazia estes testes passarem no
+ * mês em que foram escritos e falharem no resto do ano.
+ */
+const periodoDeHoje = () => ({
+  periodo_inicio: DateTime.now().startOf('month').toJSDate(),
+  periodo_fim: DateTime.now().toJSDate(),
+})
+
+/**
  * A emissão dos documentos do Decreto Presidencial 71/25, e a numeração que ele
  * exige.
  *
@@ -153,20 +165,24 @@ test.group('factura — tipos e numeração por série', (group) => {
   })
 })
 
-test.group('factura — os catorze tipos chegam à base de dados', (group) => {
+test.group('factura — os doze tipos chegam à base de dados', (group) => {
   group.each.setup(() => testUtils.db().withGlobalTransaction())
 
   /**
    * Emite um de CADA tipo e relê-o.
    *
    * Não é redundante face aos testes acima, que exercitam sete tipos: o que este
-   * prova é que os catorze valores cabem no `enum` da coluna. Três deles têm
-   * acentos — `Autofacturação`, `Talão de Venda`, `Aviso de Cobrança` — e um
+   * prova é que TODOS os valores da tabela cabem no `enum` da coluna. Vários têm
+   * acentos — `Autofacturação`, `Factura Genérica`, `Aviso de Cobrança` — e um
    * desencontro de charset entre a coluna e a ligação não dá erro de compilação
    * nem falha nos unitários: dá `ER_DATA_TRUNCATED` na emissão, em produção, com
    * o utilizador à espera. Só uma escrita real o apanha.
+   *
+   * A contagem no fim vem de `TIPOS_DE_DOCUMENTO_VALIDOS` e já não é um número
+   * escrito à mão: um tipo acrescentado ou removido da tabela passa a ser coberto
+   * por este teste sozinho, em vez de o partir com uma contagem desactualizada.
    */
-  test('cada um dos catorze tipos é emitido e relido com a designação certa', async ({
+  test('cada tipo é emitido e relido com a designação certa', async ({
     assert,
   }) => {
     const { empresa, user, pos } = await createTenant()
@@ -182,9 +198,22 @@ test.group('factura — os catorze tipos chegam à base de dados', (group) => {
      * as regras; dar a cada um o seu contexto válido é o que o mantém a testar
      * aquilo para que existe.
      */
+    /*
+     * A origem leva data de vencimento, e passou a ser obrigatório que leve.
+     *
+     * O recibo e o aviso de cobrança só se emitem sobre um documento EM DÍVIDA — e
+     * a dívida lê-se da `data_vencimento`, não do tipo (ver `estaEmDivida()`). Uma
+     * factura sem prazo é uma factura paga no acto, e um recibo sobre ela seria
+     * receber duas vezes no papel.
+     */
     const origemNova = async () => {
       const v = await createVenda(caixa, { status: 'fechada', total: 5000 })
-      return repo.emitir({ venda_id: v.id, tipo: 'Factura', company_alias: empresa.company_alias })
+      return repo.emitir({
+        venda_id: v.id,
+        tipo: 'Factura',
+        data_vencimento: DateTime.now().plus({ days: 30 }).toJSDate(),
+        company_alias: empresa.company_alias,
+      })
     }
 
     const emitidos: Record<string, string> = {}
@@ -206,12 +235,13 @@ test.group('factura — os catorze tipos chegam à base de dados', (group) => {
       const emitido = await repo.emitir({
         tipo,
         company_alias: empresa.company_alias,
+        ...(definicao.vencimento === 'exige'
+          ? { data_vencimento: DateTime.now().plus({ days: 30 }).toJSDate() }
+          : {}),
         ...(venda ? { venda_id: venda.id } : { total: 1000 }),
         ...(cobertas.length > 0 ? { vendas_ids: cobertas.map((v) => v.id) } : {}),
         ...(origem ? { documento_origem_id: origem.id } : {}),
-        ...(definicao.exigePeriodo
-          ? { periodo_inicio: new Date('2026-01-01'), periodo_fim: new Date('2026-01-31') }
-          : {}),
+        ...(definicao.exigePeriodo ? periodoDeHoje() : {}),
       })
 
       // Relido da base, e não o objecto que ficou em memória: é a leitura que
@@ -226,7 +256,7 @@ test.group('factura — os catorze tipos chegam à base de dados', (group) => {
       emitidos[tipo] = relido.referencia!
     }
 
-    assert.lengthOf(Object.keys(emitidos), 14)
+    assert.lengthOf(Object.keys(emitidos), TIPOS_DE_DOCUMENTO_VALIDOS.length)
 
     /*
      * Nenhuma referência repetida — é a garantia que o índice único protege, e a
@@ -396,8 +426,7 @@ test.group('factura — o que cada tipo exige', (group) => {
     const emitida = await new FacturaRepository().emitir({
       tipo: 'Factura Global',
       vendas_ids: [coberta.id],
-      periodo_inicio: new Date('2026-01-01'),
-      periodo_fim: new Date('2026-01-31'),
+      ...periodoDeHoje(),
       company_alias: empresa.company_alias,
     })
 
@@ -420,6 +449,8 @@ test.group('factura — o que cada tipo exige', (group) => {
     const factura = await repo.emitir({
       venda_id: venda.id,
       tipo: 'Factura',
+      // Uma factura só se liquida com recibo se nasceu em dívida — ver `estaEmDivida()`.
+      data_vencimento: DateTime.now().plus({ days: 30 }).toJSDate(),
       cliente_morada: 'Rua Rainha Ginga, 12, Luanda',
       company_alias: empresa.company_alias,
     })

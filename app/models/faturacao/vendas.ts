@@ -14,6 +14,7 @@ import venda_itens from './venda_itens.js'
 import cliente from '#models/cliente'
 import cupom from '#models/cupom'
 import Empresa from '#models/empresa'
+import type { CondicaoPagamento } from '../../helpers/regras_de_emissao.js'
 // import db from '@adonisjs/lucid/services/db'
 
 export default class vendas extends BaseModel {
@@ -64,6 +65,41 @@ export default class vendas extends BaseModel {
 
   @column()
   declare venda_tipo: 'presencial' | 'online' | 'online_loja'
+
+  /**
+   * Como é que esta venda é paga — e, daí, tudo o resto.
+   *
+   * É o único campo que o balcão escolhe sobre a relação de pagamento, e dele saem
+   * quatro respostas: se o fecho exige o dinheiro, se o stock sai, que documento
+   * fiscal é emitido, e se o valor conta como receita. A tabela está em
+   * `REGRAS_DA_CONDICAO` (`app/helpers/regras_de_emissao.ts`), num sítio só,
+   * porque as quatro têm de concordar entre si.
+   *
+   * `pronto_pagamento` por omissão: é o que todas as vendas anteriores a esta
+   * coluna foram, porque era a única coisa que o sistema permitia.
+   */
+  @column()
+  declare condicao_pagamento: CondicaoPagamento
+
+  /**
+   * O prazo acordado, em dias, congelado no fecho. Só nas vendas a crédito.
+   *
+   * Congelado e não lido de `empresa.prazo_pagamento_dias` quando é preciso: essa
+   * é uma preferência que muda, e uma venda a 30 dias não passa a ser a 15 porque
+   * a empresa mudou de política depois.
+   */
+  @column()
+  declare prazo_pagamento_dias: number | null
+
+  /**
+   * Quando o produto de um adiantamento saiu efectivamente.
+   *
+   * Nas outras condições a entrega é o próprio fecho e esta coluna fica nula. Num
+   * adiantamento é o momento em que o stock sai e a receita é reconhecida — até
+   * lá há dinheiro recebido e nenhuma venda realizada.
+   */
+  @column.dateTime()
+  declare entregue_em: DateTime | null
 
   @column()
   declare cliente_online_id: string | null

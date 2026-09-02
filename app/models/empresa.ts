@@ -54,6 +54,17 @@ export default class Empresa extends BaseModel {
   @belongsTo(() => taxa_iva, { foreignKey: 'taxa_iva_id' })
   declare taxaIva: BelongsTo<typeof taxa_iva>
 
+  /**
+   * O prazo de pagamento que esta empresa pratica nas vendas a crédito, em dias.
+   *
+   * É o valor PROPOSTO no fecho da venda, não uma imposição: cada venda pode
+   * acordar outro prazo (dentro do tecto de `PRAZO_PAGAMENTO_MAXIMO_DIAS`), e o
+   * que ficar acordado é congelado em `vendas.prazo_pagamento_dias`. Mudar esta
+   * coluna nunca altera a data de vencimento de uma factura já emitida.
+   */
+  @column()
+  declare prazo_pagamento_dias: number
+
   @column()
   declare company_alias: string
 

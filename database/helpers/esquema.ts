@@ -233,3 +233,22 @@ export async function alinharColunaComReferencia(
     `ALTER TABLE ${tabela} MODIFY ${coluna} ${declaracao} ${actual.anulavel ? 'NULL' : 'NOT NULL'}`
   )
 }
+
+/**
+ * Um valor de texto como literal SQL, para DDL onde não há parâmetros possíveis.
+ *
+ * ── Onde é preciso, e porque é que não há alternativa ─────────────────────────
+ *
+ * `ALTER TABLE ... ENUM(...)` não aceita parâmetros: a lista de valores faz parte
+ * da DEFINIÇÃO da coluna, não dos dados, e o driver não tem onde os substituir. As
+ * migrações que reescrevem um enum a partir de uma tabela do código
+ * (`tipos_de_documento.ts`, `regras_de_emissao.ts`) têm de montar a instrução.
+ *
+ * A entrada é sempre uma constante do próprio repositório — nunca vem de um
+ * pedido —, mas a escapatória é feita à mesma: uma apóstrofe num valor futuro
+ * («Talão d'Entrega») partiria a instrução, e o sintoma seria uma migração que
+ * falha a meio, que é o estado que a §7.19 existe para evitar.
+ */
+export function literalSql(valor: string): string {
+  return "'" + valor.replaceAll('\\', '\\\\').replaceAll("'", "''") + "'"
+}

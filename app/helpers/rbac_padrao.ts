@@ -353,6 +353,15 @@ export const PERMISSOES_PADRAO: PermissaoPadrao[] = [
   { nome: 'domain_facturas.proximos', descricao: 'Ver o que se pode emitir a seguir a um documento' },
   { nome: 'domain_facturas.vendas_por_facturar', descricao: 'Listar as vendas ainda por facturar' },
   { nome: 'domain_facturas.vendas_cobertas', descricao: 'Ver as vendas que um documento titula' },
+  {
+    nome: 'domain_facturas.operacao',
+    descricao: 'Ver todos os documentos de uma mesma operação',
+  },
+  { nome: 'domain_facturas.contas_a_receber', descricao: 'Ver o que a empresa tem por receber' },
+  {
+    nome: 'domain_facturas.confirmar_recebimento',
+    descricao: 'Confirmar o recebimento de uma factura a prazo (emite o recibo)',
+  },
   // ==================== CUPOM DOMAIN ====================
   { nome: 'domain_cupom.index', descricao: 'Listar cupões' },
   { nome: 'domain_cupom.show', descricao: 'Ver cupão específico' },
@@ -530,6 +539,14 @@ export const PERMISSOES_PADRAO: PermissaoPadrao[] = [
   { nome: 'domain_vendas.update', descricao: 'Actualizar o caixa' },
   { nome: 'domain_vendas.destroy', descricao: 'Remover o caixa' },
   { nome: 'domain_vendas.anular', descricao: 'Anular uma venda em aberto' },
+  {
+    nome: 'domain_vendas.entregar',
+    descricao: 'Registar a entrega de uma venda por adiantamento (dá baixa no stock e titula a venda)',
+  },
+  {
+    nome: 'domain_vendas.ajustar',
+    descricao: 'Ajustar uma venda fechada para cima (emite a nota de débito)',
+  },
 
   // Venda Itens
   { nome: 'domain_vendas_itens.index', descricao: 'Listar caixas' },
@@ -803,8 +820,11 @@ export const PERMISSOES_POR_PAPEL: Record<string, string[]> = {
     'domain_facturas.proximos',
     'domain_facturas.vendas_por_facturar',
     'domain_facturas.vendas_cobertas',
+    'domain_facturas.operacao',
+    'domain_facturas.contas_a_receber',
     'domain_facturas.show',
     'domain_facturas.store',
+    'domain_facturas.confirmar_recebimento',
     'domain_facturas.anular',
 
     // Cupom (5 perms)
@@ -887,6 +907,8 @@ export const PERMISSOES_POR_PAPEL: Record<string, string[]> = {
     'domain_vendas.destroy',
     'domain_cupom.validar',
     'domain_vendas.anular',
+    'domain_vendas.entregar',
+    'domain_vendas.ajustar',
 
     // reembolso
     'domain_reembolso_total',
@@ -1222,6 +1244,8 @@ export const PERMISSOES_POR_PAPEL: Record<string, string[]> = {
     'domain_vendas.destroy',
     'domain_cupom.validar',
     'domain_vendas.anular',
+    'domain_vendas.entregar',
+    'domain_vendas.ajustar',
 
     // reembolso
     'domain_reembolso_total',
@@ -1256,8 +1280,11 @@ export const PERMISSOES_POR_PAPEL: Record<string, string[]> = {
     'domain_facturas.proximos',
     'domain_facturas.vendas_por_facturar',
     'domain_facturas.vendas_cobertas',
+    'domain_facturas.operacao',
+    'domain_facturas.contas_a_receber',
     'domain_facturas.show',
     'domain_facturas.store',
+    'domain_facturas.confirmar_recebimento',
     // cupom (leitura — precisa de saber que cupons existem)
     'domain_cupom.index',
     'domain_cupom.show',
@@ -1359,6 +1386,8 @@ export const PERMISSOES_POR_PAPEL: Record<string, string[]> = {
     'domain_facturas.proximos',
     'domain_facturas.vendas_por_facturar',
     'domain_facturas.vendas_cobertas',
+    'domain_facturas.operacao',
+    'domain_facturas.contas_a_receber',
     'domain_facturas.show',
     // cupom (leitura — precisa de saber que cupons existem)
     'domain_cupom.index',
@@ -1470,6 +1499,8 @@ export const PERMISSOES_POR_PAPEL: Record<string, string[]> = {
     'domain_vendas.destroy',
     'domain_cupom.validar',
     'domain_vendas.anular',
+    'domain_vendas.entregar',
+    'domain_vendas.ajustar',
 
     // reembolso
     'domain_reembolso_total',
@@ -1505,8 +1536,11 @@ export const PERMISSOES_POR_PAPEL: Record<string, string[]> = {
     'domain_facturas.proximos',
     'domain_facturas.vendas_por_facturar',
     'domain_facturas.vendas_cobertas',
+    'domain_facturas.operacao',
+    'domain_facturas.contas_a_receber',
     'domain_facturas.show',
     'domain_facturas.store',
+    'domain_facturas.confirmar_recebimento',
 
     // métricas de desempenho da loja (não as de promotores/marketing)
     'domain_metricas.resumo',
@@ -1635,6 +1669,8 @@ export const PERMISSOES_POR_PAPEL: Record<string, string[]> = {
     'domain_vendas.destroy',
     'domain_cupom.validar',
     'domain_vendas.anular',
+    'domain_vendas.entregar',
+    'domain_vendas.ajustar',
 
     // reembolso
     'domain_reembolso_total',
@@ -1670,8 +1706,11 @@ export const PERMISSOES_POR_PAPEL: Record<string, string[]> = {
     'domain_facturas.proximos',
     'domain_facturas.vendas_por_facturar',
     'domain_facturas.vendas_cobertas',
+    'domain_facturas.operacao',
+    'domain_facturas.contas_a_receber',
     'domain_facturas.show',
     'domain_facturas.store',
+    'domain_facturas.confirmar_recebimento',
 
     // métricas de desempenho da loja (não as de promotores/marketing)
     'domain_metricas.resumo',
@@ -1787,6 +1826,8 @@ export const PERMISSOES_POR_PAPEL: Record<string, string[]> = {
     'domain_facturas.proximos',
     'domain_facturas.vendas_por_facturar',
     'domain_facturas.vendas_cobertas',
+    'domain_facturas.operacao',
+    'domain_facturas.contas_a_receber',
     'domain_facturas.show',
 
     // Cupom (read only)

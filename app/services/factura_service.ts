@@ -1,5 +1,11 @@
 import FacturaRepository from '#repositories/factura_repository'
-import { AnularFacturaDTO, EmitirFacturaDTO, FacturaQueryDTO, ShowFacturaDTO } from '#dtos/factura_dto'
+import {
+  AnularFacturaDTO,
+  ConfirmarRecebimentoDTO,
+  EmitirFacturaDTO,
+  FacturaQueryDTO,
+  ShowFacturaDTO,
+} from '#dtos/factura_dto'
 
 export default class FacturaService {
   private repo = new FacturaRepository()
@@ -25,6 +31,15 @@ export default class FacturaService {
     return this.repo.proximos(data)
   }
 
+  /**
+   * Todos os documentos da mesma operação — a factura E o recibo, a factura E a
+   * nota de crédito. Existe para poderem ser impressos juntos: separados, contam
+   * meia história.
+   */
+  documentosDaOperacao(data: ShowFacturaDTO) {
+    return this.repo.documentosDaOperacao(data)
+  }
+
   /** As vendas que este documento cobre — a factura global cobre várias. */
   vendasCobertas(data: ShowFacturaDTO) {
     return this.repo.vendasCobertas(data)
@@ -33,5 +48,15 @@ export default class FacturaService {
   /** As vendas fechadas que ainda não foram tituladas por nenhum documento. */
   vendasPorFacturar(companyAlias: string, limite?: number) {
     return this.repo.vendasPorFacturar(companyAlias, limite)
+  }
+
+  /** O que a empresa tem por receber — a lista, os totais e a antiguidade. */
+  contasAReceber(data: { company_alias: string; page?: number; limit?: number }) {
+    return this.repo.contasAReceber(data)
+  }
+
+  /** Confirmar que o dinheiro entrou — emite o recibo que liquida a factura. */
+  confirmarRecebimento(data: ConfirmarRecebimentoDTO) {
+    return this.repo.confirmarRecebimento(data)
   }
 }

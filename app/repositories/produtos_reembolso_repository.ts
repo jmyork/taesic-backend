@@ -19,6 +19,11 @@ import cupom from '#models/cupom'
 import emitter from '@adonisjs/core/services/emitter'
 import EstoqueRevertido from '#events/estoque_revertido'
 import { applyCommonFilters, FieldSpec } from '../helpers/query_filters.js'
+import type { TransactionClientContract } from '@adonisjs/lucid/types/database'
+import Factura from '#models/faturacao/factura'
+import FacturaRepository from './factura_repository.js'
+import { TIPOS_QUE_TITULAM_A_VENDA, stockJaSaiu } from '../helpers/regras_de_emissao.js'
+import VendaSemDocumentoException from '#exceptions/venda_sem_documento_exception'
 
 const REEMBOLSO_FILTER_FIELDS: FieldSpec[] = [
   { kind: 'range', column: 'produtos_reembolso.quantidade', startKey: 'quantidade_start', endKey: 'quantidade_end', exactKey: 'quantidade' },
@@ -118,17 +123,33 @@ export default class produtos_reembolsoRepository {
     // Movimentações de stock, criação dos registos de reembolso e atualização da venda correm
     // todas na mesma transação — um item a falhar a meio não pode deixar reembolsos parciais
     // gravados sem a devolução de stock correspondente (ou vice-versa).
+    /*
+     * O stock só volta se chegou a SAIR.
+     *
+     * Uma venda por adiantamento ainda não entregue nunca deu baixa no armazém —
+     * o produto continua fisicamente lá. Devolvê-lo ao stock aqui criaria
+     * mercadoria do nada: o sistema passaria a contar mais unidades do que as que
+     * existem, e o inventário deixaria de bater à primeira contagem física.
+     *
+     * A pergunta vive em `stockJaSaiu()`, ao lado da regra que a origina, e é a
+     * mesma que decide se houve receita a reconhecer. Não é coincidência: o custo
+     * da mercadoria acompanha a saída dela.
+     */
+    const devolverStock = stockJaSaiu(venda)
+
     const reembolsosCriados = await db.transaction(async (trx) => {
-      for (const item of venda_itens) {
-        await estoqueRepo.create({
-          pos_id: pos.id,
-          registrado_por: data.user_id,
-          motivo: `Reajuste por reembolso total - venda_id: ${venda.id}`,
-          tipo_movimentacao: 'entrada',
-          quantidade: item.quantidade,
-          lote_produto_id: item.lote_produto_id,
-          company_alias: data.company_alias,
-        }, trx)
+      if (devolverStock) {
+        for (const item of venda_itens) {
+          await estoqueRepo.create({
+            pos_id: pos.id,
+            registrado_por: data.user_id,
+            motivo: `Reajuste por reembolso total - venda_id: ${venda.id}`,
+            tipo_movimentacao: 'entrada',
+            quantidade: item.quantidade,
+            lote_produto_id: item.lote_produto_id,
+            company_alias: data.company_alias,
+          }, trx)
+        }
       }
 
       // criar os registros de reembolso
@@ -145,6 +166,19 @@ export default class produtos_reembolsoRepository {
         await item.save()
         criados.push(reembolsoCriado)
       }
+
+      /*
+       * A NOTA DE CRÉDITO, pelo valor que estava a ser devolvido — lido ANTES de a
+       * venda ser zerada, que é a única altura em que ele ainda existe.
+       */
+      await this.emitirNotaDeCredito(
+        venda.id,
+        Number(venda.total),
+        venda.motivo_reembolso ?? 'Reembolso total da venda.',
+        data.company_alias,
+        trx,
+        data.user_id
+      )
 
       // um reembolso total esvazia a venda por completo — refletir isso no registo da venda,
       // que anteriormente continuava a mostrar-se "fechada" com o total original.
@@ -163,8 +197,10 @@ export default class produtos_reembolsoRepository {
     })
 
     // Só depois da transação confirmar — nunca alerta sobre uma reversão que possa ainda
-    // vir a ser desfeita.
-    for (const item of venda_itens) {
+    // vir a ser desfeita. E só se houve mesmo reversão: um adiantamento por entregar
+    // não devolveu nada ao armazém, e um alerta sobre isso mandaria alguém procurar
+    // um movimento que não existe.
+    for (const item of devolverStock ? venda_itens : []) {
       await this.avisarEstoqueRevertido(
         item.lote_produto_id,
         item.quantidade,
@@ -174,6 +210,88 @@ export default class produtos_reembolsoRepository {
     }
 
     return reembolsosCriados
+  }
+
+  /**
+   * A NOTA DE CRÉDITO de um reembolso.
+   *
+   * ── Porque é que um reembolso tem de emitir um documento ─────────────────────
+   *
+   * Devolver dinheiro reduz o valor de uma operação já declarada às Finanças. O
+   * documento que a lei tem para isso é a nota de crédito, e sem ela o reembolso
+   * existe só aqui dentro: o stock volta, a caixa desce, e o que foi declarado
+   * continua a dizer o valor cheio. É o ponto 6 do pedido.
+   *
+   * Corre na MESMA transacção do reembolso — um reembolso gravado sem a nota seria
+   * exactamente o estado que se está a corrigir, só que criado por nós.
+   *
+   * ── Sem documento de origem, o reembolso NÃO acontece ────────────────────────
+   *
+   * Recusa com `VendaSemDocumento` (409) em vez de devolver o dinheiro em silêncio.
+   *
+   * A primeira versão deixava passar, a pensar nas vendas anteriores à emissão
+   * automática no fecho. Estava errado, e é o dono do produto que o diz: **um
+   * reembolso tem de ter documento**. Devolver dinheiro reduz o valor de uma
+   * operação já declarada às Finanças; sem nota de crédito, o stock volta, a caixa
+   * desce, e o que foi declarado continua a dizer o valor cheio. O sistema passaria
+   * a produzir, ele próprio, a divergência que este trabalho veio corrigir.
+   *
+   * A objecção («e as vendas antigas por titular?») deixou de existir por
+   * construção: toda a venda fechada passa a nascer com o seu documento, e a base
+   * é reconstruída de raiz. Se alguma vez aparecer uma venda por titular, o caminho
+   * é emitir-lhe a factura primeiro — e a excepção diz exactamente isso.
+   */
+  private async emitirNotaDeCredito(
+    vendaId: string,
+    valor: number,
+    motivo: string,
+    companyAlias: string | undefined,
+    trx: TransactionClientContract,
+    /**
+     * Quem está a reembolsar — vai assinar a nota.
+     *
+     * Uma nota de crédito não nasce de uma venda (liga-se ao documento que
+     * rectifica), portanto o vendedor resolvido por `venda → caixa → user` não a
+     * alcança: aparecia sem ninguém identificado. E é o documento que justifica
+     * uma saída de dinheiro — precisamente aquele em que saber quem o assinou mais
+     * importa.
+     */
+    emitidoPor: string | undefined
+  ) {
+    const documento = await Factura.query({ client: trx })
+      .where('venda_id', vendaId)
+      .whereIn('tipo', [...TIPOS_QUE_TITULAM_A_VENDA])
+      .whereNot('status', 'anulada')
+      .whereNull('deleted_at')
+      .orderBy('created_at', 'desc')
+      .first()
+
+    if (!documento) {
+      throw new VendaSemDocumentoException()
+    }
+
+    /*
+     * Valor zero não produz documento — e não é o mesmo caso.
+     *
+     * Acontece quando o reembolso não altera o que é devido (um item já
+     * inteiramente creditado, um arredondamento). Uma nota de crédito de 0 Kz não
+     * rectifica nada e é recusada pela AGT; a verificação vem DEPOIS da do
+     * documento precisamente para que a ausência de factura continue a ser um erro
+     * e não se esconda atrás dela.
+     */
+    if (valor <= 0) return null
+
+    return new FacturaRepository().emitir(
+      {
+        company_alias: companyAlias ?? '',
+        tipo: 'Nota de Crédito',
+        documento_origem_id: documento.id,
+        total: Math.round(valor * 100) / 100,
+        emitido_por_user_id: emitidoPor ?? null,
+        observacoes: motivo,
+      },
+      trx
+    )
   }
 
   /** Emite `EstoqueRevertido` quando um reembolso devolve produtos ao stock. */
@@ -217,6 +335,8 @@ export default class produtos_reembolsoRepository {
 
     const estoqueRepo = new estoqueRepository()
 
+    const devolverStock = stockJaSaiu(venda)
+
     // A atualização do item, a devolução de stock, o registo do reembolso e o recálculo do
     // total da venda correm todos na mesma transação — caso contrário um erro a meio (ex.:
     // stock insuficiente ao registar a entrada) deixaria o item já reduzido sem o reembolso
@@ -232,16 +352,19 @@ export default class produtos_reembolsoRepository {
       venda_item.useTransaction(trx)
       await venda_item.save()
 
-      // registrar movimentação do stock
-      await estoqueRepo.create({
-        pos_id: pos.id,
-        registrado_por: data.user_id,
-        motivo: `Reajuste por reembolso parcial - venda_item_id: ${venda_item.id}`,
-        tipo_movimentacao: 'entrada',
-        quantidade: data.quantidade ?? 0,
-        lote_produto_id: venda_item.lote_produto_id,
-        company_alias: data.company_alias,
-      }, trx)
+      // O stock só volta se chegou a sair — ver `stockJaSaiu()` e a nota do
+      // reembolso total. Um adiantamento por entregar não deu baixa nenhuma.
+      if (devolverStock) {
+        await estoqueRepo.create({
+          pos_id: pos.id,
+          registrado_por: data.user_id,
+          motivo: `Reajuste por reembolso parcial - venda_item_id: ${venda_item.id}`,
+          tipo_movimentacao: 'entrada',
+          quantidade: data.quantidade ?? 0,
+          lote_produto_id: venda_item.lote_produto_id,
+          company_alias: data.company_alias,
+        }, trx)
+      }
 
       // criar o registro de reembolso
       const reembolsoCriado = await produtos_reembolso.create({
@@ -280,11 +403,32 @@ export default class produtos_reembolsoRepository {
         }
       }
 
+      const totalAnterior = Number(venda.total)
+
       venda.total = Number((novoTotal - valorDesconto).toFixed(2))
       venda.valor_desconto = valorDesconto
       if (itensRestantes.length === 0) {
         venda.status = 'reembolsada'
       }
+
+      /*
+       * A NOTA DE CRÉDITO pela DIFERENÇA, e não pelo valor bruto dos artigos
+       * devolvidos.
+       *
+       * São coisas diferentes quando a venda levou cupão: o cliente pagou o líquido,
+       * e o desconto é reaplicado ao novo bruto logo acima. Creditar o bruto
+       * devolveria, no papel, mais do que ele chegou a pagar — e a nota seria
+       * recusada pela verificação de "não se credita mais do que resta da origem",
+       * ou passaria e ficaria errada.
+       */
+      await this.emitirNotaDeCredito(
+        venda.id,
+        totalAnterior - venda.total,
+        `Reembolso parcial: ${data.quantidade ?? 0} unidade(s).`,
+        data.company_alias,
+        trx,
+        data.user_id
+      )
       venda.useTransaction(trx)
       await venda.save()
 
@@ -294,13 +438,15 @@ export default class produtos_reembolsoRepository {
       return reembolsoCriado
     }).then(async (reembolsoCriado) => {
       // Só depois da transação confirmar — nunca alerta sobre uma reversão que possa ainda
-      // vir a ser desfeita.
-      await this.avisarEstoqueRevertido(
-        venda_item.lote_produto_id,
-        data.quantidade ?? 0,
-        `Reembolso parcial do item ${venda_item.id}`,
-        data.company_alias
-      )
+      // vir a ser desfeita, e só se houve mesmo reversão.
+      if (devolverStock) {
+        await this.avisarEstoqueRevertido(
+          venda_item.lote_produto_id,
+          data.quantidade ?? 0,
+          `Reembolso parcial do item ${venda_item.id}`,
+          data.company_alias
+        )
+      }
       return reembolsoCriado
     })
   }

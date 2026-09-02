@@ -61,7 +61,12 @@ export const createprodutosValidator = vine.compile(
         }
       }),
 
-    descricao: vine.string().trim().escape(), // ✅ Remover .trim() duplicado
+    /*
+     * Opcional. O nome basta para identificar um produto — ver o cabeçalho de
+     * `updateprodutosValidator`, onde já era opcional desde sempre: as duas formas
+     * de gravar o mesmo produto exigiam coisas diferentes.
+     */
+    descricao: vine.string().trim().escape().optional(),
     marca_id: vine.string().uuid().escape().exists(marcaExistsValidator.existsRule()).optional(),
     //.requiredWhen('is_service', '=', false)
     fornecedor_id: vine
@@ -178,9 +183,10 @@ export const CreateProdutoWithDetailsValidator = vine.compile(
             tenantColumn: 'empresa_id',
           }).createRule()
         ),
-      // Obrigatório aqui tal como em createprodutosValidator — as duas formas de criar
-      // um produto (com ou sem detalhes) devem exigir os mesmos campos base.
-      descricao: vine.string().trim().escape(),
+      // Opcional aqui tal como em createprodutosValidator — as duas formas de criar
+      // um produto (com ou sem detalhes) exigem os mesmos campos base, e a descrição
+      // deixou de ser um deles.
+      descricao: vine.string().trim().escape().optional(),
       marca_id: vine
         .string()
         .uuid()

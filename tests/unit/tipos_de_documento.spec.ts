@@ -7,7 +7,10 @@ import {
   TIPOS_DE_RECIBO,
   TIPOS_QUE_EXIGEM_ORIGEM,
   TIPOS_QUE_EXIGEM_PERIODO,
+  TIPOS_QUE_EXIGEM_VENCIMENTO,
   TIPOS_QUE_EXIGEM_VENDA,
+  TIPOS_QUE_PROIBEM_VENCIMENTO,
+  aceitaVencimento,
   designacaoDe,
   referenciaDe,
   serieDefault,
@@ -70,9 +73,59 @@ test.group('tipos de documento — acordo com o Blueprint da AGT', () => {
     assert.isTrue(nc.exigeOrigem, 'a AGT recusa uma NC sem referência à origem com E13')
   })
 
-  test('AC leva linhas e AR leva recibo', ({ assert }) => {
+  test('o aviso de cobrança leva linhas, não recibo', ({ assert }) => {
     assert.isFalse(TIPOS_DE_DOCUMENTO['Aviso de Cobrança'].eRecibo)
-    assert.isTrue(TIPOS_DE_DOCUMENTO['Aviso de Cobrança-Recibo'].eRecibo)
+  })
+
+  /**
+   * `exigeVenda` implica `aceitaVenda` — a invariante que separa os dois campos.
+   *
+   * Sem ela, um tipo podia declarar que EXIGE a venda e ao mesmo tempo que não a
+   * aceita, e `emitir()` recusaria sempre um documento que nunca poderia ser
+   * emitido. O erro só apareceria no dia em que alguém tentasse emitir esse tipo.
+   */
+  test('todo o tipo que exige venda também a aceita', ({ assert }) => {
+    for (const tipo of TIPOS_DE_DOCUMENTO_VALIDOS) {
+      const d = TIPOS_DE_DOCUMENTO[tipo]
+      if (d.exigeVenda) {
+        assert.isTrue(d.aceitaVenda, `"${tipo}" exige venda mas declara não a aceitar`)
+      }
+    }
+  })
+
+  /**
+   * As duas listas do vencimento não se sobrepõem.
+   *
+   * Um tipo que exigisse E proibisse a data de vencimento seria impossível de
+   * emitir: o validator exigiria o campo e recusaria o campo, ao mesmo tempo. É
+   * derivado da tabela, portanto só pode acontecer por um valor mal escrito nela —
+   * e este teste é o que o apanha antes de chegar a um utilizador.
+   */
+  test('nenhum tipo exige e proíbe a data de vencimento ao mesmo tempo', ({ assert }) => {
+    const exigem = new Set(TIPOS_QUE_EXIGEM_VENCIMENTO as string[])
+
+    for (const tipo of TIPOS_QUE_PROIBEM_VENCIMENTO as string[]) {
+      assert.isFalse(exigem.has(tipo), `"${tipo}" está nas duas listas`)
+    }
+  })
+
+  /**
+   * A regra do vencimento tem de concordar com a de `estaEmDivida()`.
+   *
+   * Um tipo que aceite data de vencimento é um tipo que pode aparecer no mapa de
+   * cobranças. Um recibo, uma nota ou um estorno que a aceitasse apareceria lá — e
+   * não há nada a cobrar num recibo.
+   */
+  test('só as facturas podem nascer em dívida', ({ assert }) => {
+    for (const tipo of TIPOS_DE_DOCUMENTO_VALIDOS) {
+      if (aceitaVencimento(tipo)) {
+        assert.equal(
+          TIPOS_DE_DOCUMENTO[tipo].categoria,
+          'factura',
+          `"${tipo}" aceita vencimento mas não é uma factura`
+        )
+      }
+    }
   })
 })
 
@@ -85,6 +138,14 @@ test.group('tipos de documento — cobertura do Decreto Presidencial 71/25', () 
    * não estão no decreto e não são documentos deste negócio.
    */
   const exigidosPelaLei = [
+    /*
+     * `Talão de Venda` (TV) e `Aviso de Cobrança-Recibo` (AR) NÃO estão nesta
+     * lista, e a lei continua a nomeá-los. Foi decisão do dono do produto deixar de
+     * os emitir — cada um duplicava outro documento sem nada que os separasse no
+     * fluxo. Os códigos continuam no catálogo da AGT
+     * (`minfin-integration/dominio/tipos_documento.ts`), que descreve o que a AGT
+     * aceita e não o que nós escolhemos emitir.
+     */
     'Factura',
     'Factura-Recibo',
     'Factura Genérica',
@@ -93,9 +154,7 @@ test.group('tipos de documento — cobertura do Decreto Presidencial 71/25', () 
     'Autofacturação',
     'Nota de Crédito',
     'Nota de Débito',
-    'Talão de Venda',
     'Aviso de Cobrança',
-    'Aviso de Cobrança-Recibo',
     'Recibo',
     'Outros Recibos',
     'Estorno',

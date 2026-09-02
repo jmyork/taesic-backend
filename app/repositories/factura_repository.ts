@@ -1,33 +1,72 @@
 import { DateTime } from 'luxon'
 import db from '@adonisjs/lucid/services/db'
+import type { TransactionClientContract } from '@adonisjs/lucid/types/database'
 import Factura from '#models/faturacao/factura'
 import Vendas from '#models/faturacao/vendas'
 import FacturaVenda from '#models/faturacao/factura_venda'
 import Cliente from '#models/cliente'
 import Empresa from '#models/empresa'
 import { proximoNumeroPorSerie } from '../helpers/sequencial_numero.js'
-import { definicaoDe, serieDefault } from '../helpers/tipos_de_documento.js'
+import { aceitaVencimento, definicaoDe, serieDefault } from '../helpers/tipos_de_documento.js'
 import {
   type EstadoDoDocumento,
   TIPOS_QUE_LIQUIDAM,
   TIPOS_QUE_TITULAM_A_VENDA,
-  jaIncluiPagamento,
+  estaEmDivida,
   liquida,
   podeSerAnulado,
   proximosDocumentos,
   titulaAVenda,
 } from '../helpers/regras_de_emissao.js'
-import { AnularFacturaDTO, EmitirFacturaDTO, FacturaQueryDTO, ShowFacturaDTO } from '#dtos/factura_dto'
+import {
+  AnularFacturaDTO,
+  ConfirmarRecebimentoDTO,
+  EmitirFacturaDTO,
+  FacturaQueryDTO,
+  ShowFacturaDTO,
+} from '#dtos/factura_dto'
 import VendaNaoFechadaException from '#exceptions/venda_nao_fechada_exception'
 import VendaObrigatoriaException from '#exceptions/venda_obrigatoria_exception'
 import VendaJaFacturadaException from '#exceptions/venda_ja_facturada_exception'
 import DocumentoJaPagoException from '#exceptions/documento_ja_pago_exception'
+import DocumentoSemDividaException from '#exceptions/documento_sem_divida_exception'
 import ValorExcedeOrigemException from '#exceptions/valor_excede_origem_exception'
 import DocumentoComDependentesException from '#exceptions/documento_com_dependentes_exception'
 import FacturaJaAnuladaException from '#exceptions/factura_ja_anulada_exception'
 import ValorDoDocumentoEmFaltaException from '#exceptions/valor_do_documento_em_falta_exception'
 import PeriodoDeFacturacaoInvalidoException from '#exceptions/periodo_de_facturacao_invalido_exception'
+import VendaForaDoPeriodoException from '#exceptions/venda_fora_do_periodo_exception'
 import DocumentoDeOrigemInvalidoException from '#exceptions/documento_de_origem_invalido_exception'
+
+/**
+ * O SQL de «este documento já foi liquidado».
+ *
+ * Repete-se em `contasAReceber()`, no filtro `em_divida` da listagem e no comando
+ * dos avisos de cobrança. Escrito três vezes, divergiria — e a divergência daria
+ * um mapa de cobranças a reclamar dinheiro que já entrou, ou a esconder dívida
+ * que não entrou. É a tradução literal do `estaEmDivida()` que as regras de
+ * emissão declaram.
+ *
+ * ── Os tipos vão INTERPOLADOS, e não como parâmetro ──────────────────────────
+ *
+ * `whereRaw` do Lucid recusa um array como valor de ligação («The values in where
+ * clause must not be object or array»), e um `IN (?)` precisa exactamente disso.
+ * A alternativa seria um `?` por tipo, montado à mão, e ficaria a depender de a
+ * contagem dos dois lados concordar.
+ *
+ * A interpolação é segura aqui e só aqui: `TIPOS_QUE_LIQUIDAM` é uma constante
+ * deste repositório, escrita em TypeScript, que nunca vê uma entrada de
+ * utilizador. Ver `literalSql()` em `database/helpers/esquema.ts` para o mesmo
+ * problema no lado das migrações.
+ */
+const SQL_TEM_RECIBO = `
+  EXISTS (
+    SELECT 1 FROM factura AS recibo
+     WHERE recibo.documento_origem_id = factura.id
+       AND recibo.tipo IN (${TIPOS_QUE_LIQUIDAM.map((tipo) => `'${tipo}'`).join(', ')})
+       AND recibo.status <> 'anulada'
+       AND recibo.deleted_at IS NULL
+  )`
 
 export default class FacturaRepository {
   /**
@@ -44,6 +83,17 @@ export default class FacturaRepository {
       .leftJoin('vendas', 'vendas.id', 'factura.venda_id')
       .leftJoin('caixa', 'caixa.id', 'vendas.caixa_id')
       .leftJoin('user', 'user.id', 'caixa.user_id')
+      .leftJoin('pos', 'pos.id', 'caixa.pos_id')
+      /*
+       * Quem EMITIU o documento — um segundo join a `user`, com outro apelido.
+       *
+       * Tem de ser separado do de cima: aquele chega por `venda → caixa → user` e
+       * responde «quem vendeu», e mais de metade dos tipos não tem venda nenhuma.
+       * Uma nota de crédito, um recibo ou um aviso de cobrança apareciam com o
+       * responsável a traço — documentos que mexem em dinheiro sem ninguém
+       * identificado por trás.
+       */
+      .leftJoin('user as emissor', 'emissor.id', 'factura.emitido_por_user_id')
       .select(
         'factura.*',
         'empresa.nome as empresa_nome',
@@ -51,7 +101,33 @@ export default class FacturaRepository {
         'empresa.localizacao as empresa_localizacao',
         'empresa.contacto as empresa_contacto',
         'user.id as vendedor_id',
-        'user.username as vendedor_nome'
+        'user.username as vendedor_nome',
+        'emissor.username as emitido_por_nome',
+        /*
+         * O posto de atendimento onde a operação foi feita.
+         *
+         * Vazio nos documentos que não nascem de uma venda — um recibo ou uma nota
+         * não se passam num posto, passam-se sobre um documento. Chega pelo mesmo
+         * caminho do vendedor (venda → caixa), porque é a caixa que sabe em que
+         * posto estava aberta.
+         */
+        'pos.nome as pos_nome',
+        /*
+         * O ESTADO do documento, resolvido na mesma consulta.
+         *
+         * Quem lê a lista precisa de saber o que ainda se pode fazer a cada linha:
+         * já tem recibo? a mercadoria já saiu? Sem isto, o ecrã oferecia «recebido»
+         * em documentos já liquidados — e a acção só falhava depois de clicada, com
+         * um `DOCUMENTO_JA_PAGO` que ninguém pediu. A alternativa era um pedido por
+         * linha, que numa página de vinte documentos são vinte pedidos.
+         *
+         * `SQL_TEM_RECIBO` é a MESMA expressão que o filtro `em_divida` e o mapa de
+         * cobranças usam. Ter de bater certo é o ponto: a lista não pode mostrar por
+         * receber o que o botão considera pago.
+         */
+        db.raw(`${SQL_TEM_RECIBO} AS liquidado`),
+        'vendas.entregue_em as venda_entregue_em',
+        'vendas.condicao_pagamento as venda_condicao_pagamento'
       )
   }
 
@@ -116,6 +192,29 @@ export default class FacturaRepository {
     }
 
     /*
+     * O que está por receber, na LISTAGEM de documentos.
+     *
+     * É o ponto 5 do pedido: quem abre a lista de facturas tem de conseguir ver o
+     * que a empresa tem a receber sem ir a outro ecrã. `contasAReceber()` responde
+     * à mesma pergunta com os totais e a antiguidade; isto é o mesmo recorte,
+     * aplicado à lista de sempre.
+     *
+     * `vencidas` implica `em_divida` — uma factura já paga não está em atraso, está
+     * paga. Sem essa implicação, filtrar por vencidas devolvia todas as facturas
+     * antigas, pagas ou não.
+     */
+    if (data.em_divida || data.vencidas) {
+      query = query
+        .whereNotNull('factura.data_vencimento')
+        .whereNot('factura.status', 'anulada')
+        .whereNot((sub) => sub.whereRaw(SQL_TEM_RECIBO))
+    }
+
+    if (data.vencidas) {
+      query = query.where('factura.data_vencimento', '<', DateTime.now().startOf('day').toSQLDate()!)
+    }
+
+    /*
      * Pesquisa livre: nome e NIF do adquirente, mais a referência.
      *
      * A referência (`FT FT2026/14`) é derivada e não existe como coluna — procura-se
@@ -137,16 +236,25 @@ export default class FacturaRepository {
     }
 
     /*
-     * A ordenação passa a ser por série e depois por número.
+     * ── Do mais recente para o mais antigo ──────────────────────────────────────
      *
-     * Só por `numero`, com várias séries na mesma listagem, o resultado
-     * intercalava a factura 7 com a nota de crédito 7 — dois documentos
-     * diferentes com o mesmo número, que é precisamente o que a numeração por
-     * tipo torna normal. Ordenar por série primeiro devolve cada livro seguido.
+     * A ordenação era por ano, depois por SÉRIE, depois por número. Isso agrupava
+     * cada livro seguido — o que faz sentido dentro da secção de um tipo — mas
+     * numa lista de todos os documentos dava um resultado que ninguém pede: a
+     * série `AC2026` inteira primeiro, depois a `FG2026` inteira, e o documento
+     * emitido há cinco minutos algures a meio, por ordem alfabética do seu código.
+     *
+     * Quem abre esta lista quer ver o que aconteceu agora. Ordena-se pela data de
+     * emissão, descendente.
+     *
+     * O `numero` desempata, e desempata mesmo: vários documentos da mesma série
+     * emitidos no mesmo segundo (o fecho de uma venda emite um, a entrega de um
+     * adiantamento emite outro) ficariam em ordem indefinida, e uma ordem
+     * indefinida na chave de paginação faz linhas repetirem-se numa página e
+     * desaparecerem de outra.
      */
     return query
-      .orderBy('factura.ano', 'desc')
-      .orderBy('factura.serie', 'asc')
+      .orderBy('factura.data_emissao', 'desc')
       .orderBy('factura.numero', 'desc')
       .paginate(data.page ?? 1, data.limit ?? 20)
   }
@@ -178,6 +286,15 @@ export default class FacturaRepository {
     const estado: EstadoDoDocumento = {
       tipo: factura.tipo,
       anulado: factura.status === 'anulada',
+      /*
+       * Nasceu em dívida — lido da coluna e não de uma lista de tipos.
+       *
+       * Era aqui que estava o buraco: uma `Factura` paga ao balcão e uma `Factura`
+       * a 30 dias são o mesmo tipo, e a antiga lista `TIPOS_JA_PAGOS` tinha de
+       * decidir por ambas. Decidia que nenhuma estava paga, e o ecrã oferecia
+       * «registar o pagamento» de dinheiro que já estava na caixa.
+       */
+      aCredito: factura.data_vencimento !== null && factura.data_vencimento !== undefined,
       liquidado: dependentes.some((d) => (TIPOS_QUE_LIQUIDAM as readonly string[]).includes(d.tipo)),
       temDependentes: dependentes.length > 0,
     }
@@ -186,6 +303,12 @@ export default class FacturaRepository {
       documento: factura,
       proximos: proximosDocumentos(estado),
       pode_anular: podeSerAnulado(estado),
+      /*
+       * A mesma pergunta que a listagem e o mapa de cobranças fazem, respondida
+       * pela MESMA função pura. O ecrã de detalhe não tem de a recalcular — e, se
+       * a recalculasse, mais cedo ou mais tarde discordaria dos outros dois.
+       */
+      em_divida: estaEmDivida(estado),
     }
   }
 
@@ -202,8 +325,11 @@ export default class FacturaRepository {
    * `emitir()` e em `vendasPorFacturar()` — se divergirem, o ecrã oferece o que a
    * emissão recusa.
    */
-  private async vendaJaTitulada(vendaId: string): Promise<boolean> {
-    const porColuna = await Factura.query()
+  private async vendaJaTitulada(
+    vendaId: string,
+    trx?: TransactionClientContract
+  ): Promise<boolean> {
+    const porColuna = await Factura.query({ client: trx })
       .where('venda_id', vendaId)
       .whereIn('tipo', [...TIPOS_QUE_TITULAM_A_VENDA])
       .whereNot('status', 'anulada')
@@ -212,7 +338,7 @@ export default class FacturaRepository {
 
     if (porColuna) return true
 
-    const porGlobal = await FacturaVenda.query()
+    const porGlobal = await FacturaVenda.query({ client: trx })
       .where('factura_venda.venda_id', vendaId)
       .join('factura', 'factura.id', 'factura_venda.factura_id')
       .whereNot('factura.status', 'anulada')
@@ -286,21 +412,36 @@ export default class FacturaRepository {
    * por chave estrangeira, tal como já acontecia com os dois primeiros. Um
    * documento fiscal tem de continuar a dizer a verdade sobre o dia em que foi
    * emitido, mesmo depois de o cliente mudar de morada ou de ser apagado.
+   *
+   * ── `trxExterna`, e porque é que ela passou a existir ────────────────────────
+   *
+   * O fecho da venda passou a emitir o documento — deixou de ser um segundo passo
+   * manual noutro ecrã. Emitir DEPOIS da transacção do fecho abria uma janela em
+   * que a venda estava fechada, o stock tinha saído, e o documento fiscal não
+   * existia: um dia com vendas a mais do que documentos, e nada a dizer quais.
+   *
+   * Com a transacção do chamador, ou as duas coisas ficam gravadas ou nenhuma
+   * fica. Sem ela — a emissão manual, que continua a existir — abre a sua própria,
+   * exactamente como antes.
    */
-  async emitir(data: EmitirFacturaDTO) {
-    const empresa = await Empresa.findByOrFail('company_alias', data.company_alias)
+  async emitir(data: EmitirFacturaDTO, trxExterna?: TransactionClientContract) {
+    const empresa = await Empresa.query({ client: trxExterna })
+      .where('company_alias', data.company_alias)
+      .firstOrFail()
     const definicao = definicaoDe(data.tipo)
 
     /*
-     * 1. A venda, quando o tipo a exige.
+     * 1. A venda — exigida em uns tipos, aceite noutros, proibida no resto.
      *
-     * Os tipos que não a exigem nunca a procuram — um recibo ou uma factura de
-     * adiantamento não têm venda nenhuma, e ir buscá-la "se vier" abriria a porta
-     * a emitir um recibo agarrado a uma venda por engano.
+     * Os tipos que a PROÍBEM nunca a procuram: ir buscá-la «se vier» abriria a
+     * porta a emitir um recibo agarrado a uma venda por engano. É por isso que
+     * `aceitaVenda` existe ao lado de `exigeVenda` — a factura de adiantamento
+     * tanto sai de um sinal recebido à cabeça (sem venda) como do balcão com o
+     * carrinho já feito (com venda, e é dela que tira as linhas).
      */
     let venda: Vendas | null = null
 
-    if (definicao.exigeVenda) {
+    if (definicao.exigeVenda && !data.venda_id) {
       /*
        * O validator já exigiu `venda_id` para estes tipos (regra 7.20). Isto é a
        * segunda defesa, para quem chame o repositório directamente: sem ela o
@@ -308,11 +449,11 @@ export default class FacturaRepository {
        * defined» — um 500 que não diz que campo falta. Foi assim que este caminho
        * rebentou em `relatorios_repository.spec.ts`.
        */
-      if (!data.venda_id) {
-        throw new VendaObrigatoriaException()
-      }
+      throw new VendaObrigatoriaException()
+    }
 
-      venda = await Vendas.query()
+    if (definicao.aceitaVenda && data.venda_id) {
+      venda = await Vendas.query({ client: trxExterna })
         .join('caixa', 'caixa.id', 'vendas.caixa_id')
         .join('pos', 'pos.id', 'caixa.pos_id')
         .where('pos.empresa_id', empresa.id)
@@ -327,17 +468,21 @@ export default class FacturaRepository {
       /*
        * REGRA 1 — uma venda é titulada por UM documento.
        *
-       * Factura, factura-recibo, factura genérica e talão de venda são alternativas
-       * entre si, não cumulativas (art.º 5.º). Sem esta verificação, a mesma
-       * operação era declarada às Finanças tantas vezes quantas alguém carregasse
-       * no botão — a base de desenvolvimento tinha uma venda de 20.000 Kz com OITO
-       * documentos a titulá-la.
+       * Factura, factura-recibo e factura genérica são alternativas entre si, não
+       * cumulativas (art.º 5.º). Sem esta verificação, a mesma operação era
+       * declarada às Finanças tantas vezes quantas alguém carregasse no botão — a
+       * base de desenvolvimento tinha uma venda de 20.000 Kz com OITO documentos a
+       * titulá-la.
+       *
+       * A factura de ADIANTAMENTO passa aqui ao lado, e é deliberado: titula um
+       * recebimento, não uma entrega. A venda continua por titular até o produto
+       * sair, e é `vendas_repository.entregar()` que emite o documento que a titula.
        *
        * Os anulados não contam: anular existe precisamente para se poder emitir de
        * novo depois de um erro.
        */
       if (titulaAVenda(data.tipo)) {
-        if (await this.vendaJaTitulada(venda.id)) {
+        if (await this.vendaJaTitulada(venda.id, trxExterna)) {
           throw new VendaJaFacturadaException()
         }
       }
@@ -360,7 +505,7 @@ export default class FacturaRepository {
         throw new DocumentoDeOrigemInvalidoException()
       }
 
-      origem = await Factura.query()
+      origem = await Factura.query({ client: trxExterna })
         .where('id', data.documento_origem_id)
         .where('empresa_id', empresa.id)
         .whereNull('deleted_at')
@@ -371,18 +516,35 @@ export default class FacturaRepository {
       }
 
       /*
-       * REGRA 2 e 3 — um recibo só sobre um documento por pagar, e um só.
+       * REGRAS 2, 3 e 5 — o recibo e o aviso de cobrança só sobre uma DÍVIDA.
        *
-       * Sobre uma factura-recibo ou um talão de venda nunca faz sentido: esses
-       * titulam a operação E o pagamento no mesmo acto. Sobre uma factura que já
-       * tem recibo, seria receber o mesmo dinheiro duas vezes no papel.
+       * ── O que mudou, e porque é que a versão anterior não podia funcionar ────
+       *
+       * A pergunta era feita ao TIPO (`jaIncluiPagamento`): uma factura-recibo já
+       * está paga, uma factura não. Isso descrevia o mundo enquanto o único
+       * caminho era emitir tudo à mão, mas deixou de descrever no momento em que
+       * a venda passou a emitir por si — porque a mesma `Factura` tanto sai de uma
+       * venda a prazo (dívida) como não sai de todo do fluxo a pronto pagamento.
+       *
+       * Passa a ser feita à LINHA: um documento está em dívida se tem
+       * `data_vencimento` e não tem recibo por cima. É a definição escrita em
+       * `estaEmDivida()`, e é a mesma que o mapa de cobranças usa — não pode
+       * haver um documento que apareça por receber num sítio e recuse o recibo no
+       * outro.
+       *
+       * As duas recusas têm mensagens diferentes de propósito: «nunca foi uma
+       * dívida» e «já foi paga» mandam procurar coisas diferentes.
+       *
+       * A factura de ADIANTAMENTO fica de fora, e é de propósito: aí o dinheiro
+       * entra primeiro e a mercadoria sai depois, portanto não há recebimento
+       * nenhum por confirmar. O que ela espera é a entrega.
        */
-      if (liquida(data.tipo)) {
-        if (jaIncluiPagamento(origem.tipo)) {
-          throw new DocumentoJaPagoException()
+      if (liquida(data.tipo) || data.tipo === 'Aviso de Cobrança') {
+        if (!origem.data_vencimento) {
+          throw new DocumentoSemDividaException()
         }
 
-        const jaLiquidado = await Factura.query()
+        const jaLiquidado = await Factura.query({ client: trxExterna })
           .where('documento_origem_id', origem.id)
           .whereIn('tipo', [...TIPOS_QUE_LIQUIDAM])
           .whereNot('status', 'anulada')
@@ -392,14 +554,6 @@ export default class FacturaRepository {
         if (jaLiquidado) {
           throw new DocumentoJaPagoException()
         }
-      }
-
-      /*
-       * REGRA 5 — o aviso de cobrança reclama uma dívida, portanto não se emite
-       * sobre um documento que já foi pago.
-       */
-      if (data.tipo === 'Aviso de Cobrança' && jaIncluiPagamento(origem.tipo)) {
-        throw new DocumentoJaPagoException()
       }
     }
 
@@ -420,7 +574,7 @@ export default class FacturaRepository {
         throw new VendaObrigatoriaException()
       }
 
-      vendasCobertas = await Vendas.query()
+      vendasCobertas = await Vendas.query({ client: trxExterna })
         .join('caixa', 'caixa.id', 'vendas.caixa_id')
         .join('pos', 'pos.id', 'caixa.pos_id')
         .where('pos.empresa_id', empresa.id)
@@ -441,14 +595,14 @@ export default class FacturaRepository {
         throw new VendaNaoFechadaException()
       }
 
-      const jaTituladas = await Factura.query()
+      const jaTituladas = await Factura.query({ client: trxExterna })
         .whereIn('venda_id', ids)
         .whereIn('tipo', [...TIPOS_QUE_TITULAM_A_VENDA])
         .whereNot('status', 'anulada')
         .whereNull('deleted_at')
         .first()
 
-      const jaEmOutraGlobal = await FacturaVenda.query()
+      const jaEmOutraGlobal = await FacturaVenda.query({ client: trxExterna })
         .whereIn('factura_venda.venda_id', ids)
         .join('factura', 'factura.id', 'factura_venda.factura_id')
         .whereNot('factura.status', 'anulada')
@@ -478,6 +632,31 @@ export default class FacturaRepository {
 
       if (periodoFim < periodoInicio || periodoFim > limite) {
         throw new PeriodoDeFacturacaoInvalidoException()
+      }
+
+      /*
+       * REGRA 7 — as vendas escolhidas têm de cair DENTRO do período declarado.
+       *
+       * Sem isto, uma global de Janeiro podia cobrir vendas de Março: o documento
+       * declarava um período e titulava outro, e o total não batia com nada. É a
+       * verificação que faltava, e está aqui e não no passo 2b porque só depois de
+       * o período estar validado é que há contra o que comparar.
+       *
+       * O fim do período é INCLUSIVO até ao fim do dia: `vendas.created_at` é um
+       * timestamp, e comparar com a data seca deixaria de fora tudo o que foi
+       * vendido nesse dia depois da meia-noite — ou seja, o dia inteiro. É a mesma
+       * armadilha do filtro de datas da listagem.
+       */
+      const inicio = periodoInicio.startOf('day')
+      const fim = periodoFim.plus({ days: 1 }).startOf('day')
+
+      const foraDoPeriodo = vendasCobertas.filter((v) => {
+        const quando = v.createdAt
+        return !quando || quando < inicio || quando >= fim
+      })
+
+      if (foraDoPeriodo.length > 0) {
+        throw new VendaForaDoPeriodoException()
       }
     }
 
@@ -511,7 +690,7 @@ export default class FacturaRepository {
      * (juros, encargos), e não há tecto para isso que se possa derivar da origem.
      */
     if (origem && data.tipo === 'Nota de Crédito') {
-      const creditadas = await Factura.query()
+      const creditadas = await Factura.query({ client: trxExterna })
         .where('documento_origem_id', origem.id)
         .where('tipo', 'Nota de Crédito')
         .whereNot('status', 'anulada')
@@ -535,12 +714,41 @@ export default class FacturaRepository {
      * um recibo é do mesmo cliente que a factura que liquida, e obrigar a repeti-lo
      * seria pedir duas vezes o que já se sabe (e deixar as duas versões divergirem).
      */
-    let clienteNome: string | null = origem?.cliente_nome ?? null
-    let clienteNif: string | null = origem?.cliente_nif ?? null
+    /*
+     * ── O que se DERIVA ganha sempre ao que vem no pedido ────────────────────
+     *
+     * A precedência é esta, e a ordem é o que impede um documento de nomear a
+     * pessoa errada:
+     *
+     *   1. a VENDA, quando existe — é a operação real
+     *   2. o documento de ORIGEM, que já traz o adquirente copiado
+     *   3. só então o que vier no pedido
+     *
+     * O pedido é o ÚLTIMO recurso, e tem de ser. Uma nota de crédito que aceitasse
+     * um nome enviado por cima do da factura que rectifica estaria a creditar a
+     * dívida de outra pessoa; um recibo, a dar quitação a quem não pagou. E numa
+     * venda, aceitar um nome do pedido emitiria uma factura a alguém que não
+     * comprou nada.
+     *
+     * Os campos existem para o caso oposto — os documentos que nascem sozinhos, e
+     * sobretudo a AUTOFACTURAÇÃO: emitida pelo adquirente em nome do fornecedor,
+     * sem venda e sem origem de onde derivar fosse o que fosse. Sem eles saía um
+     * documento que não dizia em nome de quem foi emitido, que é a única coisa que
+     * o define — era emitível e inútil.
+     *
+     * A MORADA é a excepção e vale a pena dizer porquê: o art.º 10.º manda constar
+     * a sede do adquirente, e ela pode ser conhecida de quem emite sem estar
+     * gravada no cliente nem na origem. Aceitar a do pedido não permite nomear
+     * outra pessoa — só completa a que já foi nomeada.
+     */
+    let clienteNome: string | null = origem?.cliente_nome ?? data.cliente_nome ?? null
+    let clienteNif: string | null = origem?.cliente_nif ?? data.cliente_nif ?? null
     let clienteMorada: string | null = data.cliente_morada ?? origem?.cliente_morada ?? null
 
     if (venda?.cliente_presencial_id) {
-      const cliente = await Cliente.find(venda.cliente_presencial_id)
+      const cliente = await Cliente.query({ client: trxExterna })
+        .where('id', venda.cliente_presencial_id)
+        .first()
       clienteNome = cliente?.nome ?? null
       clienteNif = cliente?.nif ?? null
       clienteMorada = data.cliente_morada ?? cliente?.endereco ?? null
@@ -551,6 +759,21 @@ export default class FacturaRepository {
     const serie = data.serie ?? serieDefault(data.tipo, ano)
 
     /*
+     * 5b. A data de vencimento — o que torna este documento uma conta a receber.
+     *
+     * Só entra nos tipos que a aceitam. Nos que a proíbem é DESCARTADA em silêncio
+     * e não recusada: quem chama o repositório directamente (o fecho da venda, um
+     * comando) monta o payload a partir de um molde comum, e obrigá-lo a limpar o
+     * campo consoante o tipo espalharia por cada chamador uma regra que vive na
+     * tabela de tipos. Pelo caminho HTTP a recusa acontece antes, no validator,
+     * onde há uma mensagem por campo para quem a enviou por engano.
+     */
+    const dataVencimento =
+      data.data_vencimento && aceitaVencimento(data.tipo)
+        ? DateTime.fromJSDate(data.data_vencimento)
+        : null
+
+    /*
      * Data, hora e local da operação (art.º 10.º). Por omissão são os da emissão —
      * verdade numa venda de balcão. O local por omissão é o da empresa, que é onde
      * a operação de facto ocorreu; indicar outro é para quem factura fora da sede.
@@ -558,13 +781,21 @@ export default class FacturaRepository {
     const dataOperacao = data.data_operacao ? DateTime.fromJSDate(data.data_operacao) : agora
     const localOperacao = data.local_operacao ?? empresa.localizacao ?? null
 
-    const criada = await db.transaction(async (trx) => {
+    /*
+     * A gravação, na transacção do chamador quando ele tiver uma.
+     *
+     * `db.transaction()` do Lucid aninha-se por SAVEPOINT quando lhe passamos um
+     * cliente já em transacção, o que aqui não serve de nada e acrescenta um ponto
+     * de falha. Sem `trxExterna` abre a sua própria, como sempre fez.
+     */
+    const gravar = async (trx: TransactionClientContract) => {
       const proximoNumero = await proximoNumeroPorSerie(trx, empresa.id, Factura, { serie, ano })
 
       const emitida = await Factura.create(
         {
           empresa_id: empresa.id,
           venda_id: venda?.id ?? null,
+          emitido_por_user_id: data.emitido_por_user_id ?? null,
           documento_origem_id: origem?.id ?? null,
           numero: proximoNumero,
           serie,
@@ -578,6 +809,7 @@ export default class FacturaRepository {
           data_emissao: agora,
           data_operacao: dataOperacao,
           local_operacao: localOperacao,
+          data_vencimento: dataVencimento,
           periodo_inicio: periodoInicio,
           periodo_fim: periodoFim,
           observacoes: data.observacoes ?? null,
@@ -600,7 +832,9 @@ export default class FacturaRepository {
       }
 
       return emitida
-    })
+    }
+
+    const criada = trxExterna ? await gravar(trxExterna) : await db.transaction(gravar)
 
     /*
      * Relido pelo mesmo caminho que o `GET` usa.
@@ -610,8 +844,263 @@ export default class FacturaRepository {
      * vendas→caixa→user). Sem esta releitura, o mesmo documento tinha DUAS formas
      * conforme o verbo: o `POST` sem vendedor, o `GET` com. Apanhado a exercitar o
      * fluxo por HTTP, onde a resposta da emissão vinha com `vendedor_nome` vazio.
+     *
+     * A releitura corre DENTRO da transacção do chamador quando há uma — de fora
+     * dela a linha ainda não é visível, e o que voltava era um 404 no meio de um
+     * fecho de venda que tinha corrido bem.
      */
-    return this.findOrFail({ id: criada.id, company_alias: data.company_alias })
+    const releitura = this.baseQuery()
+      .where('empresa.company_alias', data.company_alias)
+      .where('factura.id', criada.id)
+
+    if (trxExterna) releitura.useTransaction(trxExterna)
+
+    return releitura.firstOrFail()
+  }
+
+  /* ── Contas a receber ────────────────────────────────────────────────────── */
+
+  /**
+   * O que a empresa tem por receber — o ponto 5 do pedido.
+   *
+   * ── O que este método é, e o que não é ───────────────────────────────────────
+   *
+   * Até aqui a resposta a esta pergunta era um zero literal:
+   * `relatorios_repository.dashboardExecutivo()` devolvia `valor_por_receber_mes: 0`
+   * com um comentário a explicar que não havia venda a crédito neste projecto.
+   * Havia razão para o comentário — o fecho da venda exigia o dinheiro todo — e
+   * deixou de haver.
+   *
+   * Devolve as facturas em dívida (a lista, para se poder confirmar cada uma) mais
+   * os totais e a antiguidade (o que se lê de relance). O valor devido de cada
+   * documento **não é o `total`**: as notas de crédito e de débito emitidas sobre
+   * ele entram na conta, e cobrar o valor original de uma factura já creditada é
+   * reclamar dinheiro que a própria empresa reconheceu não lhe ser devido.
+   */
+  async contasAReceber(data: { company_alias: string; page?: number; limit?: number }) {
+    const hoje = DateTime.now().startOf('day')
+
+    /*
+     * `valor_em_divida` e `dias_em_atraso` saem da própria query, e não de um ciclo
+     * em JavaScript sobre a página: os totais abaixo têm de ser da DÍVIDA INTEIRA,
+     * não da página que se está a mostrar, e as duas contas têm de usar exactamente
+     * a mesma expressão. Somar em memória o que a página trouxe daria um total que
+     * muda quando se muda de página.
+     */
+    const SQL_VALOR_EM_DIVIDA = `
+      factura.total
+        + COALESCE((SELECT SUM(nd.total) FROM factura AS nd
+                     WHERE nd.documento_origem_id = factura.id
+                       AND nd.tipo = 'Nota de Débito'
+                       AND nd.status <> 'anulada' AND nd.deleted_at IS NULL), 0)
+        - COALESCE((SELECT SUM(nc.total) FROM factura AS nc
+                     WHERE nc.documento_origem_id = factura.id
+                       AND nc.tipo = 'Nota de Crédito'
+                       AND nc.status <> 'anulada' AND nc.deleted_at IS NULL), 0)`
+
+    const emDivida = () =>
+      this.baseQuery()
+        .where('empresa.company_alias', data.company_alias)
+        .whereNull('factura.deleted_at')
+        .whereNot('factura.status', 'anulada')
+        .whereNotNull('factura.data_vencimento')
+        .whereNot((sub) => sub.whereRaw(SQL_TEM_RECIBO))
+
+    const paginator = await emDivida()
+      .select(
+        db.raw(`${SQL_VALOR_EM_DIVIDA} AS valor_em_divida`),
+        db.raw(`GREATEST(DATEDIFF(?, factura.data_vencimento), 0) AS dias_em_atraso`, [
+          hoje.toSQLDate()!,
+        ])
+      )
+      /*
+       * A mais antiga primeiro. Um mapa de cobranças ordenado por data de emissão
+       * enterra no fim a dívida que está há mais tempo por cobrar, que é
+       * exactamente a que alguém tem de ver primeiro.
+       */
+      .orderBy('factura.data_vencimento', 'asc')
+      .paginate(data.page ?? 1, data.limit ?? 20)
+
+    for (const factura of paginator.all()) {
+      /*
+       * Os dois campos calculados chegam em `$extras` e o `serializeExtras` do
+       * model já os deixa passar — mas o `dias_em_atraso` do MySQL vem como string
+       * num `DATEDIFF`, e um ecrã que o compare com um número acaba a ordenar
+       * «10» antes de «9».
+       */
+      factura.$extras.valor_em_divida = Number(factura.$extras.valor_em_divida ?? 0)
+      factura.$extras.dias_em_atraso = Number(factura.$extras.dias_em_atraso ?? 0)
+    }
+
+    /*
+     * Os totais, sobre a dívida inteira. `vencido` é o que já passou do prazo;
+     * `a_vencer` é o que ainda está dentro dele — e são coisas diferentes para
+     * quem gere tesouraria: uma é dinheiro em risco, a outra é dinheiro esperado.
+     */
+    const [resumo] = (await emDivida()
+      .clearSelect()
+      .clearOrder()
+      .select(
+        db.raw(`COUNT(*) AS documentos`),
+        db.raw(`COALESCE(SUM(${SQL_VALOR_EM_DIVIDA}), 0) AS total`),
+        db.raw(
+          `COALESCE(SUM(CASE WHEN factura.data_vencimento < ?
+                             THEN ${SQL_VALOR_EM_DIVIDA} ELSE 0 END), 0) AS vencido`,
+          [hoje.toSQLDate()!]
+        )
+      )
+      .pojo()) as { documentos: number; total: number; vencido: number }[]
+
+    const total = Number(resumo?.total ?? 0)
+    const vencido = Number(resumo?.vencido ?? 0)
+
+    return {
+      resumo: {
+        documentos: Number(resumo?.documentos ?? 0),
+        total: Math.round(total * 100) / 100,
+        vencido: Math.round(vencido * 100) / 100,
+        a_vencer: Math.round((total - vencido) * 100) / 100,
+      },
+      facturas: paginator,
+    }
+  }
+
+  /**
+   * Confirmar que o dinheiro entrou — e emitir o recibo.
+   *
+   * ── Porque é que isto emite um documento e não marca um campo ────────────────
+   *
+   * Porque quem paga tem direito à prova de que pagou. Um estado gravado sem
+   * documento seria a empresa a saber que recebeu e o cliente a ficar sem nada — e
+   * seria mais um campo a ter de ser mantido em sintonia com os documentos, com o
+   * mapa de cobranças a mentir no dia em que um caminho se esquecesse dele.
+   *
+   * Emitido o recibo, a factura sai do mapa sozinha: `estaEmDivida()` deixa de a
+   * dar como devida porque passou a haver um recibo por cima. Nada mais é escrito.
+   *
+   * ── O valor ─────────────────────────────────────────────────────────────────
+   *
+   * O que resta, não o total original — as notas de crédito e de débito emitidas
+   * entretanto contam. Um recibo pelo total de uma factura já creditada declararia
+   * ter recebido mais do que era devido.
+   */
+  async confirmarRecebimento(data: ConfirmarRecebimentoDTO) {
+    const factura = await this.findOrFail({ id: data.id, company_alias: data.company_alias })
+
+    if (!factura.data_vencimento) {
+      throw new DocumentoSemDividaException()
+    }
+
+    const rectificacoes = await Factura.query()
+      .where('documento_origem_id', factura.id)
+      .whereIn('tipo', ['Nota de Crédito', 'Nota de Débito'])
+      .whereNot('status', 'anulada')
+      .whereNull('deleted_at')
+      .select('tipo', 'total')
+
+    const ajuste = rectificacoes.reduce(
+      (soma, r) => soma + (r.tipo === 'Nota de Débito' ? Number(r.total) : -Number(r.total)),
+      0
+    )
+
+    const valor = Math.round((Number(factura.total) + ajuste) * 100) / 100
+
+    /*
+     * `emitir()` faz o resto das verificações — que a factura não está anulada, que
+     * não tem já um recibo — e é deliberado passar por lá em vez de escrever a
+     * linha aqui: um segundo caminho de emissão seria um segundo sítio onde a
+     * numeração por série pode correr mal.
+     */
+    return this.emitir({
+      company_alias: data.company_alias,
+      tipo: 'Recibo',
+      documento_origem_id: factura.id,
+      total: valor,
+      data_operacao: data.data_recebimento,
+      emitido_por_user_id: data.emitido_por_user_id ?? null,
+      observacoes: data.observacoes,
+    })
+  }
+
+  /**
+   * ── TODOS os documentos de uma mesma operação ────────────────────────────────
+   *
+   * Uma operação comercial raramente cabe num documento só. Vender a prazo produz
+   * uma factura hoje e um recibo quando o dinheiro entra; reembolsar produz uma
+   * nota de crédito sobre a factura que a titulou; um adiantamento produz a
+   * factura do recebimento e depois o documento da entrega. São dois, três, às
+   * vezes quatro papéis que só fazem sentido juntos — e quem os quer (o cliente,
+   * o contabilista, a AGT numa inspecção) quer-os todos.
+   *
+   * Sem isto, o ecrã imprimia UM documento e obrigava a procurar os outros à mão,
+   * um a um, sem nada que dissesse quantos eram nem onde estavam.
+   *
+   * ── Como se acham ────────────────────────────────────────────────────────────
+   *
+   * Duas ligações, e é preciso seguir as duas:
+   *
+   *  · `documento_origem_id` — a corrente entre documentos (factura → recibo,
+   *    factura → nota de crédito, e a nota de crédito de uma nota de débito).
+   *  · `venda_id` — os que nascem da mesma venda sem se apontarem uns aos outros,
+   *    como a factura de adiantamento e o documento final da entrega.
+   *
+   * Anda-se nas duas direcções até o conjunto deixar de crescer: partir só para
+   * baixo perderia a factura quando se entra pelo recibo, e partir só para cima
+   * perderia o recibo quando se entra pela factura. O limite de voltas é uma
+   * salvaguarda contra um ciclo em dados corrompidos — sem ele, um documento que
+   * se aponte a si próprio prenderia o pedido para sempre.
+   *
+   * Os anulados VÊM: fazem parte da história da operação, e um documento anulado
+   * que desaparecesse do conjunto deixaria um buraco por explicar na sequência
+   * numérica. Quem imprime decide o que faz com eles.
+   */
+  async documentosDaOperacao(data: ShowFacturaDTO) {
+    const inicial = await this.findOrFail(data)
+
+    const ids = new Set<string>([inicial.id])
+    const vendas = new Set<string>()
+    if (inicial.venda_id) vendas.add(inicial.venda_id)
+
+    for (let volta = 0; volta < 10; volta++) {
+      const antes = ids.size + vendas.size
+
+      const ligados = await Factura.query()
+        .where('empresa_id', inicial.empresa_id)
+        .whereNull('deleted_at')
+        .where((sub) => {
+          // para baixo: quem aponta para um dos que já temos
+          sub.whereIn('documento_origem_id', [...ids])
+          // para cima: o documento de origem dos que já temos
+          sub.orWhereIn('id', [...ids])
+          // ao lado: os que nascem da mesma venda
+          if (vendas.size > 0) sub.orWhereIn('venda_id', [...vendas])
+        })
+        .select('id', 'documento_origem_id', 'venda_id')
+
+      for (const l of ligados) {
+        ids.add(l.id)
+        if (l.documento_origem_id) ids.add(l.documento_origem_id)
+        if (l.venda_id) vendas.add(l.venda_id)
+      }
+
+      if (ids.size + vendas.size === antes) break
+    }
+
+    /*
+     * A releitura passa por `baseQuery()` de propósito: os documentos vão ser
+     * IMPRESSOS, e o impresso precisa do nome e do NIF da empresa, do vendedor e
+     * do posto — que são joins, não colunas de `factura`. Devolver as linhas cruas
+     * daria papéis sem cabeçalho.
+     *
+     * Por emissão, e não por tipo: é a ordem em que a operação aconteceu, e é
+     * assim que a sequência se lê (factura, depois o recibo que a liquidou).
+     */
+    return this.baseQuery()
+      .where('empresa.company_alias', data.company_alias)
+      .whereIn('factura.id', [...ids])
+      .whereNull('factura.deleted_at')
+      .orderBy('factura.data_emissao', 'asc')
+      .orderBy('factura.numero', 'asc')
   }
 
   /**

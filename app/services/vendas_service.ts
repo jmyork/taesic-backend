@@ -1,5 +1,12 @@
 import vendasRepository from '#repositories/vendas_repository'
-import { CreateVendasDTO,VendaCloseDTO, VendaShowDTO, VendasQueryDTO } from '#dtos/vendas_dto'
+import {
+  CreateVendasDTO,
+  VendaAjustarDTO,
+  VendaCloseDTO,
+  VendaEntregarDTO,
+  VendaShowDTO,
+  VendasQueryDTO,
+} from '#dtos/vendas_dto'
 
 export default class vendasService {
     repo = new vendasRepository()
@@ -18,6 +25,16 @@ export default class vendasService {
 
     cancel(data: VendaCloseDTO) {
         return this.repo.cancel(data)
+    }
+
+    /** Entregar o produto de uma venda por adiantamento — dá baixa no stock e titula a venda. */
+    entregar(data: VendaEntregarDTO) {
+        return this.repo.entregar(data)
+    }
+
+    /** Ajustar uma venda fechada para cima — emite a nota de débito. */
+    ajustar(data: VendaAjustarDTO) {
+        return this.repo.ajustar(data)
     }
 
     // update(id: string, data: UpdateVendasDTO) {

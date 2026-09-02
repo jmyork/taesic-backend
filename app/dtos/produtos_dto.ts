@@ -27,7 +27,8 @@ export interface CreateprodutosDTO {
   formato_id?: string | undefined
   fabricante_id?: string | undefined
   empresa_id?: string | undefined
-  descricao: string
+  /** Opcional — o nome basta para identificar um produto. Ver `produtos_validator.ts`. */
+  descricao?: string
   nome: string
   is_service: boolean
   // só relevante para serviços — ver comentário no model `produtos.ts`.

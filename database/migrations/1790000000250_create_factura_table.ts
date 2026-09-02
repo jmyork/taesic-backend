@@ -60,6 +60,27 @@ export default class extends BaseSchema {
           table.uuid('venda_id').nullable()
 
           /**
+           * ── QUEM EMITIU o documento ──────────────────────────────────────────
+           *
+           * Não confundir com o vendedor. O vendedor resolve-se por
+           * `venda → caixa → user` e só existe nos documentos que nascem de uma
+           * venda — pouco mais de um terço dos tipos. Uma nota de crédito, um
+           * recibo, um aviso de cobrança e um estorno não têm venda nenhuma por
+           * trás, e por isso apareciam com o responsável a traço: documentos que
+           * movem dinheiro sem ninguém identificado a assiná-los.
+           *
+           * Anulável por duas razões legítimas, e não por descuido: os avisos de
+           * cobrança emitidos pela varredura diária (`aviso-cobranca:emitir`) não
+           * têm utilizador nenhum por trás — nasceram de um prazo que passou —, e
+           * os documentos gravados antes desta coluna existir não têm como saber
+           * quem os emitiu. Quem lê mostra "Sistema" no primeiro caso.
+           *
+           * `RESTRICT` na chave: apagar o utilizador que assinou um documento
+           * fiscal apagaria a única identificação de quem o emitiu.
+           */
+          table.uuid('emitido_por_user_id').nullable()
+
+          /**
            * Sequencial DENTRO da série — não por empresa.
            *
            * Sozinho não identifica nada: pode haver uma nota de crédito n.º 14 e
@@ -136,6 +157,40 @@ export default class extends BaseSchema {
           table.string('local_operacao', 255).nullable()
 
           /**
+           * A data em que este documento tem de estar pago.
+           *
+           * ── É a coluna que define uma conta a receber ──────────────────────
+           *
+           * Até esta coluna existir, o sistema não sabia responder a «o que é que
+           * a empresa tem por receber». Não era uma omissão do relatório — era uma
+           * omissão do MODELO: uma venda só fechava com o dinheiro todo em cima do
+           * balcão, e portanto nunca havia nada por receber.
+           * `relatorios_repository.dashboardExecutivo()` devolvia literalmente
+           * `valor_por_receber_mes: 0`, com um comentário a explicar porquê.
+           *
+           * A regra das contas a receber é uma linha, e está escrita em
+           * `estaEmDivida()`:
+           *
+           *     está em dívida  ⇔  tem `data_vencimento`  e  não tem recibo por cima
+           *
+           * ── Porquê uma data e não um estado «paga/por pagar» ───────────────
+           *
+           * Um campo de estado teria de ser mantido em sintonia com os documentos
+           * que o alteram — o recibo que liquida, a nota de crédito que reduz, a
+           * anulação que apaga tudo. O dia em que um desses caminhos se esquecesse
+           * de o actualizar, o mapa de cobranças passaria a mentir sem nada a
+           * assinalar. A data não se desactualiza: é um facto do momento da
+           * emissão, e quem quer saber se ainda há dívida pergunta aos documentos
+           * que apontam para esta linha.
+           *
+           * Anulável, e é o normal: a maior parte dos documentos nasce sem ela —
+           * tudo o que é pago no acto, e tudo o que não titula uma dívida. A
+           * obrigatoriedade, onde existe, vive no validator (`vencimento: 'exige'`
+           * na tabela de tipos), nunca aqui — regra 7.20.
+           */
+          table.date('data_vencimento').nullable()
+
+          /**
            * Período coberto, para a factura global. O art.º 8.º limita a
            * periodicidade a mensal. Nulo em tudo o resto.
            */
@@ -159,6 +214,19 @@ export default class extends BaseSchema {
 
           table.primary(['id'])
           table.index(['deleted_at'], 'factura_deleted_at_index')
+
+          /**
+           * O índice das cobranças.
+           *
+           * Serve as duas perguntas que se fazem a esta tabela todos os dias, e
+           * nenhuma delas é «esta linha»: «o que está por receber» (varre tudo o
+           * que tem vencimento preenchido) e «o que venceu» (compara com hoje).
+           * Sem ele, o comando dos avisos de cobrança faz varredura completa da
+           * tabela que mais cresce neste sistema.
+           *
+           * `empresa_id` primeiro porque toda a leitura é por inquilino.
+           */
+          table.index(['empresa_id', 'data_vencimento'], 'factura_vencimento_index')
 
           /**
            * A numeração: única por EMPRESA, SÉRIE, ANO e NÚMERO.
@@ -198,6 +266,13 @@ export default class extends BaseSchema {
            * rectifica deixaria a nota a apontar para lado nenhum, e é essa
            * referência que a torna válida perante a AGT.
            */
+          table
+            .foreign(['emitido_por_user_id'], 'factura_emitido_por_user_id_foreign')
+            .references(['id'])
+            .inTable('user')
+            .onDelete('RESTRICT')
+            .onUpdate('NO ACTION')
+
           table
             .foreign(['documento_origem_id'], 'factura_documento_origem_id_foreign')
             .references(['id'])

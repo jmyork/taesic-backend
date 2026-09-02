@@ -55,6 +55,19 @@ export default class factura extends BaseModel {
   declare venda: BelongsTo<typeof vendas>
 
   /**
+   * Quem emitiu o documento — não confundir com quem vendeu.
+   *
+   * O vendedor resolve-se por `venda → caixa → user` e só existe nos tipos que
+   * nascem de uma venda. Uma nota de crédito, um recibo ou um aviso de cobrança
+   * não têm venda nenhuma por trás, e ficavam sem ninguém identificado.
+   *
+   * Nulo nos documentos emitidos pela varredura de avisos de cobrança, que não
+   * tem utilizador — quem lê mostra "Sistema".
+   */
+  @column()
+  declare emitido_por_user_id: string | null
+
+  /**
    * Sequencial DENTRO da série — não por empresa.
    *
    * Sozinho não identifica nada: pode haver uma `NC` n.º 14 e uma `FT` n.º 14 na
@@ -120,6 +133,20 @@ export default class factura extends BaseModel {
 
   @column()
   declare local_operacao: string | null
+
+  /**
+   * A data em que este documento tem de estar pago.
+   *
+   * **É a coluna que define uma conta a receber.** Preenchida só nos documentos
+   * que nascem em dívida (a `Factura` do fluxo a crédito, e a factura global de um
+   * período por liquidar); nula em tudo o que é pago no acto e em tudo o que não
+   * titula uma dívida. A regra completa está em `estaEmDivida()`, em
+   * `app/helpers/regras_de_emissao.ts`:
+   *
+   *     está em dívida  ⇔  tem `data_vencimento`  e  não tem recibo por cima
+   */
+  @column.date()
+  declare data_vencimento: DateTime | null
 
   /** Período coberto — só na factura global (art.º 8.º, periodicidade máxima mensal). */
   @column.date()
@@ -202,6 +229,45 @@ export default class factura extends BaseModel {
       // todos os documentos que não nascem de uma venda.
       vendedor_id: this.$extras.vendedor_id,
       vendedor_nome: this.$extras.vendedor_nome,
+      /**
+       * Quem EMITIU — resolvido a partir de `emitido_por_user_id`. É o único
+       * responsável identificável nos documentos que não nascem de uma venda.
+       */
+      emitido_por_nome: this.$extras.emitido_por_nome,
+      /** O posto de atendimento da venda. Nulo nos que não nascem de uma. */
+      pos_nome: this.$extras.pos_nome,
+
+      /*
+       * ── O ESTADO, para quem lista saber o que ainda se pode fazer ────────────
+       *
+       * Esta lista é EXPLÍCITA, e é por isso que estes três têm de estar aqui:
+       * seleccioná-los em `baseQuery()` põe-nos em `$extras`, mas `$extras` não vai
+       * para o JSON — só vai o que este método devolver. Sem esta entrada, o ecrã
+       * lia `undefined`, concluía «não entregue, não pago» para tudo, e oferecia
+       * acções que o servidor recusava logo a seguir: «esta venda já foi entregue»
+       * e «este documento já está pago». A lista dizia uma coisa e o servidor
+       * dizia outra, sobre a mesma linha.
+       *
+       * `liquidado` vem do MySQL como 0/1 — a conversão para booleano é feita aqui,
+       * para o outro lado não ter de saber disso.
+       */
+      liquidado:
+        this.$extras.liquidado === undefined ? undefined : Boolean(Number(this.$extras.liquidado)),
+      venda_entregue_em: this.$extras.venda_entregue_em,
+      venda_condicao_pagamento: this.$extras.venda_condicao_pagamento,
+
+      /*
+       * O estado da dívida, calculado por `contasAReceber()`. Ausentes em todas as
+       * outras listagens — o JSON não leva chaves com `undefined`, portanto uma
+       * factura vinda do `index` normal sai exactamente como antes.
+       *
+       * `valor_em_divida` não é `total`: as notas de crédito e de débito emitidas
+       * sobre este documento entram na conta. Cobrar o valor original de uma
+       * factura já creditada é cobrar dinheiro que a empresa reconheceu não lhe ser
+       * devido.
+       */
+      valor_em_divida: this.$extras.valor_em_divida,
+      dias_em_atraso: this.$extras.dias_em_atraso,
     }
   }
 }

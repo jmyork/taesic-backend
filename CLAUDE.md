@@ -3232,3 +3232,52 @@ papéis de escopo plataforma, zero planos"*.
 E o override de base nos testes do backoffice foi provado por falsificação — apontar
 `DB_DATABASE` a uma base inexistente falha com `Unknown database`, portanto os 241
 contra a base vazia são um resultado real e não a suite a correr contra outra coisa.
+
+### 7.27 A caixa que fica aberta de um dia para o outro
+
+O fecho ao fim do dia já existia (`caixa:fechar-diario` → `FechoDiarioRepository`,
+secção do comando em `commands/`), mas é um **trabalho externo** e não está agendado
+em lado nenhum — em `OPERACAO.md` aparece na lista de comandos manuais. Quando não
+corre, a caixa de ontem fica aberta, e a partir daí:
+
+1. `vendas_repository.create()` procurava a caixa aberta do utilizador **sem olhar ao
+   dia** — a primeira venda de hoje colava-se à caixa de ontem, e os totais de hoje
+   entravam no dia de ontem;
+2. o utilizador ficava **sem saída**: a caixa de ontem não podia fechar (tinha uma
+   venda por concluir → `CaixaHasOpenVendaException`) e abrir uma nova era recusado
+   com `CaixaAlreadyOpenException` ("já tem uma caixa aberta").
+
+#### O que foi feito
+
+`FechoDiarioRepository` passou a ter dois pontos de entrada sobre a **mesma**
+mecânica (anular as vendas por concluir → fechar a caixa → recalcular totais):
+
+| método | quem chama | âmbito |
+|---|---|---|
+| `fecharCaixasAbertas()` | `caixa:fechar-diario` (fim do dia) | todas as caixas abertas |
+| `fecharCaixasDeDiasAnteriores(userId)` | `vendas_repository.create()` e `caixa_repository.open()` | as caixas desse utilizador criadas antes de hoje |
+
+"De um dia anterior" é `created_at` antes do início de hoje — a mesma convenção que
+`caixa_repository.open()` já usava para decidir se reabre a caixa de hoje.
+
+Quem tenta vender e perde assim a caixa recebe `CAIXA_DIA_ANTERIOR_FECHADA` (422), e
+não o `USER_HAS_NO_OPEN_CAIXA` genérico: viu a caixa aberta há um instante e tem de
+saber por que deixou de estar, e que as vendas por concluir foram anuladas.
+
+#### O que foi decidido NÃO fazer
+
+- **Abrir a caixa automaticamente** ao tentar vender. Foi a proposta inicial e foi
+  recusada, com razão: a caixa precisa de um **posto de atendimento** e de um valor
+  inicial, e um utilizador pode estar atribuído a nenhum ou a vários postos. Adivinhar
+  o posto põe as vendas do dia no posto errado — um erro contabilístico silencioso,
+  pior do que a mensagem a pedir para abrir a caixa. A caixa nova é sempre aberta pelo
+  utilizador.
+- **Agendar o cron.** Continua por instalar, de propósito, e a rede de segurança acima
+  não o substitui: sem ele as caixas de quem não voltar a entrar ficam abertas.
+
+#### Verificado
+
+| o quê | resultado |
+|---|---|
+| `node ace test` | **1140 passam** (5 novos em `tests/functional/caixa_dia_anterior.spec.ts`) |
+| `tsc --noEmit` | limpo |

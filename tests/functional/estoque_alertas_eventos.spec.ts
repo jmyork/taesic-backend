@@ -5,6 +5,7 @@ import EstoqueRepository from '#repositories/estoque_repository'
 import LoteRepository from '#repositories/lote_repository'
 import VendasRepository from '#repositories/vendas_repository'
 import ProdutosReembolsoRepository from '#repositories/produtos_reembolso_repository'
+import FacturaRepository from '#repositories/factura_repository'
 import VerificationTokenHashRepository from '#repositories/verification_token_hash_repository'
 import VerificationTokenHashService from '#services/verification_token_hash_service'
 import Empresa from '#models/empresa'
@@ -124,8 +125,27 @@ test.group('eventos de alerta operacional', (group) => {
     const produto = await createProduto(empresa)
     const lote = await createLote(produto, { quantidade_em_estoque: 10 })
     const caixa = await createCaixa(user, pos)
-    const venda = await createVenda(caixa, { status: 'fechada' })
+    const venda = await createVenda(caixa, { status: 'fechada', total: 1000 })
     await createVendaItem(venda, lote, { quantidade: 2, preco_unitario: 500 })
+
+    /*
+     * A venda tem de estar TITULADA para poder ser reembolsada.
+     *
+     * Um reembolso reduz o valor de uma operação já declarada às Finanças, e a nota
+     * de crédito é o documento que a lei tem para isso — sem um documento a
+     * rectificar, não há nota possível e o reembolso é recusado
+     * (`VendaSemDocumentoException`).
+     *
+     * A fixture cria a venda directamente, portanto não passa pelo fecho — e é o
+     * fecho que, no fluxo real, emite este documento. Emite-se aqui à mão para o
+     * teste exercitar o que quer exercitar (o evento de reversão de stock) em vez
+     * de morrer na regra anterior.
+     */
+    await new FacturaRepository().emitir({
+      company_alias: empresa.company_alias,
+      tipo: 'Factura-Recibo',
+      venda_id: venda.id,
+    })
 
     const events = emitter.fake([EstoqueRevertido])
 

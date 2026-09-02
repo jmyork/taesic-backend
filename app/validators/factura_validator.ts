@@ -1,12 +1,46 @@
 import vine from '@vinejs/vine'
+import type { FieldContext } from '@vinejs/vine/types'
 
 import {
   TIPOS_DE_DOCUMENTO_VALIDOS,
   TIPOS_QUE_EXIGEM_ORIGEM,
   TIPOS_QUE_EXIGEM_PERIODO,
+  TIPOS_QUE_EXIGEM_VENCIMENTO,
   TIPOS_QUE_EXIGEM_VENDA,
   TIPOS_QUE_EXIGEM_VENDAS,
+  TIPOS_QUE_EXIGEM_CONTRAPARTE,
+  TIPOS_QUE_PROIBEM_VENCIMENTO,
 } from '../helpers/tipos_de_documento.js'
+
+/**
+ * O simétrico de `requiredWhen`, que o VineJS não traz.
+ *
+ * ── Porque é que a proibição precisa de existir ──────────────────────────────
+ *
+ * `requiredWhen` cobre metade da regra: a `Factura` TEM de trazer data de
+ * vencimento. A outra metade é que a factura-recibo, a genérica e o adiantamento
+ * **não podem** trazê-la — e essa metade não é zelo de formulário. Uma data de
+ * vencimento num documento pago no acto põe-no no mapa de cobranças, e alguém
+ * acaba a telefonar a um cliente a pedir dinheiro que ele já entregou.
+ *
+ * Aceitar o campo e descartá-lo em silêncio era a alternativa fácil, e é pior: a
+ * chamada devolvia 201, o utilizador via o documento emitido, e a data que ele
+ * escreveu não estava lá — sem nada que lhe dissesse porquê.
+ */
+const proibidoNestesTipos = vine.createRule(
+  (valor: unknown, tipos: readonly string[], field: FieldContext) => {
+    if (valor === null || valor === undefined) return
+
+    const tipo = field.parent?.tipo
+    if (typeof tipo === 'string' && tipos.includes(tipo)) {
+      field.report(
+        `O campo {{ field }} não se aplica a um documento do tipo "${tipo}".`,
+        'prohibitedWhen',
+        field
+      )
+    }
+  }
+)
 
 /**
  * Emitir um documento fiscal.
@@ -83,6 +117,30 @@ export const EmitirFacturaValidator = vine.compile(
       .requiredWhen('tipo', 'in', TIPOS_QUE_EXIGEM_PERIODO),
 
     /**
+     * A data em que o documento tem de estar pago — o que faz dele uma conta a
+     * receber.
+     *
+     * Exigida na `Factura` e PROIBIDA em tudo o que é pago no acto. As duas listas
+     * derivam da tabela de tipos e não se sobrepõem: no meio ficam os que a
+     * permitem sem a exigir (a factura global), que não entram em nenhuma — daí
+     * serem duas regras e não um par de opostos.
+     *
+     * A proibição não é zelo: uma data de vencimento numa factura-recibo poria um
+     * documento já pago no mapa de cobranças, e alguém acabaria a telefonar a um
+     * cliente a pedir dinheiro que ele já entregou.
+     *
+     * `afterOrEqual('today')`: um vencimento no passado nasce vencido, e o aviso de
+     * cobrança sairia no mesmo dia da factura. Quem está a registar uma dívida
+     * antiga indica a data de operação, não um vencimento para trás.
+     */
+    data_vencimento: vine
+      .date({ formats: ['YYYY-MM-DD'] })
+      .afterOrEqual('today')
+      .optional()
+      .requiredWhen('tipo', 'in', TIPOS_QUE_EXIGEM_VENCIMENTO)
+      .use(proibidoNestesTipos(TIPOS_QUE_PROIBEM_VENCIMENTO)),
+
+    /**
      * A série de numeração. Opcional: sem ela o repositório usa a série por
      * omissão do tipo e do ano (`FT2026`, `NC2026`).
      *
@@ -106,6 +164,38 @@ export const EmitirFacturaValidator = vine.compile(
      */
     data_operacao: vine.date({ formats: ['YYYY-MM-DD HH:mm:ss', 'iso8601'] }).optional(),
     local_operacao: vine.string().trim().maxLength(255).optional(),
+
+    /**
+     * A CONTRAPARTE do documento — quem está do outro lado da operação.
+     *
+     * ── Porque é que isto passou a poder ser indicado ────────────────────────
+     *
+     * Nos documentos que nascem de uma venda ou de outro documento, a contraparte
+     * deriva-se e estes campos são ignorados pelo repositório. Nos que nascem
+     * sozinhos, não havia forma nenhuma de a indicar — e havia um tipo em que isso
+     * tornava o documento inútil: a **autofacturação**, que é emitida pelo
+     * ADQUIRENTE em nome do fornecedor. Sem o nome e o NIF do fornecedor, saía um
+     * documento que não dizia em nome de quem foi emitido, que é exactamente a
+     * única coisa que o define.
+     *
+     * Obrigatórios só onde a ausência os tornaria inúteis — a lista deriva da
+     * tabela de tipos (`exigeContraparte`), como todas as outras.
+     */
+    cliente_nome: vine
+      .string()
+      .trim()
+      .maxLength(255)
+      .optional()
+      .requiredWhen('tipo', 'in', TIPOS_QUE_EXIGEM_CONTRAPARTE),
+
+    cliente_nif: vine
+      .string()
+      .trim()
+      .minLength(5)
+      .maxLength(20)
+      .regex(/^[A-Za-z0-9]+$/)
+      .optional()
+      .requiredWhen('tipo', 'in', TIPOS_QUE_EXIGEM_CONTRAPARTE),
 
     /** Sede ou domicílio do adquirente (art.º 10.º), quando conhecido. */
     cliente_morada: vine.string().trim().maxLength(255).optional(),
@@ -161,6 +251,15 @@ export const FacturaQueryValidator = vine.compile(
     data_fim: vine.date({ formats: ['YYYY-MM-DD'] }).optional(),
 
     /**
+     * O recorte das contas a receber, na listagem de sempre.
+     *
+     * `em_divida` — tem vencimento e não tem recibo por cima.
+     * `vencidas` — o mesmo, e já passou do prazo. Implica `em_divida`.
+     */
+    em_divida: vine.boolean().optional(),
+    vencidas: vine.boolean().optional(),
+
+    /**
      * Quem fez a venda que o documento titula.
      *
      * `vendedor` é o NOME, parcial — é como se procura uma pessoa. `vendedor_id`
@@ -173,5 +272,27 @@ export const FacturaQueryValidator = vine.compile(
     q: vine.string().trim().maxLength(120).optional(),
 
     deleted: vine.enum(['deleted', 'all']).optional(),
+  })
+)
+
+/**
+ * Confirmar que o dinheiro de uma factura a crédito entrou.
+ *
+ * Não leva valor: o recibo é emitido pelo que RESTA do documento (total, mais as
+ * notas de débito, menos as de crédito), calculado no repositório. Aceitar aqui um
+ * número deixaria emitir um recibo por um valor que não bate com nada — e um
+ * recibo é a prova que o cliente guarda.
+ *
+ * `beforeOrEqual('today')`: não se confirma a recepção de dinheiro que ainda não
+ * chegou.
+ */
+export const ConfirmarRecebimentoValidator = vine.compile(
+  vine.object({
+    data_recebimento: vine
+      .date({ formats: ['YYYY-MM-DD', 'YYYY-MM-DD HH:mm:ss', 'iso8601'] })
+      .beforeOrEqual('today')
+      .optional(),
+
+    observacoes: vine.string().trim().maxLength(500).optional(),
   })
 )

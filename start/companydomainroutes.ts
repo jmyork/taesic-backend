@@ -126,6 +126,24 @@ router
 
         router.post("vendas/anular/:id", [controllers.Vendas, 'cancel']).as('domain_vendas.anular')
 
+        /*
+         * Entregar o produto de uma venda por adiantamento.
+         *
+         * O adiantamento é a única condição em que o dinheiro entra antes da entrega:
+         * no fecho o stock não saiu e a venda não foi titulada. Esta rota é o passo que
+         * fecha o ciclo — dá baixa no armazém, marca a venda como entregue (e é a partir
+         * daí que ela conta como receita) e emite o documento que a titula.
+         */
+        router.post('vendas/entregar/:id', [controllers.Vendas, 'entregar']).as('domain_vendas.entregar')
+
+        /*
+         * Ajustar uma venda fechada PARA CIMA — emite uma nota de débito.
+         *
+         * O simétrico (ajustar para menos) é o reembolso, que já emite nota de crédito.
+         * A venda não é reescrita: já há um documento fiscal a dizer quanto ela valia.
+         */
+        router.post('vendas/ajustar/:id', [controllers.Vendas, 'ajustar']).as('domain_vendas.ajustar')
+
 
         router
             .resource('venda-itens', controllers.VendaItens)
@@ -275,6 +293,17 @@ router
         router
             .get('facturas/vendas-por-facturar', [controllers.Factura, 'vendasPorFacturar'])
             .as('domain_facturas.vendas_por_facturar')
+
+        /*
+         * O que a empresa tem por receber — a lista, os totais e a antiguidade.
+         *
+         * Também ANTES do resource, pela mesma razão que as outras: `GET facturas/:id`
+         * interceptaria `facturas/contas-a-receber` e tentaria tratar
+         * "contas-a-receber" como um id.
+         */
+        router
+            .get('facturas/contas-a-receber', [controllers.Factura, 'contasAReceber'])
+            .as('domain_facturas.contas_a_receber')
         router
             .get('facturas/:id/proximos', [controllers.Factura, 'proximos'])
             .as('domain_facturas.proximos')
@@ -282,12 +311,35 @@ router
             .get('facturas/:id/vendas-cobertas', [controllers.Factura, 'vendasCobertas'])
             .as('domain_facturas.vendas_cobertas')
 
+        /*
+         * Todos os documentos da mesma operação — a factura E o recibo que a
+         * liquidou, a factura E a nota de crédito que a rectificou. Existe para
+         * poderem ser impressos juntos.
+         *
+         * Antes do resource, pela mesma razão das outras: `GET facturas/:id`
+         * apanharia "operacao" e trataria a palavra como um id.
+         */
+        router
+            .get('facturas/:id/operacao', [controllers.Factura, 'documentosDaOperacao'])
+            .as('domain_facturas.operacao')
+
         router.resource('facturas', controllers.Factura)
             .apiOnly()
             .except(['update', 'destroy'])
             .as('domain_facturas')
 
         router.post('facturas/anular/:id', [controllers.Factura, 'anular']).as('domain_facturas.anular')
+
+        /*
+         * Confirmar que o dinheiro de uma factura a prazo entrou — emite o recibo.
+         *
+         * É o único caminho pelo qual uma conta a receber sai do mapa de cobranças, e
+         * emite um documento em vez de marcar um campo porque quem paga tem direito à
+         * prova de que pagou.
+         */
+        router
+            .post('facturas/:id/confirmar-recebimento', [controllers.Factura, 'confirmarRecebimento'])
+            .as('domain_facturas.confirmar_recebimento')
 
         // ---------------------- assinatura ----------------------
         //
